@@ -24,7 +24,7 @@ struct zvode_callbacks {
 };
 
 static void fun_adaptor(
-        int neqn,
+        int neq,
         double t,
         double complex y[],
         double complex dy[],
@@ -34,7 +34,7 @@ static void fun_adaptor(
     assert(cb != NULL);
     assert(cb->fun != NULL);
 
-    // TODO: use complex vectors here
+    const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
     PyObject *ap_y = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
@@ -67,13 +67,14 @@ static void jac_adaptor(
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyObject *ap_y = PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
     if (ap_y == NULL) {
-        cb->error = 1;
         return;
     }
 
     /* PD is column-major with leading dimension NROWPD, exactly the layout
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
      * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
+
+    PyObject *ap_pd;
 
     // TODO: build numpy compatible array objects for y and pd
     // the arrays pd has dimension nrowpd by neq, but it might represent
@@ -101,8 +102,6 @@ PyDoc_STRVAR(zvode_doc,
 
 static PyObject* zvode_py(PyObject* self, PyObject *args) {
 
-    struct zvode_callbacks cb = {.fun=NULL, .jac=Py_None};
-
     PyObject *fun_obj, *jac_obj;
     PyObject *y_obj, *rtol_obj, *atol_obj;
     PyObject *zwork_obj, *rwork_obj, *iwork_obj;
@@ -122,19 +121,35 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         // TODO: validate arguments
     }
 
+    int neq, lzw, lrw, liw;
+
+    PyArrayObject *ap_y = NULL, *ap_rtol = NULL, *ap_atol = NULL;
+    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
+    PyObject *result = NULL;
+
+
+    double complex *y     = (double complex *) PyArray_DATA(ap_y);
+    double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
+    double         *rwork = (double *)         PyArray_DATA(ap_rwork);
+    int            *iwork = (int *)            PyArray_DATA(ap_iwork);
+    const double   *rtol  = (const double *)   PyArray_DATA(ap_rtol);
+    const double   *atol  = (const double *)   PyArray_DATA(ap_atol);
+
+    struct zvode_callbacks cb = { .fun = fun_obj, .jac = jac_obj};
+
     // Call the Fortran integrator
     zvode(
         &fun_adaptor,
-        neqn, y, t, tout,
+        neq, y, &t, tout,
         itol, rtol, atol,
-        itask, istate,
-        iopt, zwork, lzw, rwork, lrw, iwork, liw
+        itask, &istate,
+        iopt, zwork, lzw, rwork, lrw, iwork, liw,
         &jac_adaptor,
         mf,
         (void *) &cb
     );
 
-    PyObject *res
+    PyObject *res;
     if (!(res = Py_BuildValue("di",t,istate))) {
         return NULL;
     }

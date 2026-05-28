@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "numpy"]
+requires = ["scikit-build-core", "numpy"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = ["numpy", "scipy"]
 
 [tool.scikit-build]
-minimum-version = "0.10"
+cmake.version = "CMakeLists.txt"
+build.targets = ["_zvode"]
 build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
 wheel.packages = ["src/zvode"]

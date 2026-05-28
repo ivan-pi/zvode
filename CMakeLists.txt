@@ -5,22 +5,27 @@ project(
   VERSION ${SKBUILD_PROJECT_VERSION}
   LANGUAGES C Fortran)
 
+set(CMAKE_Fortran_COMPILER gfortran)
+
 # Only request the module-building components. Do NOT request the full
 # `Development` package: that pulls in Development.Embed, which needs the
 # Python library for linking and is wrong for extension modules.
-find_package(
-  Python
-  COMPONENTS Interpreter Development.Module NumPy
-  REQUIRED)
+find_package(Python REQUIRED
+  COMPONENTS
+    Interpreter
+    Development.Module
+    ${SKBUILD_SABI_COMPONENT}
+    NumPy
+)
 
 # Build the C extension. Compiling the Fortran straight into the module
 # target lets CMake pull in the Fortran runtime (libgfortran) automatically
 # at link time, which is the most foolproof option for a mixed C/Fortran module.
-python_add_library(
-  _zvode MODULE
-  src/_zvode.c
-  extern/zvode.f
-  WITH_SOABI)
+python_add_library(_zvode MODULE
+    src/_zvode.c
+    extern/zvode.f
+  WITH_SOABI
+    ${SKBUILD_SABI_VERSION})
 
 target_include_directories(
   _zvode

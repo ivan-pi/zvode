@@ -1,27 +1,37 @@
+      module zvode_mod
+         use, intrinsic :: iso_c_binding
+         implicit none
+         private
+
+         public :: zvode
+
+         abstract interface
+            subroutine zvode_fun(neq,t,y,ydot,ctx) bind(c)
+               import c_int, c_double, c_double_complex, c_ptr
+               implicit none
+               integer(c_int), value :: neq
+               real(c_double), value :: t
+               complex(c_double_complex) :: y(neq), ydot(neq)
+               type(c_ptr), value :: ctx
+            end subroutine
+            subroutine zvode_jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
+               import c_int, c_double, c_double_complex, c_ptr
+               integer(c_int), value :: neq, ml, mu, nrowpd
+               real(c_double), value :: t
+               complex(c_double_complex) :: y(neq), pd(nrowpd,*)
+               type(c_ptr), value :: ctx
+            end subroutine
+         end interface
+
+      contains
+
 C NOTE: This version of ZVODE has been modified
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
      2            JAC, MF, CTX) BIND(C)
 C Argument list
-      use, intrinsic :: iso_c_binding, only: c_int, c_double,
-     1    c_double_complex, c_ptr
-      interface
-         subroutine f(neq,t,y,ydot,ctx) bind(c)
-            import c_int, c_double, c_double_complex, c_ptr
-            implicit none
-            integer(c_int), value :: neq
-            real(c_double), value :: t
-            complex(c_double_complex) :: y(neq), ydot(neq)
-            type(c_ptr), value :: ctx
-         end subroutine
-         subroutine jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
-            import c_int, c_double, c_double_complex, c_ptr
-            integer(c_int), value :: neq, ml, mu, nrowpd
-            real(c_double), value :: t
-            complex(c_double_complex) :: y(neq), pd(nrowpd,*)
-            type(c_ptr), value :: ctx
-         end subroutine
-      end interface
+      procedure(zvode_fun) :: f
+      procedure(zvode_jac) :: jac
       integer(c_int), value :: neq, itol, itask, iopt, lzw, lrw, liw, mf
       real(c_double), value :: tout
       real(c_double), intent(inout) :: t
@@ -1084,7 +1094,6 @@ C
 C
 C Type declarations for local variables --------------------------------
 C
-      EXTERNAL ZVNLSD
       LOGICAL IHIT
       DOUBLE PRECISION ATOLI, BIG, EWTI, FOUR, H0, HMAX, HMX, HUN, ONE,
      1   PT2, RH, RTOLI, SIZE, TCRIT, TNEXT, TOLSF, TP, TWO, ZERO
@@ -1092,10 +1101,6 @@ C
      1   LENRW, LENWM, LF0, MBAND, MFA, ML, MORD, MU, MXHNL0, MXSTP0,
      2   NITER, NSLAST
       CHARACTER*80 MSG
-C
-C Type declaration for function subroutines called ---------------------
-C
-      DOUBLE PRECISION DUMACH, ZVNORM
 C
       DIMENSION MORD(2)
 C-----------------------------------------------------------------------
@@ -1723,8 +1728,7 @@ C----------------------- End of Subroutine ZVODE -----------------------
 *DECK ZVHIN
       SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, CTX, TOUT, UROUND,
      1   EWT, ITOL, ATOL, Y, TEMP, H0, NITER, IER)
-      use, intrinsic :: iso_c_binding, only: c_ptr
-      EXTERNAL F
+      procedure(zvode_fun) :: f
       DOUBLE COMPLEX Y0, YDOT, Y, TEMP
       DOUBLE PRECISION T0, TOUT, UROUND, EWT, ATOL, H0
       INTEGER N, IPAR, ITOL, NITER, IER
@@ -1987,8 +1991,9 @@ C----------------------- End of Subroutine ZVINDY ----------------------
 *DECK ZVSTEP
       SUBROUTINE ZVSTEP (Y, YH, LDYH, YH1, EWT, SAVF, VSAV, ACOR,
      1                  WM, IWM, F, JAC, PSOL, VNLS, CTX)
-      use, intrinsic :: iso_c_binding, only: c_ptr
-      EXTERNAL F, JAC, PSOL, VNLS
+      EXTERNAL PSOL, VNLS
+      procedure(zvode_fun) :: f
+      procedure(zvode_jac) :: jac
       DOUBLE COMPLEX Y, YH, YH1, SAVF, VSAV, ACOR, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, IPAR
@@ -2784,8 +2789,9 @@ C----------------------- End of Subroutine ZVJUST ----------------------
 *DECK ZVNLSD
       SUBROUTINE ZVNLSD (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
      1                 F, JAC, PDUM, NFLAG, CTX)
-      use, intrinsic :: iso_c_binding, only: ctx
-      EXTERNAL F, JAC, PDUM
+      EXTERNAL PDUM
+      procedure(zvode_fun) :: f
+      procedure(zvode_jac) :: jac
       DOUBLE COMPLEX Y, YH, VSAV, SAVF, ACOR, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, NFLAG, IPAR
@@ -3016,8 +3022,8 @@ C----------------------- End of Subroutine ZVNLSD ----------------------
 *DECK ZVJAC
       SUBROUTINE ZVJAC (Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM, F, JAC,
      1                 IERPJ, CTX)
-      use, intrinsic :: iso_c_binding, only: c_ptr
-      EXTERNAL F, JAC
+      procedure(zvode_fun) :: f
+      procedure(zvode_jac) :: jac
       DOUBLE COMPLEX Y, YH, FTEM, SAVF, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, IERPJ, IPAR
@@ -3946,3 +3952,5 @@ C
       RETURN
 C----------------------- End of Function IUMACH ------------------------
       END
+
+      end module zvode_mod
