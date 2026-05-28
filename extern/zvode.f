@@ -24,9 +24,11 @@ C Argument list
       end interface
       integer(c_int), value :: neq, itol, itask, iopt, lzw, lrw, liw, mf
       real(c_double), value :: tout
-      complex(c_double_complex) :: t, y(neq), zwork(lzw)
-      real(c_double) :: rwork(lrw), rtol(*), atol(*)
-      integer(c_int) :: istate, iwork(liw)
+      real(c_double), intent(inout) :: t
+      complex(c_double_complex), intent(inout) :: y(neq), zwork(lzw)
+      real(c_double), intent(inout) :: rwork(lrw)
+      real(c_double), intent(in) :: rtol(*), atol(*)
+      integer(c_int), intent(inout) :: istate, iwork(liw)
       type(c_ptr), value :: ctx
 C-----------------------------------------------------------------------
 C ZVODE: Variable-coefficient Ordinary Differential Equation solver,
@@ -1368,7 +1370,7 @@ C-----------------------------------------------------------------------
       NQU = 0
 C Initial call to F.  (LF0 points to YH(*,2).) -------------------------
       LF0 = LYH + NYH
-      CALL F (N, T, Y, ZWORK(LF0), RPAR, IPAR)
+      CALL F (N, T, Y, ZWORK(LF0), CTX)
       NFE = 1
 C Load the initial value vector in YH. ---------------------------------
       CALL ZCOPY (N, Y, 1, ZWORK(LYH), 1)
@@ -1381,7 +1383,7 @@ C Load and invert the EWT array.  (H is temporarily set to 1.0.) -------
  120    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
       IF (H0 .NE. ZERO) GO TO 180
 C Call ZVHIN to set initial step size H0 to be attempted. --------------
-      CALL ZVHIN (N, T, ZWORK(LYH), ZWORK(LF0), F, RPAR, IPAR, TOUT,
+      CALL ZVHIN (N, T, ZWORK(LYH), ZWORK(LF0), F, CTX, TOUT,
      1   UROUND, RWORK(LEWT), ITOL, ATOL, Y, ZWORK(LACOR), H0,
      2   NITER, IER)
       NFE = NFE + NITER
@@ -1466,11 +1468,11 @@ C-----------------------------------------------------------------------
  290  CONTINUE
 C-----------------------------------------------------------------------
 C CALL ZVSTEP (Y, YH, NYH, YH, EWT, SAVF, VSAV, ACOR,
-C              WM, IWM, F, JAC, F, ZVNLSD, RPAR, IPAR)
+C              WM, IWM, F, JAC, F, ZVNLSD, CTX)
 C-----------------------------------------------------------------------
       CALL ZVSTEP (Y, ZWORK(LYH), NYH, ZWORK(LYH), RWORK(LEWT),
      1   ZWORK(LSAVF), Y, ZWORK(LACOR), ZWORK(LWM), IWORK(LIWM),
-     2   F, JAC, F, ZVNLSD, RPAR, IPAR)
+     2   F, JAC, F, ZVNLSD, CTX)
       KGO = 1 - KFLAG
 C Branch on KFLAG.  Note: In this version, KFLAG can not be set to -3.
 C  KFLAG .eq. 0,   -1,  -2
@@ -1719,16 +1721,18 @@ C
 C----------------------- End of Subroutine ZVODE -----------------------
       END
 *DECK ZVHIN
-      SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, RPAR, IPAR, TOUT, UROUND,
+      SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, CTX, TOUT, UROUND,
      1   EWT, ITOL, ATOL, Y, TEMP, H0, NITER, IER)
+      use, intrinsic :: iso_c_binding, only: c_ptr
       EXTERNAL F
       DOUBLE COMPLEX Y0, YDOT, Y, TEMP
       DOUBLE PRECISION T0, TOUT, UROUND, EWT, ATOL, H0
       INTEGER N, IPAR, ITOL, NITER, IER
       DIMENSION Y0(*), YDOT(*), EWT(*), ATOL(*), Y(*),
-     1   TEMP(*), RPAR(*), IPAR(*)
+     1   TEMP(*)
+      TYPE(C_PTR), VALUE :: CTX
 C-----------------------------------------------------------------------
-C Call sequence input -- N, T0, Y0, YDOT, F, RPAR, IPAR, TOUT, UROUND,
+C Call sequence input -- N, T0, Y0, YDOT, F, CTX, TOUT, UROUND,
 C                        EWT, ITOL, ATOL, Y, TEMP
 C Call sequence output -- H0, NITER, IER
 C COMMON block variables accessed -- None
@@ -1815,7 +1819,7 @@ C Estimate the second derivative as a difference quotient in f. --------
       T1 = T0 + H
       DO 60 I = 1, N
  60     Y(I) = Y0(I) + H*YDOT(I)
-      CALL F (N, T1, Y, TEMP, RPAR, IPAR)
+      CALL F (N, T1, Y, TEMP, CTX)
       DO 70 I = 1, N
  70     TEMP(I) = (TEMP(I) - YDOT(I))/H
       YDDNRM = ZVNORM (N, TEMP, EWT)
@@ -1982,13 +1986,15 @@ C----------------------- End of Subroutine ZVINDY ----------------------
       END
 *DECK ZVSTEP
       SUBROUTINE ZVSTEP (Y, YH, LDYH, YH1, EWT, SAVF, VSAV, ACOR,
-     1                  WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR)
+     1                  WM, IWM, F, JAC, PSOL, VNLS, CTX)
+      use, intrinsic :: iso_c_binding, only: c_ptr
       EXTERNAL F, JAC, PSOL, VNLS
       DOUBLE COMPLEX Y, YH, YH1, SAVF, VSAV, ACOR, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, IPAR
       DIMENSION Y(*), YH(LDYH,*), YH1(*), EWT(*), SAVF(*), VSAV(*),
-     1   ACOR(*), WM(*), IWM(*), RPAR(*), IPAR(*)
+     1   ACOR(*), WM(*), IWM(*)
+      TYPE(C_PTR), VALUE :: CTX
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, YH1, EWT, SAVF, VSAV,
 C                        ACOR, WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR
@@ -2231,7 +2237,7 @@ C
 C Call the nonlinear system solver. ------------------------------------
 C
       CALL VNLS (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
-     1           F, JAC, PSOL, NFLAG, RPAR, IPAR)
+     1           F, JAC, PSOL, NFLAG, CTX)
 C
       IF (NFLAG .EQ. 0) GO TO 450
 C-----------------------------------------------------------------------
@@ -2338,7 +2344,7 @@ C-----------------------------------------------------------------------
       H = H*ETA
       HSCAL = H
       TAU(1) = H
-      CALL F (N, TN, Y, SAVF, RPAR, IPAR)
+      CALL F (N, TN, Y, SAVF, CTX)
       NFE = NFE + 1
       DO 550 I = 1, N
  550    YH(I,2) = H*SAVF(I)
@@ -2777,13 +2783,15 @@ C----------------------- End of Subroutine ZVJUST ----------------------
       END
 *DECK ZVNLSD
       SUBROUTINE ZVNLSD (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
-     1                 F, JAC, PDUM, NFLAG, RPAR, IPAR)
+     1                 F, JAC, PDUM, NFLAG, CTX)
+      use, intrinsic :: iso_c_binding, only: ctx
       EXTERNAL F, JAC, PDUM
       DOUBLE COMPLEX Y, YH, VSAV, SAVF, ACOR, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, NFLAG, IPAR
       DIMENSION Y(*), YH(LDYH,*), VSAV(*), SAVF(*), EWT(*), ACOR(*),
-     1          IWM(*), WM(*), RPAR(*), IPAR(*)
+     1          IWM(*), WM(*)
+      TYPE(C_PTR), value :: CTX
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, SAVF, EWT, ACOR, IWM, WM,
 C                        F, JAC, NFLAG, RPAR, IPAR
@@ -2917,7 +2925,7 @@ C-----------------------------------------------------------------------
  220  M = 0
       DELP = ZERO
       CALL ZCOPY (N, YH(1,1), 1, Y, 1 )
-      CALL F (N, TN, Y, SAVF, RPAR, IPAR)
+      CALL F (N, TN, Y, SAVF, CTX)
       NFE = NFE + 1
       IF (IPUP .LE. 0) GO TO 250
 C-----------------------------------------------------------------------
@@ -2926,7 +2934,7 @@ C preprocessed before starting the corrector iteration.  IPUP is set
 C to 0 as an indicator that this has been done.
 C-----------------------------------------------------------------------
       CALL ZVJAC (Y, YH, LDYH, EWT, ACOR, SAVF, WM, IWM, F, JAC, IERPJ,
-     1           RPAR, IPAR)
+     1           CTX)
       IPUP = 0
       RC = ONE
       DRC = ZERO
@@ -2981,7 +2989,7 @@ C-----------------------------------------------------------------------
       IF (M .EQ. MAXCOR) GO TO 410
       IF (M .GE. 2 .AND. DEL .GT. RDIV*DELP) GO TO 410
       DELP = DEL
-      CALL F (N, TN, Y, SAVF, RPAR, IPAR)
+      CALL F (N, TN, Y, SAVF, CTX)
       NFE = NFE + 1
       GO TO 270
 C
@@ -3007,13 +3015,15 @@ C----------------------- End of Subroutine ZVNLSD ----------------------
       END
 *DECK ZVJAC
       SUBROUTINE ZVJAC (Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM, F, JAC,
-     1                 IERPJ, RPAR, IPAR)
+     1                 IERPJ, CTX)
+      use, intrinsic :: iso_c_binding, only: c_ptr
       EXTERNAL F, JAC
       DOUBLE COMPLEX Y, YH, FTEM, SAVF, WM
       DOUBLE PRECISION EWT
       INTEGER LDYH, IWM, IERPJ, IPAR
       DIMENSION Y(*), YH(LDYH,*), EWT(*), FTEM(*), SAVF(*),
-     1   WM(*), IWM(*), RPAR(*), IPAR(*)
+     1   WM(*), IWM(*)
+      type(c_ptr), value :: ctx
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM,
 C                        F, JAC, RPAR, IPAR
@@ -3130,7 +3140,7 @@ C If JOK = -1 and MITER = 1, call JAC to evaluate Jacobian. ------------
       LENP = N*N
       DO 110 I = 1,LENP
  110    WM(I) = ZERO
-      CALL JAC (N, TN, Y, 0, 0, WM, N, RPAR, IPAR)
+      CALL JAC (N, TN, Y, 0, 0, WM, N, CTX)
       IF (JSV .EQ. 1) CALL ZCOPY (LENP, WM, 1, WM(LOCJS), 1)
       ENDIF
 C
@@ -3148,7 +3158,7 @@ C If MITER = 2, make N calls to F to approximate the Jacobian. ---------
         R = MAX(SRUR*ABS(YJ),R0/EWT(J))
         Y(J) = Y(J) + R
         FAC = ONE/R
-        CALL F (N, TN, Y, FTEM, RPAR, IPAR)
+        CALL F (N, TN, Y, FTEM, CTX)
         DO 220 I = 1,N
  220      WM(I+J1) = (FTEM(I) - SAVF(I))*FAC
         Y(J) = YJ
@@ -3188,7 +3198,7 @@ C If MITER = 3, construct a diagonal approximation to J and P. ---------
       R = RL1*PT1
       DO 310 I = 1,N
  310    Y(I) = Y(I) + R*(H*SAVF(I) - YH(I,2))
-      CALL F (N, TN, Y, WM, RPAR, IPAR)
+      CALL F (N, TN, Y, WM, CTX)
       NFE = NFE + 1
       DO 320 I = 1,N
         R1 = H*SAVF(I) - YH(I,2)
@@ -3219,7 +3229,7 @@ C If JOK = -1 and MITER = 4, call JAC to evaluate Jacobian. ------------
       JCUR = 1
       DO 410 I = 1,LENP
  410    WM(I) = ZERO
-      CALL JAC (N, TN, Y, ML, MU, WM(ML1), MEBAND, RPAR, IPAR)
+      CALL JAC (N, TN, Y, ML, MU, WM(ML1), MEBAND, CTX)
       IF (JSV .EQ. 1)
      1   CALL ZACOPY (MBAND, N, WM(ML1), MEBAND, WM(LOCJS), MBAND)
       ENDIF
@@ -3239,7 +3249,7 @@ C If MITER = 5, make ML+MU+1 calls to F to approximate the Jacobian. ---
           YI = Y(I)
           R = MAX(SRUR*ABS(YI),R0/EWT(I))
  530      Y(I) = Y(I) + R
-        CALL F (N, TN, Y, FTEM, RPAR, IPAR)
+        CALL F (N, TN, Y, FTEM, CTX)
         DO 550 JJ = J,N,MBAND
           Y(JJ) = YH(JJ,1)
           YJJ = Y(JJ)
