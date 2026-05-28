@@ -41,6 +41,8 @@ static void fun_adaptor(
     if (ap_y == NULL) {
         return;
     }
+    PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
+
     PyObject *ap_dy = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
     if (ap_dy == NULL) {
         return;
@@ -69,6 +71,7 @@ static void jac_adaptor(
     if (ap_y == NULL) {
         return;
     }
+    PyArray_CLEARFLAGS(ap_y,NPY_ARRAY_WRITEABLE);
 
     /* PD is column-major with leading dimension NROWPD, exactly the layout
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
@@ -103,30 +106,40 @@ PyDoc_STRVAR(zvode_doc,
 static PyObject* zvode_py(PyObject* self, PyObject *args) {
 
     PyObject *fun_obj, *jac_obj;
-    PyObject *y_obj, *rtol_obj, *atol_obj;
-    PyObject *zwork_obj, *rwork_obj, *iwork_obj;
+
+    PyArrayObject *ap_y, *ap_rtol, *ap_atol;
+    PyArrayObject *ap_zwork, *ap_rwork, *ap_iwork;
 
     double t, tout;
     int itol, itask, istate, iopt, mf;
 
-    if (!PyArg_ParseTuple(args, "OOddiOOiiiOOOOi:zvode",
-            &fun_obj, &y_obj, &t, &tout, &itol,
-            &rtol_obj, &atol_obj, &itask, &istate, &iopt,
-            &zwork_obj, &rwork_obj, &iwork_obj, &jac_obj, &mf)) {
+    // Container for the actual Python callbacks
+    struct zvode_callbacks cb = { .fun = NULL, .jac = Py_None};
+
+    if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
+       &cb.fun,
+       &PyArray_Type, &ap_y,
+       &t, &tout, &itol,
+       &PyArray_Type, &ap_rtol,
+       &PyArray_Type, &ap_atol,
+       &itask, &istate, &iopt,
+       &PyArray_Type, &ap_zwork,
+       &PyArray_Type, &ap_rwork,
+       &PyArray_Type, &ap_iwork,
+       &cb.jac, &mf)) {
         return NULL;
     }
 
     if (istate == 1) {
-        // Initialization
-        // TODO: validate arguments
+        // Initialization of ZVODE
+        // TODO: validate arguments for type and contiguity
+        //   on future calls we assume that everything is okay
     }
 
-    int neq, lzw, lrw, liw;
-
-    PyArrayObject *ap_y = NULL, *ap_rtol = NULL, *ap_atol = NULL;
-    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
-    PyObject *result = NULL;
-
+   const int neq = (int) PyArray_DIM(ap_y, 0); assert(neq > 0);
+   const int lzw = (int) PyArray_SIZE(ap_zwork);
+   const int lrw = (int) PyArray_SIZE(ap_rwork);
+   const int liw = (int) PyArray_SIZE(ap_iwork);
 
     double complex *y     = (double complex *) PyArray_DATA(ap_y);
     double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
@@ -134,8 +147,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     int            *iwork = (int *)            PyArray_DATA(ap_iwork);
     const double   *rtol  = (const double *)   PyArray_DATA(ap_rtol);
     const double   *atol  = (const double *)   PyArray_DATA(ap_atol);
-
-    struct zvode_callbacks cb = { .fun = fun_obj, .jac = jac_obj};
 
     // Call the Fortran integrator
     zvode(
