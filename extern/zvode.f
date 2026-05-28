@@ -2,8 +2,9 @@ C NOTE: This version of ZVODE has been modified
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
      2            JAC, MF, CTX) BIND(C)
-      USE, INTRINSIC :: ISO_C_BINDING, only: c_int, c_double,
-     *    c_double_complex, c_ptr
+C Argument list
+      use, intrinsic :: iso_c_binding, only: c_int, c_double,
+     1    c_double_complex, c_ptr
       interface
          subroutine f(neq,t,y,ydot,ctx) bind(c)
             import c_int, c_double, c_double_complex, c_ptr

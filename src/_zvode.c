@@ -9,6 +9,7 @@
 struct zvode_callbacks {
 	PyObject *fun;
 	PyObject *jac;
+	// TODO: add zewset and zwnorm in the future
 };
 
 static void fun_adaptor(
@@ -20,6 +21,8 @@ static void fun_adaptor(
 
 	struct zvode_callbacks cb = ctx;
 	assert(cb->fun != NULL);
+
+	// TODO: use complex vectors here
 
 	// 1. Create Numpy vectors
 	const npy_intp dims_y[1] = {neqn};
@@ -47,11 +50,16 @@ static void jac_adaptor(
 	struct zvode_callbacks cb = ctx;
 	assert(cb->jac != NULL);
 
+	// TODO: build numpy compatible array objects for y and pd
+	// the arrays pd has dimension nrowpd by neq, but it might represent
+	// either a dense or a banded array (including padding)
+
 	// TODO: use ml and mu in the callback
 	PyObject_CallFunction(
 		cb->fun,"dOO", t, ap_y, ap_dy)
 }
 
+PyDocSTR(zvode_doc, /* TODO */)
 static PyObject* zvode_py(PyObject* self, PyObject *args) {
 
 	int itask, istate;
@@ -87,7 +95,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 	return res;
 }
 
-
+PyDocSTR(zvindy_doc, /* TODO */)
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
 	return NULL;
 }

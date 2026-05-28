@@ -1,0 +1,19 @@
+- In zvode.f we need, replace rpar and ipar with the ctx argument
+- Replace LINPACK factorization routines with LAPACK or the Hairer routines
+  - Both dense and banded need to be considered
+- Provide CMake option to use external BLAS, if not available fallback to vendored procedures
+- Check older SciPy versions for any bug fixes and the original licenses
+- Add option to expose ZEWSET and ZWNORM as callback functions
+- Raise an error if the initial condition is real instead of complex; this solver is only supposed to work with complex
+- Add a procedural interface which handles the integration internally:
+  - Version A stores the automatic step-sizes
+  - Version B uses ZVINDY to interpolate the solution at the t_eval points
+  - The procedural version should employ thread-locking internally
+- "Borrow" any SciPy complex test paths
+- Ensure implicit none is used and all variables are strictly typed
+- Domain checking of arguments in Python; there is some duplication of responsibilities, as ZVODE does some checks internally too; doing the checks in Python beforehand allows to raise a proper exception
+- (long term) replace common blocks with a derived type encapsulating the integrator state; we should employ tools for this transformation
+- minimalistic docs in .rst format, host on GitHub pages
+- List of references for users
+- Links to related libraries (ODEPACK, SUNDIALS), and availability of Python wrappers
+- Support for Python Array-API interface (cupy?); we need to support execution in the memory spaces of the respective array libraries
