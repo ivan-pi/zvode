@@ -7,6 +7,8 @@ project(
 
 set(CMAKE_Fortran_COMPILER gfortran)
 
+find_package(BLAS REQUIRED)
+
 # Only request the module-building components. Do NOT request the full
 # `Development` package: that pulls in Development.Embed, which needs the
 # Python library for linking and is wrong for extension modules.
@@ -24,6 +26,8 @@ find_package(Python REQUIRED
 python_add_library(_zvode MODULE
     src/_zvode.c
     extern/zvode.f
+    extern/zgbfa.f
+    extern/zgbsl.f
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
@@ -33,7 +37,7 @@ target_include_directories(
 
 target_link_libraries(
   _zvode
-  PRIVATE Python::NumPy)
+  PRIVATE Python::NumPy BLAS::BLAS)
 
 # Install the compiled module INTO the package directory, so it imports
 # as `zvode._zvode`.
