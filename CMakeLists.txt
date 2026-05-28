@@ -28,6 +28,8 @@ python_add_library(_zvode MODULE
     extern/zvode.f
     extern/zgbfa.f
     extern/zgbsl.f
+    extern/zgefa.f
+    extern/zgesl.f
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
