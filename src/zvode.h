@@ -1,15 +1,20 @@
+#ifndef ZVODE_H
+#define ZVODE_H
+
 #include <complex.h>
 
-void (*zvode_fun)(
+/* Right-hand side callback: writes the derivative into ydot[]. */
+typedef void (*zvode_fun)(
     int neq,
     double t,
     double complex y[],
     double complex ydot[],
     void *ctx);
 
-void (*zvode_jac)(
-    int neq
-    double t
+/* Jacobian callback: writes df_i/dy_j into pd[] (column-major, ld = nrowpd). */
+typedef void (*zvode_jac)(
+    int neq,
+    double t,
     double complex y[],
     int ml, int mu,
     double complex pd[],
@@ -42,3 +47,5 @@ void zvindy(
     int neq,
     double complex dky[],
     int *iflag);
+
+#endif /* ZVODE_H */

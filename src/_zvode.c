@@ -1,126 +1,180 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <assert.h>
+#include <complex.h>
+
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
 #include "zvode.h"
 
+/* ZVODE's IWORK is Fortran default INTEGER, declared as `int` in the C
+ * header.  We expose it to Python as int32, so the two must agree. */
+_Static_assert(sizeof(int) == 4, "iwork bridging assumes a 32-bit C int");
+
+/* ------------------------------------------------------------------ */
+/* Callback plumbing                                                  */
+/* ------------------------------------------------------------------ */
+
 struct zvode_callbacks {
-	PyObject *fun;
-	PyObject *jac;
-	// TODO: add zewset and zwnorm in the future
+    PyObject *fun;
+    PyObject *jac;
+    // TODO: add zewset and zwnorm in the future
 };
 
 static void fun_adaptor(
-		int neqn,
-		double t,
-		double complex y[],
-		double complex dy[],
-		void *ctx) {
+        int neqn,
+        double t,
+        double complex y[],
+        double complex dy[],
+        void *ctx) {
 
-	struct zvode_callbacks cb = ctx;
-	assert(cb->fun != NULL);
+    struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
+    assert(cb != NULL);
+    assert(cb->fun != NULL);
 
-	// TODO: use complex vectors here
+    // TODO: use complex vectors here
 
-	// 1. Create Numpy vectors
-	const npy_intp dims_y[1] = {neqn};
-	PyArrayObject *ap_y = PyArray_SimpleNewFromData(1, dims_y, NPY_FLOAT64, y);
-	if (!ap_y) {}
+    /* Wrap the solver-owned buffers as NumPy views (no copy). */
+    PyObject *ap_y = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
+    if (ap_y == NULL) {
+        return;
+    }
+    PyObject *ap_dy = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
+    if (ap_dy == NULL) {
+        return;
+    }
 
-	const npy_intp dims_dy[1] = {neqn};
-	PyArrayObject *ap_dy = PyArray_SimpleNewFromData(1, dims_dy, NPY_FLOAT64, dy);
-	if (!ap_dy) {}
+    /* fun(t, y, dy): Python writes the derivative into dy in place. */
+    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, ap_y, ap_dy);
 
-	// 2. Invoke the callback function, fun(t,y,dy) -> None
-	PyObject_CallFunction(
-		cb->fun,"dOO", t, ap_y, ap_dy)
 }
 
 static void jac_adaptor(
-		int neq
-		double t
-		double complex y[],
-		int ml, int mu,
-		double complex pd[],
-		int nrowpd,
-		void *ctx) {
+        int neq
+        double t
+        double complex y[],
+        int ml, int mu,
+        double complex pd[],
+        int nrowpd,
+        void *ctx) {
 
-	struct zvode_callbacks cb = ctx;
-	assert(cb->jac != NULL);
+    struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
+    assert(cb != NULL);
+    assert(cb->jac != NULL);
 
-	// TODO: build numpy compatible array objects for y and pd
-	// the arrays pd has dimension nrowpd by neq, but it might represent
-	// either a dense or a banded array (including padding)
+    const npy_intp dims_y[1] = { (npy_intp) neq };
+    PyObject *ap_y = PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
+    if (ap_y == NULL) {
+        cb->error = 1;
+        return;
+    }
 
-	// TODO: use ml and mu in the callback
-	PyObject_CallFunction(
-		cb->fun,"dOO", t, ap_y, ap_dy)
+    /* PD is column-major with leading dimension NROWPD, exactly the layout
+     * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
+     * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
+
+    // TODO: build numpy compatible array objects for y and pd
+    // the arrays pd has dimension nrowpd by neq, but it might represent
+    // either a dense or a banded array (including padding)
+
+    // TODO: use ml and mu in the callback
+    PyObject *res = PyObject_CallFunction(cb->jac, "dOO", t, ap_y, ap_pd);
+
 }
 
-PyDocSTR(zvode_doc, /* TODO */)
+/* ------------------------------------------------------------------ */
+/* zvode                                                              */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(zvode_doc,
+"zvode(fun, y, t, tout, itol, rtol, atol, itask, istate, iopt,\n"
+"      zwork, rwork, iwork, jac, mf) -> (t, istate)\n"
+"\n"
+"Advance a complex ODE system with a single ZVODE call.\n"
+"\n"
+"`y`, `zwork`, `rwork`, `iwork` are modified in place and must be\n"
+"contiguous arrays of dtype complex128, complex128, float64 and int32.\n"
+"`fun` is called as fun(t, y, dy) and must fill `dy`; `jac` (or None) is\n"
+"called as jac(t, y, pd).  Returns the advanced time and the ZVODE istate.\n");
+
 static PyObject* zvode_py(PyObject* self, PyObject *args) {
 
-	int itask, istate;
+    struct zvode_callbacks cb = {.fun=NULL, .jac=Py_None};
 
-	PyArrayObject *ap_y, *ap_atol, *ap_rtol;
-	PyArrayObject *ap_zwork, *ap_rwork, *ap_iwork;
+    PyObject *fun_obj, *jac_obj;
+    PyObject *y_obj, *rtol_obj, *atol_obj;
+    PyObject *zwork_obj, *rwork_obj, *iwork_obj;
 
-	struct zvode_callbacks cb = {.fun=NULL, .jac=Py_None};
+    double t, tout;
+    int itol, itask, istate, iopt, mf;
 
-	// t, istate = zvode_step(
-	// 		)
+    if (!PyArg_ParseTuple(args, "OOddiOOiiiOOOOi:zvode",
+            &fun_obj, &y_obj, &t, &tout, &itol,
+            &rtol_obj, &atol_obj, &itask, &istate, &iopt,
+            &zwork_obj, &rwork_obj, &iwork_obj, &jac_obj, &mf)) {
+        return NULL;
+    }
 
-	if (!(PyArg_ParseTuple(args,":zvode_step",
-		))) { return NULL; }
+    if (istate == 1) {
+        // Initialization
+        // TODO: validate arguments
+    }
 
+    // Call the Fortran integrator
+    zvode(
+        &fun_adaptor,
+        neqn, y, t, tout,
+        itol, rtol, atol,
+        itask, istate,
+        iopt, zwork, lzw, rwork, lrw, iwork, liw
+        &jac_adaptor,
+        mf,
+        (void *) &cb
+    );
 
-	// Call the Fortran integrator
-	zvode(
-		&fun_adaptor,
-		neqn, y, t, tout,
-		itol, rtol, atol,
-		itask, istate,
-		iopt, zwork, lzw, rwork, lrw, iwork, liw
-		&jac_adaptor,
-		mf,
-		(void *) &cb
-	);
-
-	PyObject *res
-	if (!(res = Py_BuildValue("di",t,istate))) {
-		return NULL;
-	}
-	return res;
+    PyObject *res
+    if (!(res = Py_BuildValue("di",t,istate))) {
+        return NULL;
+    }
+    return res;
 }
 
-PyDocSTR(zvindy_doc, /* TODO */)
+/* ------------------------------------------------------------------ */
+/* zvindy (interpolation) - not implemented yet                       */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(zvindy_doc,
+"zvindy(...) -> (not implemented)\n");
+
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
-	return NULL;
+    PyErr_SetString(PyExc_NotImplementedError,
+        "zvindy (dense-output interpolation) is not implemented yet.");
+    return NULL;
 }
 
 static struct PyMethodDef zvode_module_methods[] = {
-	{"zvode", zvode_py, METH_VARARGS, zvode_doc},
-	{"zvindy", zvindy_py, METH_VARARGS, zvindy_doc},
-	{NULL, NULL, 0, NULL}
+    {"zvode", zvode_py, METH_VARARGS, zvode_doc},
+    {"zvindy", zvindy_py, METH_VARARGS, zvindy_doc},
+    {NULL, NULL, 0, NULL}
 };
 
 static struct PyModuleDef module_def = {
-	PyModuleDef_HEAD_INIT,
-	"_zvode",
-	"ZVODE - Complex ODE Solver",
-	-1,
-	zvode_module_methods,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
+    PyModuleDef_HEAD_INIT,
+    "_zvode",
+    "ZVODE - Complex ODE Solver",
+    -1,
+    zvode_module_methods,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 };
 
 PyMODINIT_FUNC PyInit__zvode(void) {
 
-	import_array(); // NumPy
+    import_array();   /* NumPy C-API; expands to `return NULL;` on failure */
 
     PyObject *m;
     if (!(m = PyModule_Create(&module_def))) {
