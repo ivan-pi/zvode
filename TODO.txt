@@ -17,3 +17,6 @@
 - List of references for users
 - Links to related libraries (ODEPACK, SUNDIALS), and availability of Python wrappers
 - Support for Python Array-API interface (cupy?); we need to support execution in the memory spaces of the respective array libraries
+- Add Python typing hints (the .pyi files)
+- Implement testing with pytest.
+
