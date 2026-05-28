@@ -1,14 +1,32 @@
-*DECK ZVODE
+C NOTE: This version of ZVODE has been modified
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-     2            JAC, MF, RPAR, IPAR)
-      EXTERNAL F, JAC
-      DOUBLE COMPLEX Y, ZWORK
-      DOUBLE PRECISION T, TOUT, RTOL, ATOL, RWORK
-      INTEGER NEQ, ITOL, ITASK, ISTATE, IOPT, LZW, LRW, IWORK, LIW,
-     1        MF, IPAR
-      DIMENSION Y(*), RTOL(*), ATOL(*), ZWORK(LZW), RWORK(LRW),
-     1          IWORK(LIW), RPAR(*), IPAR(*)
+     2            JAC, MF, CTX) BIND(C)
+      USE, INTRINSIC :: ISO_C_BINDING, only: c_int, c_double,
+     *    c_double_complex, c_ptr
+      interface
+         subroutine f(neq,t,y,ydot,ctx) bind(c)
+            import c_int, c_double, c_double_complex, c_ptr
+            implicit none
+            integer(c_int), value :: neq
+            real(c_double), value :: t
+            complex(c_double_complex) :: y(neq), ydot(neq)
+            type(c_ptr), value :: ctx
+         end subroutine
+         subroutine jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
+            import c_int, c_double, c_double_complex, c_ptr
+            integer(c_int), value :: neq, ml, mu, nrowpd
+            real(c_double), value :: t
+            complex(c_double_complex) :: y(neq), pd(nrowpd,*)
+            type(c_ptr), value :: ctx
+         end subroutine
+      end interface
+      integer(c_int), value :: neq, itol, itask, iopt, lzw, lrw, liw, mf
+      real(c_double), value :: tout
+      complex(c_double_complex) :: t, y(neq), zwork(lzw)
+      real(c_double) :: rwork(lrw), rtol(*), atol(*)
+      integer(c_int) :: istate, iwork(liw)
+      type(c_ptr), value :: ctx
 C-----------------------------------------------------------------------
 C ZVODE: Variable-coefficient Ordinary Differential Equation solver,
 C with fixed-leading-coefficient implementation.
