@@ -37,13 +37,15 @@ static void fun_adaptor(
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
-    PyObject *ap_y = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
+    PyArrayObject *ap_y =
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
     if (ap_y == NULL) {
         return;
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    PyObject *ap_dy = PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
+    PyArrayObject *ap_dy =
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
     if (ap_dy == NULL) {
         return;
     }
@@ -67,7 +69,8 @@ static void jac_adaptor(
     assert(cb->jac != NULL);
 
     const npy_intp dims_y[1] = { (npy_intp) neq };
-    PyObject *ap_y = PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
+    PyArrayObject *ap_y =
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
     if (ap_y == NULL) {
         return;
     }
@@ -77,7 +80,7 @@ static void jac_adaptor(
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
      * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
 
-    PyObject *ap_pd;
+    PyArrayObject *ap_pd;
 
     // TODO: build numpy compatible array objects for y and pd
     // the arrays pd has dimension nrowpd by neq, but it might represent

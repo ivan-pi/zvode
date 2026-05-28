@@ -180,7 +180,7 @@ class ZVODE(OdeSolver):
                  max_steps=None,
                  miter=None,
                  jsv=1,
-                 **extraneous)
+                 **extraneous):
 
         warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound,
