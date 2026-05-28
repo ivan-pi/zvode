@@ -6,7 +6,7 @@ from scipy.integrate import (OdeSolver, DenseOutput)
 from scipy.integrate._ivp.common import (warn_extraneous, validate_max_step,
                                          validate_first_step)
 
-import _zvode
+from . import _zvode
 
 MESSAGES = {
     -1: "Excess work done on this call",
