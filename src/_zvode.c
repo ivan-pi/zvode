@@ -52,8 +52,8 @@ static void fun_adaptor(
 }
 
 static void jac_adaptor(
-        int neq
-        double t
+        int neq,
+        double t,
         double complex y[],
         int ml, int mu,
         double complex pd[],
