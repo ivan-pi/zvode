@@ -1,0 +1,16 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "numpy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "zvode"
+version = "0.1.0"
+description = "Python bindings to the classic ZVODE ODE solver"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy", "scipy"]
+
+[tool.scikit-build]
+minimum-version = "0.10"
+build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
+wheel.packages = ["src/zvode"]
