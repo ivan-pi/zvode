@@ -38,7 +38,7 @@ def _wrapped_dense_jac(jac):
 #   2     scalar     array      RTOL*ABS(Y(i)) + ATOL(i)
 #   3     array      scalar     RTOL(i)*ABS(Y(i)) + ATOL
 #   4     array      array      RTOL(i)*ABS(Y(i)) + ATOL(i)
-def _check_tolerances_scipy_style(rtol, atol, n):
+def _check_tolerances(rtol, atol, n):
     rtol = np.asarray(rtol)
     atol = np.asarray(atol)
 
@@ -210,6 +210,7 @@ class ZVODE(OdeSolver):
 
         # Wrap the SciPy function callback to do in-place modification
         self.wrap_fun = _wrapped_fun(fun)
+        self.jac = jac
 
         # Determine iteration method
         self.miter, self.ml, self.mu = _determine_miter(
@@ -223,7 +224,6 @@ class ZVODE(OdeSolver):
 
         if self.mf not in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25):
             raise RuntimeError("Error setting the method flag")
-
 
         # Complex workspace
         if self.miter == 0:
@@ -243,9 +243,9 @@ class ZVODE(OdeSolver):
             elif self.mf < 0:
                 lwm = (2*self.ml + self.mu + 1)*self.n
             else:
-                lwn = None
+                lwm = None
 
-        if lwn is None:
+        if lwm is None:
             raise ValueError()
 
         lzw = self.n*(maxord_allowed + 1) + 2*self.n + lwm
