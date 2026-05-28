@@ -20,8 +20,12 @@ MESSAGES = {
 def _wrapped_fun(fun):
     """Wraps the ODE function into a mutating function"""
     def zvode_fun(t, y, dy):
-        assert len(y) == len(dy), "Shape mismatch"
-        dy[:] = fun(t, y)
+        print("In callback wrapper")
+        neq = y.shape[0]
+        assert neq == len(dy), "Shape mismatch"
+        dy[0:neq] = fun(t, y)
+        print("Callback complete")
+
     return zvode_fun
 
 def _wrapped_dense_jac(jac):
@@ -168,6 +172,7 @@ class ZVODE(OdeSolver):
 
     """
 
+    print("Hello 1")
     def __init__(self, fun, t0, y0, t_bound, *,
                  method='BDF',
                  rtol=1.0e-3, atol=1.0e-6,
@@ -182,10 +187,13 @@ class ZVODE(OdeSolver):
                  jsv=1,
                  **extraneous):
 
+        print("Hello 2")
         warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound,
                         vectorized=False,
                         support_complex=True)
+
+        print("ZVODE parent has been initialized")
 
         self.tout = self.t_bound
 
@@ -301,8 +309,13 @@ class ZVODE(OdeSolver):
             warnings.warn("'max_steps' are ignored currently")
             # self.iwork[5] = int(max_steps)
 
+        print("ZVODE initialization complete")
+
+
     def _step_impl(self):
         """Call ZVODE for one step"""
+
+        print("entering _step_impl")
 
         t, istate = _zvode.zvode(
             self.wrap_fun,
@@ -320,6 +333,8 @@ class ZVODE(OdeSolver):
             self.iwork,
             self.jac,
             self.mf)
+
+        print(f"_zvode.zvode returned with istate = {istate}")
 
         if istate != 2:
             return False, f"ZVODE returned with istate = {istate}"

@@ -1,12 +1,15 @@
-cmake_minimum_required(VERSION 3.17.2...3.30)
+cmake_minimum_required(VERSION 3.30)
 
 project(
   ${SKBUILD_PROJECT_NAME}
   VERSION ${SKBUILD_PROJECT_VERSION}
   LANGUAGES C Fortran)
 
-set(CMAKE_Fortran_COMPILER gfortran)
+set(CMAKE_Fortran_COMPILER "gfortran-15")
+set(CMAKE_Fortran_FLAGS "-Wall -pedantic -Og -fcheck=all")
+set(BUILD_TYPE "Debug")
 
+set(BLAS_LIBRARIES /opt/OpenBLAS/lib/libopenblas.a)
 find_package(BLAS REQUIRED)
 
 # Only request the module-building components. Do NOT request the full
@@ -16,7 +19,7 @@ find_package(Python REQUIRED
   COMPONENTS
     Interpreter
     Development.Module
-    ${SKBUILD_SABI_COMPONENT}
+    "${SKBUILD_SABI_COMPONENT}"
     NumPy
 )
 

@@ -11,7 +11,13 @@ requires-python = ">=3.9"
 dependencies = ["numpy", "scipy"]
 
 [tool.scikit-build]
+#wheel.py-api = "cp38"
 cmake.version = "CMakeLists.txt"
 build.targets = ["_zvode"]
 build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
 wheel.packages = ["src/zvode"]
+
+[tool.scikit-build.cmake.define]
+CMAKE_Fortran_COMPILER = "flang"
+BLAS_LIBRARIES = "/opt/OpenBLAS/lib/libopenblas.a"
+BUILD_TYPE = "Debug"

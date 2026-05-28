@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <complex.h>
 
+#include <stdio.h> // For debugging only
+
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
@@ -34,24 +36,40 @@ static void fun_adaptor(
     assert(cb != NULL);
     assert(cb->fun != NULL);
 
+    printf("In fun_adaptor.\n");
+
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
+    assert(ap_y);
     if (ap_y == NULL) {
         return;
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
+    printf("y is ready.\n");
+
+
+    const npy_intp dims_dy[1] = { neq };
+
     PyArrayObject *ap_dy =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_dy, NPY_COMPLEX128, dy);
+    assert(ap_dy);
     if (ap_dy == NULL) {
         return;
     }
 
+    printf("dy is ready.\n");
+    assert(ap_y);
+    assert(ap_dy);
+    printf("calling fun at t = %f\n", t);
+
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
     PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, ap_y, ap_dy);
+
+    printf("called fun at t = %f\n", t);
 
 }
 
@@ -68,9 +86,12 @@ static void jac_adaptor(
     assert(cb != NULL);
     assert(cb->jac != NULL);
 
+    printf("In Jacobian func.\n");
+
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
+    assert(ap_y);
     if (ap_y == NULL) {
         return;
     }
@@ -108,16 +129,16 @@ PyDoc_STRVAR(zvode_doc,
 
 static PyObject* zvode_py(PyObject* self, PyObject *args) {
 
-    PyObject *fun_obj, *jac_obj;
-
-    PyArrayObject *ap_y, *ap_rtol, *ap_atol;
-    PyArrayObject *ap_zwork, *ap_rwork, *ap_iwork;
+    PyArrayObject *ap_y = NULL, *ap_rtol = NULL, *ap_atol = NULL;
+    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
 
     double t, tout;
     int itol, itask, istate, iopt, mf;
 
     // Container for the actual Python callbacks
-    struct zvode_callbacks cb = { .fun = NULL, .jac = Py_None};
+    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL };
+
+    printf("About to parse args.\n");
 
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
        &cb.fun,
@@ -132,6 +153,18 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
        &cb.jac, &mf)) {
         return NULL;
     }
+    assert(tout >= t);
+    assert(ap_y);
+    assert(ap_rtol);
+    assert(ap_atol);
+    assert(ap_zwork);
+    assert(ap_rwork);
+    assert(ap_iwork);
+
+    assert(cb.fun);
+    assert(cb.jac); // could be Python None
+
+    printf("Args are parsed.\n");
 
     if (istate == 1) {
         // Initialization of ZVODE
@@ -151,6 +184,26 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     const double   *rtol  = (const double *)   PyArray_DATA(ap_rtol);
     const double   *atol  = (const double *)   PyArray_DATA(ap_atol);
 
+
+    assert(y);
+    assert(zwork);
+    assert(rwork);
+    assert(iwork);
+    assert(lzw > 0);
+    assert(lrw > 0);
+    assert(liw > 0);
+
+    assert(t != tout);
+    assert(istate > 0);
+    assert(itask > 0);
+    assert(mf > 0);
+
+    printf("All pointers are ready.\n");
+
+//      SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+//     1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
+//     2            JAC, MF, CTX) BIND(C,name="zvode")
+
     // Call the Fortran integrator
     zvode(
         &fun_adaptor,
@@ -162,6 +215,8 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         mf,
         (void *) &cb
     );
+
+    printf("Returned from ZVODE.\n");
 
     PyObject *res;
     if (!(res = Py_BuildValue("di",t,istate))) {

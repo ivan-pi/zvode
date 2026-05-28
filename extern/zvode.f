@@ -11,14 +11,16 @@
                implicit none
                integer(c_int), value :: neq
                real(c_double), value :: t
-               complex(c_double_complex) :: y(neq), ydot(neq)
+               complex(c_double_complex), intent(in) :: y(neq)
+               complex(c_double_complex), intent(out) :: ydot(neq)
                type(c_ptr), value :: ctx
             end subroutine
             subroutine zvode_jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
                import c_int, c_double, c_double_complex, c_ptr
                integer(c_int), value :: neq, ml, mu, nrowpd
                real(c_double), value :: t
-               complex(c_double_complex) :: y(neq), pd(nrowpd,*)
+               complex(c_double_complex), intent(in) :: y(neq)
+               complex(c_double_complex), intent(inout) :: pd(nrowpd,*)
                type(c_ptr), value :: ctx
             end subroutine
          end interface
@@ -28,12 +30,13 @@
 C NOTE: This version of ZVODE has been modified
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-     2            JAC, MF, CTX) BIND(C)
+     2            JAC, MF, CTX) BIND(C,name="zvode")
 C Argument list
       procedure(zvode_fun) :: f
       procedure(zvode_jac) :: jac
-      integer(c_int), value :: neq, itol, itask, iopt, lzw, lrw, liw, mf
-      real(c_double), value :: tout
+      integer(c_int), intent(in), value :: neq, itol, itask, iopt, lzw,
+     1      lrw, liw, mf
+      real(c_double), intent(in), value :: tout
       real(c_double), intent(inout) :: t
       complex(c_double_complex), intent(inout) :: y(neq), zwork(lzw)
       real(c_double), intent(inout) :: rwork(lrw)
