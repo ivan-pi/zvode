@@ -454,21 +454,19 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 /* ------------------------------------------------------------------ */
 
 PyDoc_STRVAR(zvindy_doc,
-"zvindy(t, k, zwork, nyh, dky) -> iflag\n"
+"zvindy(t, k, yh, h, tn, hu, dky) -> iflag\n"
 "\n"
-"Interpolate the K-th derivative of y at time T using the ZVODE history array.\n"
-"\n"
-"Must be called after at least one successful ZVODE step.  The ZVODE internal\n"
-"state (TN, H, NQ, ...) is shared via Fortran COMMON blocks, so no explicit\n"
-"state argument is needed.\n"
+"Interpolate the K-th derivative of y at time T using the Nordsieck array.\n"
 "\n"
 "Parameters\n"
 "----------\n"
-"t     : float  -- interpolation time; must lie in [TCUR - HU, TCUR].\n"
-"k     : int    -- derivative order; must satisfy 0 <= k <= NQCUR.\n"
-"zwork : complex128 ndarray, 1-D -- ZVODE complex work array (unmodified).\n"
-"nyh   : int    -- column length of the YH history matrix (= initial NEQ).\n"
-"dky   : complex128 ndarray, 1-D, writable -- receives the computed derivative.\n"
+"t   : float  -- interpolation time; must lie in [tn - hu, tn].\n"
+"k   : int    -- derivative order; must satisfy 0 <= k <= yh.shape[1] - 1.\n"
+"yh  : complex128 ndarray, shape (n, nq+1), F-contiguous -- Nordsieck array.\n"
+"h   : float  -- HCUR, the step size the Nordsieck array is scaled to.\n"
+"tn  : float  -- TCUR, the current solver time.\n"
+"hu  : float  -- HU, the last successfully used step size.\n"
+"dky : complex128 ndarray, 1-D length n, writable -- receives the result.\n"
 "\n"
 "Returns\n"
 "-------\n"
@@ -476,37 +474,56 @@ PyDoc_STRVAR(zvindy_doc,
 
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
 
-    PyArrayObject *ap_zwork = NULL, *ap_dky = NULL;
-    double t;
-    int k, nyh;
+    PyArrayObject *ap_yh = NULL, *ap_dky = NULL;
+    double t, h, tn, hu;
+    int k;
 
-    if (!PyArg_ParseTuple(args, "diO!iO!:zvindy",
+    if (!PyArg_ParseTuple(args, "diO!dddO!:zvindy",
             &t, &k,
-            &PyArray_Type, &ap_zwork,
-            &nyh,
+            &PyArray_Type, &ap_yh,
+            &h, &tn, &hu,
             &PyArray_Type, &ap_dky)) {
         return NULL;
     }
 
-    if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128)) return NULL;
-    if (!check_array_1d(ap_dky,   "dky",   NPY_COMPLEX128)) return NULL;
-    if (!check_writable(ap_dky,   "dky"))                   return NULL;
-
-    if (nyh <= 0) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: nyh must be positive");
+    /* yh must be 2-D, F-contiguous, complex128 */
+    if (PyArray_NDIM(ap_yh) != 2) {
+        PyErr_SetString(PyExc_ValueError, "zvindy: yh must be 2-D");
         return NULL;
     }
-    if (k < 0) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: k must be non-negative");
+    if (PyArray_TYPE(ap_yh) != NPY_COMPLEX128) {
+        PyErr_SetString(PyExc_TypeError, "zvindy: yh must have dtype complex128");
+        return NULL;
+    }
+    if (!PyArray_IS_F_CONTIGUOUS(ap_yh)) {
+        PyErr_SetString(PyExc_ValueError, "zvindy: yh must be Fortran-contiguous");
         return NULL;
     }
 
-    /* The YH history array starts at zwork[0] (Fortran LYH=1, 1-based). */
-    double complex *yh  = (double complex *) PyArray_DATA(ap_zwork);
+    if (!check_array_1d(ap_dky, "dky", NPY_COMPLEX128)) return NULL;
+    if (!check_writable(ap_dky, "dky"))                 return NULL;
+
+    const int n    = (int) PyArray_DIM(ap_yh, 0);   /* number of equations */
+    const int ldyh = n;                              /* leading dimension   */
+    const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order     */
+
+    if ((int) PyArray_SIZE(ap_dky) < n) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: dky must have length >= %d (got %d)",
+            n, (int) PyArray_SIZE(ap_dky));
+        return NULL;
+    }
+    if (k < 0 || k > nq) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: k must satisfy 0 <= k <= %d (got %d)", nq, k);
+        return NULL;
+    }
+
+    double complex *yh  = (double complex *) PyArray_DATA(ap_yh);
     double complex *dky = (double complex *) PyArray_DATA(ap_dky);
 
     int iflag = 0;
-    zvindy(t, k, yh, nyh, dky, &iflag);
+    zvindy(t, k, yh, ldyh, dky, &iflag);
 
     return PyLong_FromLong((long) iflag);
 }
