@@ -370,6 +370,10 @@ class ZVODE(OdeSolver):
         self.istate = istate
         self.t = t
 
+        self.nfev = self.iwork[11]
+        self.njev = self.iwork[12]
+        self.nlu = self.iwork[19]
+
         if self.istate != 2:
             return False, f"ZVODE returned with istate = {self.istate}"
 
