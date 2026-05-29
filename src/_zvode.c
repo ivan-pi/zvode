@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <complex.h>
 
-#define ZVODE_DEBUG
+#define ZVODE_DEBUG 1
 #include <stdio.h> // For debugging only
 #include <stdint.h>
 
@@ -307,7 +307,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         return NULL;
     }
 
-    assert(tout >= t);
     assert(ap_y);
     assert(ap_rtol);
     assert(ap_atol);
@@ -320,11 +319,11 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(itask > 0);
     assert(mf > 0);
 
-#ifdef ZVODE_DEBUG
-    dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
-                    itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
-                    cb.jac, mf);
-#endif
+    if (ZVODE_DEBUG) {
+        dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
+                        itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
+                        cb.jac, mf);
+    }
 
     if (istate == 1) {
         // Initialization of ZVODE
