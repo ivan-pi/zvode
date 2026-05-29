@@ -135,20 +135,54 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
 
     return miter, lband, uband
 
+
+def _falling_factorial(j, k):
+    """Compute j*(j-1)*...*(j-k+1); returns 1 for k=0 (empty product)."""
+    result = 1
+    for m in range(j - k + 1, j + 1):
+        result *= m
+    return result
+
 class ZVODEDenseOutput(DenseOutput):
-    """Local interpolant over a time step of the ZVODE solver"""
+    """Dense output interpolant for ZVODE using the Nordsieck history array.
 
-    def __init__(self, t_old, t, n, rwork, iwork):
+    Evaluates the interpolating polynomial via Horner's method on the
+    snapshot of YH taken at the end of the step.  No Fortran COMMON
+    block state is needed after construction.
+    """
+
+    def __init__(self, t_old, t, yh, h):
         super().__init__(t_old, t)
-        raise NotImplementedError()
 
-    def _call_impl(self,t):
-        raise NotImplementedError()
+        # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(t)
+        self.yh = yh
+        self.nq = yh.shape[1] - 1
+        self.h = h      # HCUR: step size the Nordsieck array is scaled to
 
+    def _call_impl(self, t):
+
+        nq, h = self.nq, self.h
+        tn = self.t
+
+        k = 0  # interpolation
+
+        scalar = t.ndim == 0
+        t = np.atleast_1d(t)
+
+        # normalised position, shape (m,)
+        s = (t - tn)/h
+
+        # Seed Horner with the highest-order Nordsieck column
+        c = _falling_factorial(nq, k)
+        dky = np.outer(self.yh[:,nq], np.ones(t.shape[0])) # (n, m)
+        for j in range(nq - 1, -1, -1):
+            c = _falling_factorial(j, k)
+            dky = c*self.yh[:,j,np.newaxis] + s*dky
+
+        return dky[;,0] if scalar else dky
 
 class ZVODE(OdeSolver):
     """Wrapper of ZVODE
-
 
     Parameters
     ----------
@@ -345,4 +379,13 @@ class ZVODE(OdeSolver):
         return True, None
 
     def _dense_output_impl(self):
-        raise NotImplementedError
+
+        nq = int(self.iwork[14]) # IWORK(15) = NQCUR
+        h = float(self.rwork[11]) # RWORK(12) = HCUR
+
+        ldyh = self.n # initial NEQ = column length of YH
+        # YH occupies zwork[0 : nyh*(nq+1)] in Fortran column-major order
+
+        yh = self.zwork[:nyh * (nq + 1)].reshape((nyh,nq+1),order='F').copy()
+
+        return ZVODEDenseOutput(self.t_old, self.t, yh, nq, h)
