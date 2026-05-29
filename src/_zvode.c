@@ -174,7 +174,7 @@ check_writable(PyArrayObject *ap, const char *name)
 struct zvode_callbacks {
     PyObject *fun;
     PyObject *jac;
-    int jac_is_banded;
+    int jac_is_banded; /* 1 when MITER=4 (abs(mf)%10 == 4), 0 otherwise */
     int error;
     // TODO: add zewset and zwnorm in the future
 };
@@ -275,10 +275,16 @@ static void jac_adaptor(
     // either a dense or a banded array (including padding)
 
     // TODO: use ml and mu in the callback
-    PyObject *res = PyObject_CallFunction(cb->jac, "dOO", t,
-        (PyObject *) ap_y,
-        (PyObject *) ap_pd
-    );
+    PyObject *res;
+    if (cb->jac_is_banded) {
+        assert(nrowpd >= ml+mu+1);
+        res = PyObject_CallFunction(cb->jac, "dOOii", t,
+            (PyObject *) ap_y, (PyObject *) ap_pd, ml, mu);
+    } else {
+        assert(nrowpd >= neq);
+        res = PyObject_CallFunction(cb->jac, "dOO", t,
+            (PyObject *) ap_y, (PyObject *) ap_pd);
+    }
     Py_DECREF(ap_y);
     Py_DECREF(ap_pd);
     if (res == NULL) {

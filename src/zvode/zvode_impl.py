@@ -35,8 +35,11 @@ def _wrapped_jac(jac,banded=False):
         n = y.shape[0]
         pd[0:n,0:n] = jac(t,y)
 
-    # TODO: handle banded Jacobian case
-    return zvode_jac
+    def zvode_banded_jac(t,y,pd,ml,mu):
+        n = y.shape[0]
+        pd[0:ml+mu+1,0:n] = jac(t,y)
+
+    return zvode_banded_jac if banded else zvode_jac
 
 #  ITOL    RTOL       ATOL          EWT(i)
 #   1     scalar     scalar     RTOL*ABS(Y(i)) + ATOL
