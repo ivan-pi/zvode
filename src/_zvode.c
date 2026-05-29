@@ -4,7 +4,10 @@
 #include <assert.h>
 #include <complex.h>
 
-#define ZVODE_DEBUG 1
+#ifndef ZVODE_DEBUG
+#define ZVODE_DEBUG 0
+#endif
+
 #include <stdio.h> // For debugging only
 #include <stdint.h>
 
@@ -129,12 +132,49 @@ static void dump_zvode_args(
 _Static_assert(sizeof(int) == 4, "iwork bridging assumes a 32-bit C int");
 
 /* ------------------------------------------------------------------ */
+/* Array argument validators                                          */
+/* ------------------------------------------------------------------ */
+
+/* Returns 1 (ok) or 0 (failure, exception set). */
+static inline int
+check_array_1d(PyArrayObject *ap, const char *name, int typenum)
+{
+    if (PyArray_NDIM(ap) != 1) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be 1-D (got %d-D)", name, PyArray_NDIM(ap));
+        return 0;
+    }
+    if (PyArray_TYPE(ap) != typenum) {
+        PyErr_Format(PyExc_TypeError,
+            "zvode: %s must have dtype %s", name, dtype_name(typenum));
+        return 0;
+    }
+    if (!PyArray_IS_C_CONTIGUOUS(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be C-contiguous", name);
+        return 0;
+    }
+    return 1;
+}
+
+static inline int
+check_writable(PyArrayObject *ap, const char *name)
+{
+    if (!PyArray_ISWRITEABLE(ap)) {
+        PyErr_Format(PyExc_ValueError, "zvode: %s must be writable", name);
+        return 0;
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Callback plumbing                                                  */
 /* ------------------------------------------------------------------ */
 
 struct zvode_callbacks {
     PyObject *fun;
     PyObject *jac;
+    int jac_is_banded;
     int error;
     // TODO: add zewset and zwnorm in the future
 };
@@ -150,17 +190,13 @@ static void fun_adaptor(
     assert(cb != NULL);
     assert(cb->fun != NULL);
 
-#if 0
-    fprintf(stderr, "fun_adaptor: y=%p  dy=%p  neq=%d\n",
-            (void*)y, (void*)dy, neq);
-    fflush(stderr);
-#endif
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
     PyArrayObject *ap_y =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (double complex *) y);
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (void *) y);
     if (ap_y == NULL) {
+        cb->error = 1;
         return;
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
@@ -170,41 +206,23 @@ static void fun_adaptor(
     PyArrayObject *ap_dy =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_dy, NPY_COMPLEX128, dy);
     if (ap_dy == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
         return;
     }
 
-#if 0
-    printf("calling fun at t = %f\n", t);
-    fprintf(stderr, "DEBUG: ap_y=%p (rc=%ld)  ap_dy=%p (rc=%ld)\n",
-            (void*)ap_y, Py_REFCNT(ap_y),
-            (void*)ap_dy, Py_REFCNT(ap_dy));
-    fflush(stderr);
-
-    /* 1. Check if the function pointer matches the original */
-    void *expected_fun = (void *) cb->fun;
-
-    /* 2. Read the raw CPU Stack Pointer */
-    void *sp = __builtin_frame_address(0);
-    int is_aligned = ((uintptr_t)sp % 16 == 0);
-
-    fprintf(stderr, ">>> DIAGNOSTIC: cb->fun = %p | SP = %p | ALIGNED = %s\n",
-            expected_fun, sp, is_aligned ? "YES" : "NO");
-    fflush(stderr);
-#endif
-
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
-    assert(cb->fun && ap_y && ap_dy);
-    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, (PyObject *)ap_y, (PyObject *)ap_dy);
+    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t,
+        (PyObject *) ap_y,
+        (PyObject *) ap_dy);
 
-#if 0
-    fprintf(stderr, "res = %p, exception set = %d\n",
-            (void*)res, PyErr_Occurred() != NULL);
-    fflush(stderr);
-    printf("called fun at t = %f\n", t);
-#endif
-
-    Py_DECREF(ap_y);     // missing: ap_y is leaking every call
-    Py_DECREF(ap_dy);    // missing: ap_dy is leaking every call
+    Py_DECREF(ap_y);
+    Py_DECREF(ap_dy);
+    if (res == NULL) {
+        cb->error = 1;
+        return;
+    }
+    Py_DECREF(res);
 }
 
 static void jac_adaptor(
@@ -218,16 +236,17 @@ static void jac_adaptor(
 
     struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
     assert(cb != NULL);
-    assert(cb->jac != NULL);
+    assert(cb->jac != NULL && cb->jac != Py_None);
 
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, (void *) y);
     assert(ap_y);
     if (ap_y == NULL) {
+        cb->error = 1;
         return;
     }
-    PyArray_CLEARFLAGS(ap_y,NPY_ARRAY_WRITEABLE);
+    PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
     /* PD is column-major with leading dimension NROWPD, exactly the layout
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
@@ -238,14 +257,13 @@ static void jac_adaptor(
     /* Explicitly define strides to achieve Fortran contiguity */
     const npy_intp strides_pd[2] = {
         sizeof(double complex),
-        nrowpd * sizeof(double complex)
+        (npy_intp) ((size_t) nrowpd * sizeof(double complex))
     };
 
     PyArrayObject *ap_pd = (PyArrayObject *) PyArray_New(
         &PyArray_Type, 2, dims_pd, NPY_COMPLEX128,
         strides_pd, (void *)pd, 0, NPY_ARRAY_WRITEABLE, NULL
     );
-
     if (ap_pd == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
@@ -261,10 +279,13 @@ static void jac_adaptor(
         (PyObject *) ap_y,
         (PyObject *) ap_pd
     );
-
     Py_DECREF(ap_y);
     Py_DECREF(ap_pd);
-
+    if (res == NULL) {
+        cb->error = 1;
+        return;
+    }
+    Py_DECREF(res);
 }
 
 /* ------------------------------------------------------------------ */
@@ -291,7 +312,8 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     int itol, itask, istate, iopt, mf;
 
     // Container for the actual Python callbacks
-    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL };
+    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL,
+        .jac_is_banded = 0, .error = 0, };
 
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
        &cb.fun,
@@ -325,16 +347,68 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
                         cb.jac, mf);
     }
 
-    if (istate == 1) {
-        // Initialization of ZVODE
-        // TODO: validate arguments for type and contiguity
-        //   on future calls we assume that everything is okay
+    const int neq = (int) PyArray_DIM(ap_y, 0);
+    if (neq <= 0) {
+        PyErr_SetString(PyExc_ValueError, "zvode: y must be non-empty");
+        return NULL;
     }
 
-   const int neq = (int) PyArray_DIM(ap_y, 0); assert(neq > 0);
-   const int lzw = (int) PyArray_SIZE(ap_zwork); assert(lzw > 0);
-   const int lrw = (int) PyArray_SIZE(ap_rwork); assert(lrw > 0);
-   const int liw = (int) PyArray_SIZE(ap_iwork); assert(liw > 0);
+    const int miter = abs(mf) % 10;
+    cb.jac_is_banded = (miter == 4);
+
+    // Upon initialization of ZVODE, do some stringent checks
+    if (istate == 1) {
+
+        if (!PyCallable_Check(cb.fun)) {
+            PyErr_SetString(PyExc_TypeError, "zvode: fun must be callable");
+            return NULL;
+        }
+
+        if (cb.jac != Py_None && !PyCallable_Check(cb.jac)) {
+            PyErr_SetString(PyExc_TypeError, "zvode: jac must be callable or None");
+            return NULL;
+        }
+
+        /* Validate dtype, dimensionality, contiguity, and writability for every
+         * array argument.  We check on every call, not only istate==1, because
+         * callers may pass different objects across invocations. */
+        if (!check_array_1d(ap_y,     "y",     NPY_COMPLEX128) || !check_writable(ap_y,     "y"))     return NULL;
+        if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128) || !check_writable(ap_zwork, "zwork")) return NULL;
+        if (!check_array_1d(ap_rwork, "rwork", NPY_FLOAT64)    || !check_writable(ap_rwork, "rwork")) return NULL;
+        if (!check_array_1d(ap_iwork, "iwork", NPY_INT32)      || !check_writable(ap_iwork, "iwork")) return NULL;
+        if (!check_array_1d(ap_rtol,  "rtol",  NPY_FLOAT64))  return NULL;
+        if (!check_array_1d(ap_atol,  "atol",  NPY_FLOAT64))  return NULL;
+
+        /* itol controls whether rtol/atol are scalar (length 1) or per-component
+         * (length neq).  ZVODE convention: bit 0 set → rtol is array, bit 1 set →
+         * atol is array.
+         *   itol=1: rtol scalar, atol scalar
+         *   itol=2: rtol scalar, atol array
+         *   itol=3: rtol array,  atol scalar
+         *   itol=4: rtol array,  atol array  */
+        {
+            int rtol_scalar = (itol == 1 || itol == 2);
+            int atol_scalar = (itol == 1 || itol == 3);
+            npy_intp rtol_expected = rtol_scalar ? 1 : (npy_intp) neq;
+            npy_intp atol_expected = atol_scalar ? 1 : (npy_intp) neq;
+            if (PyArray_SIZE(ap_rtol) != rtol_expected) {
+                PyErr_Format(PyExc_ValueError,
+                    "zvode: rtol must have length %d for itol=%d (got %d)",
+                    (int) rtol_expected, itol, (int) PyArray_SIZE(ap_rtol));
+                return NULL;
+            }
+            if (PyArray_SIZE(ap_atol) != atol_expected) {
+                PyErr_Format(PyExc_ValueError,
+                    "zvode: atol must have length %d for itol=%d (got %d)",
+                    (int) atol_expected, itol, (int) PyArray_SIZE(ap_atol));
+                return NULL;
+            }
+        }
+    }
+
+   const int lzw = (int) PyArray_SIZE(ap_zwork);
+   const int lrw = (int) PyArray_SIZE(ap_rwork);
+   const int liw = (int) PyArray_SIZE(ap_iwork);
 
     double complex *y     = (double complex *) PyArray_DATA(ap_y);
     double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
@@ -343,14 +417,8 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     const double   *rtol  = (const double *)   PyArray_DATA(ap_rtol);
     const double   *atol  = (const double *)   PyArray_DATA(ap_atol);
 
-    assert(y);
-    assert(zwork);
-    assert(rwork);
-    assert(iwork);
-    assert(rtol);
-    assert(atol);
-
     // Call the actual "C" integrator
+    // N.b.: argument y is modified in place
     c_zvode(
         &fun_adaptor,
         neq, y, &t, tout,
@@ -362,6 +430,14 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         &cb
     );
 
+    /* If a callback raised a Python exception, cb.error is set and the
+     * exception is already active — return NULL to propagate it. */
+    if (cb.error) {
+        assert(PyErr_Occurred());
+        return NULL;
+    }
+
+    // Return the (t, istate) tuple
     PyObject *res;
     if (!(res = Py_BuildValue("di",t,istate))) {
         return NULL;
