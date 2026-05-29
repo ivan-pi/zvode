@@ -383,9 +383,8 @@ class ZVODE(OdeSolver):
         nq = int(self.iwork[14]) # IWORK(15) = NQCUR
         h = float(self.rwork[11]) # RWORK(12) = HCUR
 
-        ldyh = self.n # initial NEQ = column length of YH
-        # YH occupies zwork[0 : nyh*(nq+1)] in Fortran column-major order
+        # YH occupies zwork[0 : n*(nq+1)] in Fortran column-major order
 
-        yh = self.zwork[:nyh * (nq + 1)].reshape((nyh,nq+1),order='F').copy()
+        yh = self.zwork[:self.n * (nq + 1)].reshape((self.n,nq+1),order='F').copy()
 
-        return ZVODEDenseOutput(self.t_old, self.t, yh, nq, h)
+        return ZVODEDenseOutput(self.t_old, self.t, yh, h)

@@ -394,8 +394,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128) || !check_writable(ap_zwork, "zwork")) return NULL;
         if (!check_array_1d(ap_rwork, "rwork", NPY_FLOAT64)    || !check_writable(ap_rwork, "rwork")) return NULL;
         if (!check_array_1d(ap_iwork, "iwork", NPY_INT32)      || !check_writable(ap_iwork, "iwork")) return NULL;
-        if (!check_array_1d(ap_rtol,  "rtol",  NPY_FLOAT64))  return NULL;
-        if (!check_array_1d(ap_atol,  "atol",  NPY_FLOAT64))  return NULL;
+
+//        if (!check_array_1d(ap_rtol,  "rtol",  NPY_FLOAT64))  return NULL;
+//        if (!check_array_1d(ap_atol,  "atol",  NPY_FLOAT64))  return NULL;
 
         /* itol controls whether rtol/atol are scalar (length 1) or per-component
          * (length neq).  ZVODE convention: bit 0 set → rtol is array, bit 1 set →
