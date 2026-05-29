@@ -505,8 +505,7 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     double complex *yh  = (double complex *) PyArray_DATA(ap_zwork);
     double complex *dky = (double complex *) PyArray_DATA(ap_dky);
 
-    int iflag = 0;
-    zvindy(t, k, yh, nyh, dky, &iflag);
+    int iflag = c_zvindy(t, k, yh, nyh, dky);
 
     return PyLong_FromLong((long) iflag);
 }

@@ -11,6 +11,7 @@ module c_zvode_mod
     public :: c_zvode
     public :: c_zvode_fun
     public :: c_zvode_jac
+    public :: c_zvindy
 
     !
     ! C callback interface
@@ -96,5 +97,14 @@ contains
         complex(c_double_complex), intent(inout) :: pd(nrowpd,*)
         call jac%jac(jac%neq,t,y,ml,mu,pd(1,1),nrowpd,jac%ctx)
     end subroutine c_jac_eval
+
+    function c_zvindy(t,k,yh,ldyh,dky) result(iflag) bind(c)
+        real(c_double), value :: t
+        integer(c_int), value :: k, ldyh
+        complex(c_double_complex), intent(in) :: yh(ldyh,*)
+        complex(c_double_complex), intent(out) :: dky(*)
+        integer(c_int) :: iflag
+        call zvindy(t,k,yh,ldyh,dky,iflag)
+    end function c_zvindy
 
 end module c_zvode_mod

@@ -60,12 +60,11 @@ void c_zvode(
     const int mf,
     void *ctx);
 
-void zvindy(
+int c_zvindy(
     double t,
     int k,
-    double complex yh[],
-    int neq,
-    double complex dky[],
-    int *iflag);
+    const double complex yh[],
+    int ldyh,
+    double complex dky[]);
 
 #endif /* ZVODE_H */
