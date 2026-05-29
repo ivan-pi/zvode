@@ -1782,10 +1782,6 @@ C
       DOUBLE PRECISION AFI, ATOLI, DELYI, H, HALF, HG, HLB, HNEW, HRAT,
      1     HUB, HUN, PT1, T1, TDIST, TROUND, TWO, YDDNRM
       INTEGER I, ITER
-C
-C Type declaration for function subroutines called ---------------------
-C
-      DOUBLE PRECISION ZVNORM
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this integrator.
@@ -2084,10 +2080,6 @@ C
      2     ETAQ, ETAQM1, ETAQP1, FLOTL, ONE, ONEPSM,
      3     R, THRESH, TOLD, ZERO
       INTEGER I, I1, I2, IBACK, J, JB, KFC, KFH, MXNCF, NCF, NFLAG
-C
-C Type declaration for function subroutines called ---------------------
-C
-      DOUBLE PRECISION ZVNORM
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this integrator.
@@ -2880,10 +2872,6 @@ C
       DOUBLE PRECISION CCMAX, CRDOWN, CSCALE, DCON, DEL, DELP, ONE,
      1     RDIV, TWO, ZERO
       INTEGER I, IERPJ, IERSL, M, MAXCOR, MSBP
-C
-C Type declaration for function subroutines called ---------------------
-C
-      DOUBLE PRECISION ZVNORM
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this integrator.
@@ -3108,10 +3096,6 @@ C
       DOUBLE PRECISION CON, FAC, ONE, PT1, R, R0, THOU, ZERO
       INTEGER I, I1, I2, IER, II, J, J1, JJ, JOK, LENP, MBA, MBAND,
      1        MEB1, MEBAND, ML, ML1, MU, NP1
-C
-C Type declaration for function subroutines called ---------------------
-C
-      DOUBLE PRECISION ZVNORM
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this subroutine.
@@ -3542,7 +3526,7 @@ C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN, modified from DVNORM of 930809.
 C***END PROLOGUE  ZVNORM
       DOUBLE COMPLEX V
-      DOUBLE PRECISION W,   SUM, ZABSSQ
+      DOUBLE PRECISION W,   SUM
       INTEGER N,   I
       DIMENSION V(N), W(N)
 C
@@ -3753,7 +3737,7 @@ C
 C
 C  Declare local variables.
 C
-      INTEGER LUNIT, IXSAV, MESFLG
+      INTEGER LUNIT, MESFLG
 C
 C  Get logical unit number and message print flag.
 C
@@ -3809,7 +3793,7 @@ C Subroutines called by XSETF.. None
 C Function routine called by XSETF.. IXSAV
 C-----------------------------------------------------------------------
 C**End
-      INTEGER MFLAG, JUNK, IXSAV
+      INTEGER MFLAG, JUNK
 C
 C***FIRST EXECUTABLE STATEMENT  XSETF
       IF (MFLAG .EQ. 0 .OR. MFLAG .EQ. 1) JUNK = IXSAV (2,MFLAG,.TRUE.)
@@ -3842,7 +3826,7 @@ C Subroutines called by XSETUN.. None
 C Function routine called by XSETUN.. IXSAV
 C-----------------------------------------------------------------------
 C**End
-      INTEGER LUN, JUNK, IXSAV
+      INTEGER LUN, JUNK
 C
 C***FIRST EXECUTABLE STATEMENT  XSETUN
       IF (LUN .GT. 0) JUNK = IXSAV (1,LUN,.TRUE.)
@@ -3899,7 +3883,7 @@ C**End
       LOGICAL ISET
       INTEGER IPAR, IVALUE
 C-----------------------------------------------------------------------
-      INTEGER IUMACH, LUNIT, MESFLG
+      INTEGER LUNIT, MESFLG
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this routine.
