@@ -1,6 +1,6 @@
       subroutine zgbsl(abd,lda,n,ml,mu,ipvt,b,job)
-      integer lda,n,ml,mu,ipvt(1),job
-      complex*16 abd(lda,1),b(1)
+      integer lda,n,ml,mu,ipvt(*),job
+      complex*16 abd(lda,*),b(*)
 c
 c     zgbsl solves the complex*16 band system
 c     a * x = b  or  ctrans(a) * x = b

@@ -1,6 +1,6 @@
       subroutine zgbfa(abd,lda,n,ml,mu,ipvt,info)
-      integer lda,n,ml,mu,ipvt(1),info
-      complex*16 abd(lda,1)
+      integer lda,n,ml,mu,ipvt(*),info
+      complex*16 abd(lda,*)
 c
 c     zgbfa factors a complex*16 band matrix by elimination.
 c

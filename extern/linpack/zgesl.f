@@ -1,6 +1,6 @@
       subroutine zgesl(a,lda,n,ipvt,b,job)
-      integer lda,n,ipvt(1),job
-      complex*16 a(lda,1),b(1)
+      integer lda,n,ipvt(*),job
+      complex*16 a(lda,*),b(*)
 c
 c     zgesl solves the complex*16 system
 c     a * x = b  or  ctrans(a) * x = b
