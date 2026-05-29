@@ -130,7 +130,7 @@ contains
         implicit none
         integer, parameter :: dp = kind(1.0d0)
 
-        integer, value :: n, ldyh, k
+        integer(c_int), value :: n, ldyh, k
         real(c_double), value :: t
         complex(c_double_complex), intent(in) :: yh(ldyh,*) ! LDYH >= N
         complex(c_double_complex), intent(out) :: dky(n)
@@ -169,7 +169,7 @@ contains
             end if
 
             s = (t - tn)/h
-            c = falling_factorial(nq,k)
+            c = falling_factorial(nq, k)
             dky(1:n) = c*yh(1:n,nq+1)
             do j = nq-1,k,-1
                 c = falling_factorial(j, k)
@@ -184,7 +184,7 @@ contains
 
     contains
 
-      pure function falling_factorial(j,k) result(c)
+      pure function falling_factorial(j, k) result(c)
         implicit none
         integer, intent(in) :: j, k
         real(dp) :: c
@@ -196,6 +196,6 @@ contains
         c = ic
       end function
 
-    end subroutine c_zvindy
+    end function c_zvindy
 
 end module c_zvode_mod
