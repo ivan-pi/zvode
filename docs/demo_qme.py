@@ -34,12 +34,7 @@ def lindblad_deriv(t, y_flat):
     dissipator = gamma * (L @ rho @ L_dag - 0.5 * (L_dag @ L @ rho + rho @ L_dag @ L))
     
     # Return flattened 1D array for the ODE solver
-    drho_dt = (unitary + dissipator).flatten()
-
-    if t == 0.0:
-        print("Derivative dtype:", drho_dt.dtype) # Should be complex128
-
-    return drho_dt
+    return (unitary + dissipator).flatten()
 
 # ---------------------------------------------------------
 # 3. Setup Initial Conditions and Solve
