@@ -11,11 +11,12 @@ excluded):
        w(0) = 1/2.1,  z(0) = 1
        Solution:  z(t) = exp(it),  w(t) = 1/(exp(it) + 1.1)
 
-All four user-facing miter options are tested:
+The four standard miter options are tested (0 and 3 are omitted as they
+have only special applications):
     miter=1 – BDF + user-supplied dense Jacobian
     miter=2 – BDF + internally-generated dense Jacobian
-    miter=3 – BDF + diagonal Jacobian approximation
     miter=4 – BDF + user-supplied banded Jacobian
+    miter=5 – BDF + internally-generated banded Jacobian
 
 Correctness is checked at the automatically selected output points.
 
@@ -96,16 +97,15 @@ def sol_oscillator(t):
 
 
 # ---------------------------------------------------------------------------
-# Decay problem: miter 1, 2, 3 (dense / no explicit Jacobian)
+# Decay problem: miter 1 and 2 (dense / no explicit Jacobian)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("miter,jac", [
     (1, jac_decay_dense),
     (2, None),
-    (3, None),
 ])
 def test_decay_dense_miters(miter, jac):
-    """Complex decay solved with dense miter options 1, 2, 3."""
+    """Complex decay solved with dense miter options 1 and 2."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
 
@@ -129,22 +129,26 @@ def test_decay_dense_miters(miter, jac):
 
 
 # ---------------------------------------------------------------------------
-# Decay problem: miter 4 (banded Jacobian, ml=0 mu=0)
+# Decay problem: miter 4 and 5 (banded Jacobian, ml=0 mu=0)
 # ---------------------------------------------------------------------------
 
-def test_decay_miter4_banded():
-    """Complex decay solved with user-supplied banded Jacobian (miter=4, ml=0, mu=0)."""
+@pytest.mark.parametrize("miter,jac", [
+    (4, jac_decay_banded),
+    (5, None),
+])
+def test_decay_banded_miters(miter, jac):
+    """Complex decay with banded miter options 4 (user Jacobian) and 5 (internal FD)."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
 
     sol = solve_ivp(fun_decay, t_span, y0,
                     method=ZVODE,
-                    jac=jac_decay_banded,
-                    miter=4,
+                    jac=jac,
+                    miter=miter,
                     lband=0, uband=0,
                     rtol=1e-8, atol=1e-10)
 
-    assert sol.success, f"miter=4: {sol.message}"
+    assert sol.success, f"miter={miter}: {sol.message}"
     assert sol.status == 0
     assert sol.t[-1] == t_span[1]
     assert sol.nfev > 0
@@ -152,18 +156,18 @@ def test_decay_miter4_banded():
 
     expected = sol_decay(sol.t, y0[0])
     assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
-                    err_msg="miter=4: solution mismatch")
+                    err_msg=f"miter={miter}: solution mismatch")
 
 
 # ---------------------------------------------------------------------------
-# Oscillator problem: miter 1, 2, 3, 4
+# Oscillator problem: miter 1, 2, 4, 5
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("miter,jac,extra_kwargs", [
     (1, jac_oscillator_dense, {}),
     (2, None, {}),
-    (3, None, {}),
     (4, jac_oscillator_banded, {'lband': 0, 'uband': 1}),
+    (5, None,                  {'lband': 0, 'uband': 1}),
 ])
 def test_oscillator_miter(miter, jac, extra_kwargs):
     """Complex oscillator trajectory checked at solver-selected output points."""
