@@ -40,6 +40,7 @@ from numpy.testing import assert_allclose
 import pytest
 
 from zvode import _zvode
+from zvode.zvode_impl import ZVODEDenseOutput
 
 import ctypes
 
@@ -420,6 +421,263 @@ def test_zvode_adams_user_jacobian():
     assert nje > 0, f"User Jacobian was not evaluated (NJE = {nje})"
 
 # ---------------------------------------------------------------------------
+# zvindy tests
+# ---------------------------------------------------------------------------
+
+def _nordsieck_from_poly(polys, tn, h, nq):
+    """
+    Build a Nordsieck history array for a list of polynomials evaluated at tn.
+
+    Each column j of the returned array contains h^j/j! * p^(j)(tn), which is
+    exactly what ZVINDY expects.  The array is F-contiguous as required.
+
+    Parameters
+    ----------
+    polys : list of np.poly1d  -- one per ODE component
+    tn    : float              -- current solver time (right end of interval)
+    h     : float              -- step size (also used as hu)
+    nq    : int                -- order (number of Nordsieck columns is nq+1)
+
+    Returns
+    -------
+    yh : complex128 ndarray, shape (n, nq+1), F-contiguous
+    """
+    n = len(polys)
+    yh = np.zeros((n, nq + 1), dtype=np.complex128, order='F')
+    factorial = 1
+    for j in range(nq + 1):
+        if j > 0:
+            factorial *= j
+        for i, p in enumerate(polys):
+            deriv = p.deriv(j)
+            yh[i, j] = (h**j / factorial) * deriv(tn)
+    return yh
+
+
+def test_zvindy_cubic_interpolation():
+    """
+    ZVINDY must reproduce a cubic polynomial exactly when the Nordsieck
+    array is built from that polynomial's Taylor coefficients (nq=3).
+
+    We test K=0 (value), K=1 (first derivative), K=2 (second derivative),
+    and K=3 (third derivative) at an interior point.
+    """
+    # Two independent cubic polynomials (real coefficients, complex arrays)
+    p0 = np.poly1d([1.0,  -2.0,  3.0, -4.0])   # t^3 - 2t^2 + 3t - 4
+    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])   # -3t^3 + t + 2
+
+    polys = [p0, p1]
+    n  = len(polys)
+    nq = 3
+
+    tn = 4.0   # right end of the interpolation interval
+    h  = 2.0   # step size; hu = h so valid range is [tn-h, tn] = [2, 4]
+    hu = h
+    t  = 3.0   # interior interpolation point
+
+    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    dky = np.zeros(n, dtype=np.complex128)
+
+    # K=0: interpolated value should match the polynomial
+    _zvode.zvindy(t, 0, yh, h, tn, hu, dky)
+    expected = np.array([p(t) for p in polys], dtype=np.complex128)
+    assert_allclose(dky, expected, rtol=1e-13,
+                    err_msg="K=0 value mismatch for cubic")
+
+    # K=1: first derivative
+    _zvode.zvindy(t, 1, yh, h, tn, hu, dky)
+    expected = np.array([p.deriv(1)(t) for p in polys], dtype=np.complex128)
+    assert_allclose(dky, expected, rtol=1e-12,
+                    err_msg="K=1 derivative mismatch for cubic")
+
+    # K=2: second derivative
+    _zvode.zvindy(t, 2, yh, h, tn, hu, dky)
+    expected = np.array([p.deriv(2)(t) for p in polys], dtype=np.complex128)
+    assert_allclose(dky, expected, rtol=1e-12,
+                    err_msg="K=2 derivative mismatch for cubic")
+
+    # K=3: third derivative (constant for a cubic)
+    _zvode.zvindy(t, 3, yh, h, tn, hu, dky)
+    expected = np.array([p.deriv(3)(t) for p in polys], dtype=np.complex128)
+    assert_allclose(dky, expected, rtol=1e-11,
+                    err_msg="K=3 derivative mismatch for cubic")
+
+
+def test_zvindy_quintic_interpolation():
+    """
+    ZVINDY must reproduce a quintic polynomial exactly when nq=5.
+
+    Uses complex polynomial coefficients to exercise the complex arithmetic
+    path.  Tests K=0 through K=5.
+    """
+    # Complex quintic polynomials: coefficients [a5, a4, ..., a0]
+    p0 = np.poly1d([(1+2j), -3j, (2-1j), 0.5, -1.0, (3+0j)])
+    p1 = np.poly1d([(-2+1j), 1.0, 0j, (1-3j), 2j, (-1+2j)])
+
+    polys = [p0, p1]
+    n  = len(polys)
+    nq = 5
+
+    tn = 1.0
+    h  = 0.5   # valid interpolation range: [0.5, 1.0]
+    hu = h
+    t  = 0.75
+
+    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    dky = np.zeros(n, dtype=np.complex128)
+
+    for k in range(nq + 1):
+        _zvode.zvindy(t, k, yh, h, tn, hu, dky)
+        expected = np.array([p.deriv(k)(t) for p in polys], dtype=np.complex128)
+        assert_allclose(dky, expected, rtol=1e-10,
+                        err_msg=f"K={k} mismatch for complex quintic")
+
+
+def test_zvindy_at_endpoints():
+    """
+    At t=tn and t=tn-hu the interpolation should still be exact.
+    """
+    p0 = np.poly1d([2.0, -1.0, 0.5, 1.0])
+    polys = [p0]
+    n  = 1
+    nq = 3
+
+    tn = 3.0
+    h  = 1.5
+    hu = h
+
+    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    dky = np.zeros(n, dtype=np.complex128)
+
+    for t_eval in [tn, tn - hu]:
+        _zvode.zvindy(t_eval, 0, yh, h, tn, hu, dky)
+        expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
+        assert_allclose(dky, expected, rtol=1e-13,
+                        err_msg=f"K=0 mismatch at t={t_eval}")
+
+
+def test_zvindy_out_of_range_raises():
+    """
+    Requests outside [tn-hu, tn] or with invalid k should raise ValueError.
+    """
+    p0 = np.poly1d([1.0, 0.0, 0.0, 0.0])
+    nq = 3
+    tn = 2.0
+    h  = 1.0
+    hu = h
+
+    yh  = _nordsieck_from_poly([p0], tn, h, nq)
+    dky = np.zeros(1, dtype=np.complex128)
+
+    with pytest.raises(ValueError):
+        _zvode.zvindy(tn + 0.1, 0, yh, h, tn, hu, dky)   # t > tn
+
+    with pytest.raises(ValueError):
+        _zvode.zvindy(tn - hu - 0.1, 0, yh, h, tn, hu, dky)  # t < tn-hu
+
+    with pytest.raises(ValueError):
+        _zvode.zvindy(tn - 0.5, nq + 1, yh, h, tn, hu, dky)  # k > nq
+
+
+# ---------------------------------------------------------------------------
+# ZVODEDenseOutput tests
+# ---------------------------------------------------------------------------
+
+def test_dense_output_cubic_scalar():
+    """
+    ZVODEDenseOutput must reproduce a cubic polynomial exactly at a scalar t.
+    """
+    p0 = np.poly1d([1.0, -2.0,  3.0, -4.0])
+    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])
+    polys = [p0, p1]
+
+    tn, h = 4.0, 2.0
+    t_old = tn - h
+    nq = 3
+
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
+    interp = ZVODEDenseOutput(t_old, tn, yh, h)
+
+    t_eval = 3.0
+    result = interp(t_eval)
+    expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
+    assert result.shape == (len(polys),)
+    assert_allclose(result, expected, rtol=1e-13,
+                    err_msg="Cubic scalar evaluation mismatch")
+
+
+def test_dense_output_cubic_array():
+    """
+    ZVODEDenseOutput must return shape (n, m) and be exact for each point
+    when called with an array of m interpolation times.
+    """
+    p0 = np.poly1d([1.0, -2.0,  3.0, -4.0])
+    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])
+    polys = [p0, p1]
+
+    tn, h = 4.0, 2.0
+    t_old = tn - h
+    nq = 3
+
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
+    interp = ZVODEDenseOutput(t_old, tn, yh, h)
+
+    t_eval = np.array([2.0, 2.5, 3.0, 3.5, 4.0])
+    result = interp(t_eval)
+    assert result.shape == (len(polys), len(t_eval))
+
+    for k, t in enumerate(t_eval):
+        expected = np.array([p(t) for p in polys], dtype=np.complex128)
+        assert_allclose(result[:, k], expected, rtol=1e-13,
+                        err_msg=f"Cubic array evaluation mismatch at t={t}")
+
+
+def test_dense_output_quintic_complex():
+    """
+    ZVODEDenseOutput is exact for a complex quintic polynomial (nq=5).
+    """
+    p0 = np.poly1d([(1+2j), -3j, (2-1j), 0.5, -1.0, (3+0j)])
+    p1 = np.poly1d([(-2+1j), 1.0, 0j, (1-3j), 2j, (-1+2j)])
+    polys = [p0, p1]
+
+    tn, h = 1.0, 0.5
+    t_old = tn - h
+    nq = 5
+
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
+    interp = ZVODEDenseOutput(t_old, tn, yh, h)
+
+    t_eval = np.linspace(t_old, tn, 9)
+    result = interp(t_eval)
+
+    for k, t in enumerate(t_eval):
+        expected = np.array([p(t) for p in polys], dtype=np.complex128)
+        assert_allclose(result[:, k], expected, rtol=1e-10,
+                        err_msg=f"Quintic complex evaluation mismatch at t={t}")
+
+
+def test_dense_output_endpoints():
+    """
+    At t=t_old and t=tn the dense output must recover the exact polynomial value.
+    """
+    p0 = np.poly1d([2.0, -1.0, 0.5, 1.0])
+    polys = [p0]
+
+    tn, h = 3.0, 1.5
+    t_old = tn - h
+    nq = 3
+
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
+    interp = ZVODEDenseOutput(t_old, tn, yh, h)
+
+    for t_eval in [t_old, tn]:
+        result = interp(t_eval)
+        expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
+        assert_allclose(result, expected, rtol=1e-13,
+                        err_msg=f"Endpoint mismatch at t={t_eval}")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
     test_zvode_scalar_real_decay()
@@ -431,4 +689,12 @@ if __name__ == '__main__':
     test_zvode_wrong_array_type()
     test_zvode_bdf_user_jacobian()
     test_zvode_adams_user_jacobian()
+    test_zvindy_cubic_interpolation()
+    test_zvindy_quintic_interpolation()
+    test_zvindy_at_endpoints()
+    test_zvindy_out_of_range_raises()
+    test_dense_output_cubic_scalar()
+    test_dense_output_cubic_array()
+    test_dense_output_quintic_complex()
+    test_dense_output_endpoints()
     print("All tests passed.")
