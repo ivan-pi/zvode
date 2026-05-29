@@ -99,13 +99,6 @@ def _array_range(arr):
 # Tests
 # ---------------------------------------------------------------------------
 
-def fun(t, y, dy):
-    print(f"ABC: In fun at t = {t} with y = {y}")
-    print(y.dtype, dy.dtype, y.shape, dy.shape)
-    dy[:] = -y[:]
-    print("ABC: Done")
-
-
 def test_zvode_scalar_real_decay():
     """
     dy/dt = -y,  y(0) = 1   =>  y(t) = exp(-t)
@@ -116,6 +109,9 @@ def test_zvode_scalar_real_decay():
     """
     neq = 1
     mf = 10
+
+    def fun(t, y, dy):
+        dy[0] = -y[0]
 
     y     = np.array([1.0 + 0j], dtype=np.complex128)
     t     = 0.0
