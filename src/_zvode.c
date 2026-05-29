@@ -135,13 +135,17 @@ _Static_assert(sizeof(int) == 4, "iwork bridging assumes a 32-bit C int");
 /* Array argument validators                                          */
 /* ------------------------------------------------------------------ */
 
-/* Returns 1 (ok) or 0 (failure, exception set). */
+/* Returns 1 (ok) or 0 (failure, exception set).
+ * ndim     : required number of dimensions
+ * typenum  : required NumPy type (e.g. NPY_COMPLEX128)
+ * order    : 'C' = require C-contiguous, 'F' = require Fortran-contiguous,
+ *            0   = no contiguity check */
 static inline int
-check_array_1d(PyArrayObject *ap, const char *name, int typenum)
+check_array(PyArrayObject *ap, const char *name, int ndim, int typenum, char order)
 {
-    if (PyArray_NDIM(ap) != 1) {
+    if (PyArray_NDIM(ap) != ndim) {
         PyErr_Format(PyExc_ValueError,
-            "zvode: %s must be 1-D (got %d-D)", name, PyArray_NDIM(ap));
+            "zvode: %s must be %d-D (got %d-D)", name, ndim, PyArray_NDIM(ap));
         return 0;
     }
     if (PyArray_TYPE(ap) != typenum) {
@@ -149,17 +153,27 @@ check_array_1d(PyArrayObject *ap, const char *name, int typenum)
             "zvode: %s must have dtype %s", name, dtype_name(typenum));
         return 0;
     }
-    if (!PyArray_IS_C_CONTIGUOUS(ap)) {
+    if (order == 'C' && !PyArray_IS_C_CONTIGUOUS(ap)) {
         PyErr_Format(PyExc_ValueError,
             "zvode: %s must be C-contiguous", name);
+        return 0;
+    }
+    if (order == 'F' && !PyArray_IS_F_CONTIGUOUS(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be Fortran-contiguous", name);
         return 0;
     }
     return 1;
 }
 
+/* Returns 1 (ok) or 0 (failure, exception set). */
 static inline int
-check_writable(PyArrayObject *ap, const char *name)
-{
+check_array_1d(PyArrayObject *ap, const char *name, int typenum) {
+    return check_array(ap, name, 1, typenum, 'C');
+}
+
+static inline int
+check_writable(PyArrayObject *ap, const char *name) {
     if (!PyArray_ISWRITEABLE(ap)) {
         PyErr_Format(PyExc_ValueError, "zvode: %s must be writable", name);
         return 0;
@@ -454,9 +468,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 /* ------------------------------------------------------------------ */
 
 PyDoc_STRVAR(zvindy_doc,
-"zvindy(t, yh, k, dky, step) -> iflag\n"
+"zvindy(t, k, yh, h, tn, hu, dky) -> None\n"
 "\n"
-"Interpolate the K-th derivative of y at time T using the ZVODE history array.\n"
+"Interpolate the K-th derivative of y at time T using the the Nordsieck array.\n"
 "\n"
 "Must be called after at least one successful ZVODE step.  The ZVODE internal\n"
 "state (TN, H, NQ, ...) is shared via Fortran COMMON blocks, so no explicit\n"
@@ -464,59 +478,75 @@ PyDoc_STRVAR(zvindy_doc,
 "\n"
 "Parameters\n"
 "----------\n"
-"t     : float  -- interpolation time; must lie in [TCUR - HU, TCUR].\n"
-"yh    : complex128 ndarray, 2-D -- Nordsieck history array (dimensions LDYH x NQ+1).\n"
-"ldyh  : int    -- column length of the YH history matrix (= initial NEQ).\n"
-"k     : int    -- derivative order; must satisfy 0 <= k <= NQCUR.\n"
-"dky   : complex128 ndarray, 1-D, writable -- receives the computed derivative.\n"
-"step  : "
+"t   : float  -- interpolation time; must lie in [tn - hu, tn].\n"
+"k   : int    -- derivative order; must satisfy 0 <= k <= yh.shape[1] - 1.\n"
+"yh  : complex128 ndarray, shape (n, nq+1), F-contiguous -- Nordsieck array.\n"
+"h   : float  -- HCUR, the step size the Nordsieck array is scaled to.\n"
+"tn  : float  -- TCUR, the current solver time.\n"
+"hu  : float  -- HU, the last successfully used step size.\n"
+"dky : complex128 ndarray, 1-D length n, writable -- receives the result.\n"
 "\n"
-"Returns\n"
-"-------\n"
-"iflag : int -- 0 if successful, -1 if k is out of range, -2 if t is illegal.\n");
+"Raises\n"
+"------\n"
+"ValueError -- if k is out of range or t is outside [tn - hu, tn].\n");
 
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
 
-    double t;
+    double t, h, tn, hu;
     PyArrayObject *ap_yh = NULL, *ap_dky = NULL;
     int k;
 
-    if (!PyArg_ParseTuple(args, "dO!iO!(ddd):zvindy",
-            &t,
+    if (!PyArg_ParseTuple(args, "diO!dddO!:zvindy",
+            &t, &k,
             &PyArray_Type, &ap_yh,
-            &k
+            &h, &tn, &hu,
             &PyArray_Type, &ap_dky)) {
         return NULL;
     }
 
-    const int neq = PyArray_DIM(ap_dky, 0);
-    const int ldyh = PyArray_DIM(ap_yh, 0);
-    const int nq = PyArray_DIM(ap_yh, 1) - 1;
-    assert(ldyh >= neq);
+    if (!check_array(ap_yh, "yh", 2, NPY_COMPLEX128, 'F')) return NULL;
+    if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
+    if (!check_writable(ap_dky, "dky"))                 return NULL;
 
-    if (!check_array_1d(ap_yh, "zwork", NPY_COMPLEX128)) return NULL;
-    if (!check_array_1d(ap_dky,  "dky", NPY_COMPLEX128)) return NULL;
-    if (!check_writable(ap_dky,  "dky"))                 return NULL;
+    const int n    = (int) PyArray_DIM(ap_yh, 0);     /* number of equations */
+    const int ldyh = n;                               /* leading dimension   */
+    const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order       */
+    assert(ldyh >= n);
 
-    if (k < 0) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: k must be non-negative");
+    if ((int) PyArray_SIZE(ap_dky) < n) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: dky must have length >= %d (got %d)",
+            n, (int) PyArray_SIZE(ap_dky));
         return NULL;
     }
 
-    /* The YH history array starts at zwork[0] (Fortran LYH=1, 1-based). */
-    double complex *yh  = (double complex *) PyArray_DATA(ap_zwork);
+    if (k < 0 || k > nq) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: k must satisfy 0 <= k <= %d (got %d)", nq, k);
+        return NULL;
+    }
+
+    double complex *yh  = (double complex *) PyArray_DATA(ap_yh);
     double complex *dky = (double complex *) PyArray_DATA(ap_dky);
 
-    struct zvode_step step = {.h = , .tn =, .hu = };
+    const int iflag = c_zvindy(n, t, yh, ldyh, k, dky,
+        &(struct zvode_step_t){.h = h, .tn = tn, .hu = hu, .nq = nq});
 
-    int iflag = c_zvindy(neq, t, yh, ldyh, k, dky,
-        &step):
     if (iflag) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: returned with positive iflag");
-        return NULL;
+        if (iflag == -1) {
+            PyErr_Format(PyExc_ValueError,
+                "zvindy: k=%d is out of range [0, nq=%d] (Fortran IFLAG=-1)", k, nq);
+            return NULL;
+        }
+        if (iflag == -2) {
+            PyErr_Format(PyExc_ValueError,
+                "zvindy: t=%.17g is outside the valid interval [tn-hu, tn] "
+                "(Fortran IFLAG=-2)", t);
+            return NULL;
+        }
     };
 
-    return PyLong_FromLong((long) iflag);
+    Py_RETURN_NONE;
 }
 
 static struct PyMethodDef zvode_module_methods[] = {

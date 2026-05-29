@@ -179,7 +179,7 @@ class ZVODEDenseOutput(DenseOutput):
             c = _falling_factorial(j, k)
             dky = c*self.yh[:,j,np.newaxis] + s*dky
 
-        return dky[;,0] if scalar else dky
+        return dky[:,0] if scalar else dky
 
 class ZVODE(OdeSolver):
     """Wrapper of ZVODE
