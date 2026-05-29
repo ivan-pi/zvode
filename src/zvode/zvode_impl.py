@@ -135,15 +135,42 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
 
     return miter, lband, uband
 
+def _falling_factorial(j, k):
+    """Compute j*(j-1)*...*(j-k+1); returns 1 for k=0 (empty product)."""
+    result = 1
+    for m in range(j - k + 1, j + 1):
+        result *= m
+    return result
+
+
 class ZVODEDenseOutput(DenseOutput):
-    """Local interpolant over a time step of the ZVODE solver"""
+    """Dense output interpolant for ZVODE using the Nordsieck history array.
 
-    def __init__(self, t_old, t, n, rwork, iwork):
+    Evaluates the interpolating polynomial via Horner's method on the
+    snapshot of YH taken at the end of the step.  No Fortran COMMON
+    block state is needed after construction.
+    """
+
+    def __init__(self, t_old, t, yh, nq, tn, h):
         super().__init__(t_old, t)
-        raise NotImplementedError()
+        # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(tn)
+        self.yh = yh
+        self.nq = nq
+        self.tn = tn   # TCUR at the end of the step
+        self.h  = h    # HCUR at the end of the step
 
-    def _call_impl(self,t):
-        raise NotImplementedError()
+    def _call_impl(self, t):
+        nq, tn, h = self.nq, self.tn, self.h
+        scalar = t.ndim == 0
+        t = np.atleast_1d(t)
+        s = (t - tn) / h            # normalised position, shape (m,)
+
+        # Seed Horner with the highest-order Nordsieck column
+        dky = np.outer(self.yh[:, nq], np.ones(t.shape[0]))  # (n, m)
+        for j in range(nq - 1, -1, -1):
+            dky = self.yh[:, j, np.newaxis] + s * dky
+
+        return dky[:, 0] if scalar else dky
 
 
 class ZVODE(OdeSolver):
@@ -345,4 +372,10 @@ class ZVODE(OdeSolver):
         return True, None
 
     def _dense_output_impl(self):
-        raise NotImplementedError
+        nq  = int(self.iwork[14])    # IWORK(15) = NQCUR
+        h   = float(self.rwork[11])  # RWORK(12) = HCUR
+        tn  = float(self.rwork[12])  # RWORK(13) = TCUR
+        nyh = self.n                 # initial NEQ = column length of YH
+        # YH occupies zwork[0 : nyh*(nq+1)] in Fortran column-major order
+        yh = self.zwork[:nyh * (nq + 1)].reshape((nyh, nq + 1), order='F').copy()
+        return ZVODEDenseOutput(self.t_old, self.t, yh, nq, tn, h)
