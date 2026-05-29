@@ -450,16 +450,65 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 }
 
 /* ------------------------------------------------------------------ */
-/* zvindy (interpolation) - not implemented yet                       */
+/* zvindy (interpolation)                                             */
 /* ------------------------------------------------------------------ */
 
 PyDoc_STRVAR(zvindy_doc,
-"zvindy(...) -> (not implemented)\n");
+"zvindy(t, k, zwork, nyh, dky) -> iflag\n"
+"\n"
+"Interpolate the K-th derivative of y at time T using the ZVODE history array.\n"
+"\n"
+"Must be called after at least one successful ZVODE step.  The ZVODE internal\n"
+"state (TN, H, NQ, ...) is shared via Fortran COMMON blocks, so no explicit\n"
+"state argument is needed.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"t     : float  -- interpolation time; must lie in [TCUR - HU, TCUR].\n"
+"k     : int    -- derivative order; must satisfy 0 <= k <= NQCUR.\n"
+"zwork : complex128 ndarray, 1-D -- ZVODE complex work array (unmodified).\n"
+"nyh   : int    -- column length of the YH history matrix (= initial NEQ).\n"
+"dky   : complex128 ndarray, 1-D, writable -- receives the computed derivative.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"iflag : int -- 0 if successful, -1 if k is out of range, -2 if t is illegal.\n");
 
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
-    PyErr_SetString(PyExc_NotImplementedError,
-        "zvindy (dense-output interpolation) is not implemented yet.");
-    return NULL;
+
+    PyArrayObject *ap_zwork = NULL, *ap_dky = NULL;
+    double t;
+    int k, nyh;
+
+    if (!PyArg_ParseTuple(args, "diO!iO!:zvindy",
+            &t, &k,
+            &PyArray_Type, &ap_zwork,
+            &nyh,
+            &PyArray_Type, &ap_dky)) {
+        return NULL;
+    }
+
+    if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128)) return NULL;
+    if (!check_array_1d(ap_dky,   "dky",   NPY_COMPLEX128)) return NULL;
+    if (!check_writable(ap_dky,   "dky"))                   return NULL;
+
+    if (nyh <= 0) {
+        PyErr_SetString(PyExc_ValueError, "zvindy: nyh must be positive");
+        return NULL;
+    }
+    if (k < 0) {
+        PyErr_SetString(PyExc_ValueError, "zvindy: k must be non-negative");
+        return NULL;
+    }
+
+    /* The YH history array starts at zwork[0] (Fortran LYH=1, 1-based). */
+    double complex *yh  = (double complex *) PyArray_DATA(ap_zwork);
+    double complex *dky = (double complex *) PyArray_DATA(ap_dky);
+
+    int iflag = 0;
+    zvindy(t, k, yh, nyh, dky, &iflag);
+
+    return PyLong_FromLong((long) iflag);
 }
 
 static struct PyMethodDef zvode_module_methods[] = {
