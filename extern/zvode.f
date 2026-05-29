@@ -21,19 +21,19 @@
 
       ABSTRACT INTERFACE
          SUBROUTINE ZVODE_FUN_EVAL(FUN,T,Y,YDOT)
-            IMPORT ZVODE_FUN, C_DOUBLE, C_DOUBLE_COMPLEX
+            IMPORT ZVODE_FUN, DP
             CLASS(ZVODE_FUN) :: FUN
-            REAL(C_DOUBLE), INTENT(IN) :: T
-            COMPLEX(C_DOUBLE_COMPLEX), INTENT(IN) :: Y(FUN%NEQ)
-            COMPLEX(C_DOUBLE_COMPLEX), INTENT(OUT) :: YDOT(FUN%NEQ)
+            REAL(DP), INTENT(IN) :: T
+            COMPLEX(DP), INTENT(IN) :: Y(FUN%NEQ)
+            COMPLEX(DP), INTENT(OUT) :: YDOT(FUN%NEQ)
          END SUBROUTINE
          SUBROUTINE ZVODE_JAC_EVAL(JAC,T,Y,ML,MU,PD,NROWPD)
-            IMPORT ZVODE_JAC, C_DOUBLE, C_DOUBLE_COMPLEX
+            IMPORT ZVODE_JAC, DP
             CLASS(ZVODE_JAC) :: JAC
             INTEGER, INTENT(IN) :: ML, MU, NROWPD
-            REAL(C_DOUBLE), INTENT(IN) :: T
-            COMPLEX(C_DOUBLE_COMPLEX), INTENT(IN) :: Y(JAC%NEQ)
-            COMPLEX(C_DOUBLE_COMPLEX), INTENT(INOUT) :: PD(NROWPD,*)
+            REAL(DP), INTENT(IN) :: T
+            COMPLEX(DP), INTENT(IN) :: Y(JAC%NEQ)
+            COMPLEX(DP), INTENT(INOUT) :: PD(NROWPD,*)
          END SUBROUTINE
       END INTERFACE
 
@@ -61,8 +61,8 @@ C       instead of external procedures
 C Argument list
       class(zvode_fun) :: f
       class(zvode_jac) :: jac
-      integer, intent(in), :: neq, itol, itask, iopt, lzw, lrw, liw, mf
-      real(dp), intent(in), :: tout
+      integer, intent(in) :: neq, itol, itask, iopt, lzw, lrw, liw, mf
+      real(dp), intent(in) :: tout
       real(dp), intent(inout) :: t
       complex(dp), intent(inout) :: y(neq), zwork(lzw)
       real(dp), intent(inout) :: rwork(lrw)

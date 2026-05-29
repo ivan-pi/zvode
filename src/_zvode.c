@@ -150,79 +150,37 @@ static void fun_adaptor(
     assert(cb != NULL);
     assert(cb->fun != NULL);
 
+#if 0
     fprintf(stderr, "fun_adaptor: y=%p  dy=%p  neq=%d\n",
             (void*)y, (void*)dy, neq);
     fflush(stderr);
-
-#if 0
-    /* OVERRIDE */
-    for (int i = 0; i < neq; i++) {
-        dy[i] = -y[i];
-    }
-    return;
-    /* OVERRIDE */
 #endif
-
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (double complex *) y);
-    assert(ap_y);
     if (ap_y == NULL) {
         return;
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    printf("y is ready.\n");
-
-
     const npy_intp dims_dy[1] = { neq };
 
     PyArrayObject *ap_dy =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_dy, NPY_COMPLEX128, dy);
-    assert(ap_dy);
     if (ap_dy == NULL) {
         return;
     }
 
-    printf("dy is ready.\n");
-    assert(ap_y && y);
-    assert(ap_dy && dy);
-
+#if 0
     printf("calling fun at t = %f\n", t);
     fprintf(stderr, "DEBUG: ap_y=%p (rc=%ld)  ap_dy=%p (rc=%ld)\n",
             (void*)ap_y, Py_REFCNT(ap_y),
             (void*)ap_dy, Py_REFCNT(ap_dy));
     fflush(stderr);
 
-#if 0
-/* Safely convert the double to a Python Float */
-    PyObject *py_t = PyFloat_FromDouble(t);
-    if (!py_t) {
-        // Handle float creation failure
-        Py_DECREF(ap_y);
-        Py_DECREF(ap_dy);
-        return;
-    }
-
-    /* Check for ANY lingering exceptions before we call */
-    if (PyErr_Occurred()) {
-        fprintf(stderr, "WARNING: Exception state was dirty before call!\n");
-        PyErr_Clear();
-    }
-
-/* Call the function directly without va_args parsing */
-    PyObject *res = PyObject_CallFunctionObjArgs(
-        cb->fun,
-        py_t,
-        (PyObject *)ap_y,
-        (PyObject *)ap_dy,
-        NULL // Must be NULL-terminated!
-    );
-#else
-
-/* 1. Check if the function pointer matches the original */
+    /* 1. Check if the function pointer matches the original */
     void *expected_fun = (void *) cb->fun;
 
     /* 2. Read the raw CPU Stack Pointer */
@@ -232,16 +190,18 @@ static void fun_adaptor(
     fprintf(stderr, ">>> DIAGNOSTIC: cb->fun = %p | SP = %p | ALIGNED = %s\n",
             expected_fun, sp, is_aligned ? "YES" : "NO");
     fflush(stderr);
+#endif
 
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
     assert(cb->fun && ap_y && ap_dy);
     PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, (PyObject *)ap_y, (PyObject *)ap_dy);
-#endif
 
+#if 0
     fprintf(stderr, "res = %p, exception set = %d\n",
             (void*)res, PyErr_Occurred() != NULL);
     fflush(stderr);
     printf("called fun at t = %f\n", t);
+#endif
 
     Py_DECREF(ap_y);     // missing: ap_y is leaking every call
     Py_DECREF(ap_dy);    // missing: ap_dy is leaking every call
@@ -312,8 +272,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     // Container for the actual Python callbacks
     struct zvode_callbacks cb = { .fun = NULL, .jac = NULL };
 
-    printf("About to parse args.\n");
-
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
        &cb.fun,
        &PyArray_Type, &ap_y,
@@ -338,11 +296,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(cb.jac); // could be Python None
 
 #ifdef ZVODE_DEBUG
-    printf("Args are parsed.\n");
     dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
                     itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
                     cb.jac, mf);
-    fprintf(stderr, ">>> cb->fun = %p\n",cb.fun);
 #endif
 
     if (istate == 1) {
@@ -372,11 +328,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(itask > 0);
     assert(mf > 0);
 
-    printf("All pointers are ready.\n");
-
-//      SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+//      SUBROUTINE C_ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
 //     1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-//     2            JAC, MF, CTX) BIND(C,name="zvode")
+//     2            JAC, MF, CTX) BIND(C,name="c_zvode")
 
     // Call the Fortran integrator
     c_zvode(
@@ -389,8 +343,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         mf,
         &cb
     );
-
-    printf("Returned from ZVODE.\n");
 
     PyObject *res;
     if (!(res = Py_BuildValue("di",t,istate))) {

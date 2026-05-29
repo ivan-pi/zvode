@@ -142,8 +142,6 @@ def test_zvode_scalar_real_decay():
         zwork, rwork, iwork,
         None, mf)
 
-    print(f"t = {t}, tout = {tout}, t_new = {t_new}")
-
     assert istate_new == 2,  f"ZVODE failed with istate = {istate_new}"
     assert t_new     == tout, "ZVODE did not reach TOUT"
 
