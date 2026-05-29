@@ -37,6 +37,8 @@ import pytest
 
 from zvode import _zvode
 
+import ctypes
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -67,6 +69,9 @@ def _make_workspaces(neq, mf):
 
     lrw = 20 + neq
     liw = 30 if miter in (0, 3) else 30 + neq
+
+    lzw *= 10
+    lrw *= 10
 
     zwork = np.zeros(lzw, dtype=np.complex128)
     rwork = np.zeros(lrw, dtype=np.float64)
@@ -113,6 +118,10 @@ def test_zvode_scalar_real_decay():
     t     = 0.0
     tout  = 10.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
+
+    base = zwork.ctypes.data
+    print(f"zwork: [{hex(base)}, {hex(base + zwork.nbytes)})")
+
 
     t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
                                     mf=mf, rtol=1e-6, atol=1e-8)

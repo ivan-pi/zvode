@@ -37,6 +37,9 @@ static void fun_adaptor(
     assert(cb->fun != NULL);
 
     printf("In fun_adaptor.\n");
+    fprintf(stderr, "fun_adaptor: y=%p  dy=%p  neq=%d\n",
+            (void*)y, (void*)dy, neq);
+    fflush(stderr);
 
     const npy_intp dims[1] = { neq };
 
@@ -68,8 +71,13 @@ static void fun_adaptor(
 
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
     PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, ap_y, ap_dy);
-
+    fprintf(stderr, "res = %p, exception set = %d\n",
+            (void*)res, PyErr_Occurred() != NULL);
+    fflush(stderr);
     printf("called fun at t = %f\n", t);
+
+    Py_DECREF(ap_y);     // missing: ap_y is leaking every call
+    Py_DECREF(ap_dy);    // missing: ap_dy is leaking every call
 
 }
 
