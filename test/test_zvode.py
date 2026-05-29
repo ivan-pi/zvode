@@ -2,8 +2,7 @@
 
 These smoke-tests exercise _zvode.zvode(...) directly, bypassing any
 higher-level wrapper.  The goal is to verify that the C extension and the
-underlying Fortran solver are wired together correctly before debugging the
-ODE-solver class that crashes the interpreter.
+underlying Fortran solver are wired together correctly.
 
 Conventions (from the ZVODE documentation)
 -------------------------------------------
@@ -16,18 +15,23 @@ itask   1  – integrate to TOUT, interpolating at TOUT
 itol    1  – scalar rtol *and* scalar atol (both length-1 arrays)
 
 mf = 10   Adams / non-stiff, functional iteration (no Jacobian needed)
+mf = 11   Adams / non-stiff, user-supplied dense Jacobian
+mf = 21   BDF   / stiff,     user-supplied dense Jacobian
 mf = 22   BDF   / stiff,     internally-generated dense Jacobian
 
 Work-array sizes (from the ZVODE docs, using default MAXORD)
 -------------------------------------------------------------
-MF = 10:  LZW = 15*NEQ,            LRW = 20+NEQ,  LIW = 30
-MF = 22:  LZW = 8*NEQ + 2*NEQ**2,  LRW = 20+NEQ,  LIW = 30+NEQ
+MF = 10:  LZW = 15*NEQ,             LRW = 20+NEQ,  LIW = 30
+MF = 11:  LZW = 15*NEQ + 2*NEQ**2,  LRW = 20+NEQ,  LIW = 30+NEQ
+MF = 21:  LZW = 8*NEQ + 2*NEQ**2,   LRW = 20+NEQ,  LIW = 30+NEQ
+MF = 22:  LZW = 8*NEQ + 2*NEQ**2,   LRW = 20+NEQ,  LIW = 30+NEQ
 
 Optional output stored by ZVODE on a successful call (0-based Python indices)
   rwork[10]  = HU   – step size last used
   rwork[12]  = TCUR – current internal time reached by the solver
   iwork[10]  = NST  – number of steps taken
   iwork[11]  = NFE  – number of f evaluations
+  iwork[12]  = NJE  – number of Jacobian evaluations
 """
 
 import numpy as np
@@ -338,6 +342,82 @@ def test_zvode_wrong_array_type():
             list(zwork), rwork, iwork,
             None, mf)
 
+def test_zvode_bdf_user_jacobian():
+    """
+    Test the BDF stiff solver with a user-supplied dense complex Jacobian (MF=21).
+
+    System:
+        dy[0]/dt = -y[0] + 1j * y[1]
+        dy[1]/dt = -1j * y[0] - 2.0 * y[1]
+
+    Jacobian:
+        J[0, 0] = -1.0;  J[0, 1] = 1j
+        J[1, 0] = -1j;   J[1, 1] = -2.0
+    """
+    neq = 2
+    mf = 21
+
+    def fun(t, y, dy):
+        dy[0] = -y[0] + 1j * y[1]
+        dy[1] = -1j * y[0] - 2.0 * y[1]
+
+    def jac(t, y, J):
+        J[0, 0] = -1.0 + 0j
+        J[0, 1] = 1j
+        J[1, 0] = -1j
+        J[1, 1] = -2.0 + 0j
+
+    y     = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+    t     = 0.0
+    tout  = 1.0
+    zwork, rwork, iwork = _make_workspaces(neq, mf)
+
+    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
+                                    mf=mf, jac=jac, rtol=1e-8, atol=1e-10)
+
+    assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
+
+    # Check that the Jacobian was evaluated (NJE is stored in iwork[12] in ZVODE)
+    nje = iwork[12]
+    assert nje > 0, f"User Jacobian was not evaluated (NJE = {nje})"
+
+
+def test_zvode_adams_user_jacobian():
+    """
+    Test the Adams non-stiff solver with a user-supplied dense complex Jacobian (MF=11).
+
+    System (Non-linear):
+        dy/dt = 1j * y**2
+
+    Jacobian:
+        J[0, 0] = 2j * y[0]
+
+    Analytic solution: y(t) = y(0) / (1 - 1j * y(0) * t)
+    """
+    neq = 1
+    mf = 11
+
+    def fun(t, y, dy):
+        dy[0] = 1j * y[0]**2
+
+    def jac(t, y, J):
+        J[0, 0] = 2j * y[0]
+
+    y     = np.array([1.0 + 0j], dtype=np.complex128)
+    t     = 0.0
+    tout  = 0.5  # Kept small to avoid approaching the singularity
+    zwork, rwork, iwork = _make_workspaces(neq, mf)
+
+    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
+                                    mf=mf, jac=jac, rtol=1e-8, atol=1e-10)
+
+    assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
+
+    expected = 1.0 / (1.0 - 1j * 1.0 * tout)
+    assert_allclose(y[0], expected, rtol=1e-6)
+
+    nje = iwork[12]
+    assert nje > 0, f"User Jacobian was not evaluated (NJE = {nje})"
 
 # ---------------------------------------------------------------------------
 
@@ -349,4 +429,6 @@ if __name__ == '__main__':
     test_zvode_bdf_method()
     test_zvode_optional_output_populated()
     test_zvode_wrong_array_type()
+    test_zvode_bdf_user_jacobian()
+    test_zvode_adams_user_jacobian()
     print("All tests passed.")

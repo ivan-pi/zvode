@@ -220,8 +220,6 @@ static void jac_adaptor(
     assert(cb != NULL);
     assert(cb->jac != NULL);
 
-    printf("In Jacobian func.\n");
-
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, y);
@@ -235,14 +233,37 @@ static void jac_adaptor(
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
      * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
 
-    PyArrayObject *ap_pd = NULL;
+    const npy_intp dims_pd[2] = { (npy_intp) nrowpd, (npy_intp) neq };
+
+    /* Explicitly define strides to achieve Fortran contiguity */
+    const npy_intp strides_pd[2] = {
+        sizeof(double complex),
+        nrowpd * sizeof(double complex)
+    };
+
+    PyArrayObject *ap_pd = (PyArrayObject *) PyArray_New(
+        &PyArray_Type, 2, dims_pd, NPY_COMPLEX128,
+        strides_pd, (void *)pd, 0, NPY_ARRAY_WRITEABLE, NULL
+    );
+
+    if (ap_pd == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
 
     // TODO: build numpy compatible array objects for y and pd
     // the arrays pd has dimension nrowpd by neq, but it might represent
     // either a dense or a banded array (including padding)
 
     // TODO: use ml and mu in the callback
-    PyObject *res = PyObject_CallFunction(cb->jac, "dOO", t, ap_y, ap_pd);
+    PyObject *res = PyObject_CallFunction(cb->jac, "dOO", t,
+        (PyObject *) ap_y,
+        (PyObject *) ap_pd
+    );
+
+    Py_DECREF(ap_y);
+    Py_DECREF(ap_pd);
 
 }
 

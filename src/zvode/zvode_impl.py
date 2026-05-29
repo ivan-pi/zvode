@@ -27,9 +27,12 @@ def _wrapped_fun(fun):
 def _wrapped_dense_jac(jac):
     """Wraps the Jacobian into a mutating function"""
 
+    # pd will be F-contiguous here, and since we are copying the results
+    # into it, jac() could be either C or F contiguous
     def zvode_jac(t,y,pd):
+
         n = y.shape[0]
-        pd[0:n-1,0:n-1] = jac(t,y)
+        pd[0:n,0:n] = jac(t,y)
 
     return zvode_jac
 
@@ -168,9 +171,8 @@ class ZVODE(OdeSolver):
 
     """
 
-    print("Hello 1")
     def __init__(self, fun, t0, y0, t_bound, *,
-                 method='BDF',
+                 zvode_method='BDF',
                  rtol=1.0e-3, atol=1.0e-6,
                  first_step=None,
                  min_step=0.0,
@@ -183,7 +185,6 @@ class ZVODE(OdeSolver):
                  jsv=1,
                  **extraneous):
 
-        print("Hello 2")
         warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound,
                         vectorized=False,
@@ -192,15 +193,17 @@ class ZVODE(OdeSolver):
         print("ZVODE parent has been initialized")
 
         self.tout = self.t_bound
+        self.ytmp = np.array(y0,dtype=np.complex128,order='F',copy=True)
+        self.y = self.ytmp.copy()
 
         self.istate = 1 # Start integration
         self.itask = 2 # Take one step and return
 
         # Select method
-        if method == 'Adams':
+        if zvode_method == 'Adams':
             self.meth = 1
             maxord_allowed = 12
-        elif method == 'BDF':
+        elif zvode_method == 'BDF':
             self.meth = 2
             maxord_allowed = 5
         else:
@@ -214,7 +217,7 @@ class ZVODE(OdeSolver):
 
         # Wrap the SciPy function callback to do in-place modification
         self.wrap_fun = _wrapped_fun(fun)
-        self.jac = jac
+        self.wrap_jac = _wrapped_dense_jac(jac) if jac else None
 
         # Determine iteration method
         self.miter, self.ml, self.mu = _determine_miter(
@@ -258,7 +261,6 @@ class ZVODE(OdeSolver):
         # Real workspace
         lrw = 20 + self.n
         self.rwork = np.empty(lrw,dtype=np.float64)
-        self.rwork[1] = t_bound
 
         # Integer work space
         liw = 30 if self.miter in (0,3) else 30 + self.n
@@ -275,6 +277,7 @@ class ZVODE(OdeSolver):
         self.iwork[4:9] = 0
 
         # TODO: domain checks for step-sizes
+        #self.rwork[0] = t_bound
 
         if first_step is not None:
             self.h0 = validate_first_step(first_step,t0,t_bound)
@@ -315,7 +318,7 @@ class ZVODE(OdeSolver):
 
         t, istate = _zvode.zvode(
             self.wrap_fun,
-            self.y,
+            self.ytmp,
             self.t,
             self.tout,
             self.itol,
@@ -327,7 +330,7 @@ class ZVODE(OdeSolver):
             self.zwork,
             self.rwork,
             self.iwork,
-            self.jac,
+            self.wrap_jac,
             self.mf)
 
         print(f"_zvode.zvode returned with istate = {istate}")
@@ -337,63 +340,12 @@ class ZVODE(OdeSolver):
 
         self.istate = istate
         self.t = t
+        print(f"t = {self.t}")
+
+        self.y[:] = self.ytmp[:]
 
         # Succesful step
         return True, None
 
     def _dense_output_impl(self):
         raise NotImplementedError
-
-
-
-if __name__ == '__main__':
-
-    """
-    C The program below uses ZVODE to solve the following system of 2 ODEs:
-    C dw/dt = -i*w*w*z, dz/dt = i*z; w(0) = 1/2.1, z(0) = 1; t = 0 to 2*pi.
-    C Solution: w = 1/(z + 1.1), z = exp(it).  As z traces the unit circle,
-    C w traces a circle of radius 10/2.1 with center at 11/2.1.
-    C For convenience, Main passes RPAR = (imaginary unit i) to FEX and JEX.
-    """
-    import matplotlib.pyplot as plt
-    from scipy.integrate import solve_ivp
-
-
-    def fun(t,y,rpar):
-        ydot = np.empty_like(y)
-        ydot[0] = -rpar*y[0]**2*y[1]
-        ydot[1] = rpar*y[1]
-        return ydot
-
-    # Only set the non-zero values
-    def jac(t,y,rpar):
-        J = np.empty_like(y,shape=(2,2),order='F')
-
-        J[0,0] = -2.0*rpar*y[0]*y[1]
-        J[0,1] = -rpar*y[0]**2
-        J[1,1] = rpar
-
-        return J
-
-    t0 = 0.0
-    y0 = np.array([1.0/2.1,1.0],dtype=np.complex128)
-
-    dtout = 0.1570796326794896
-    t_eval = dtout*np.arange(40)
-
-    rtol = 1.0e-9
-    atol = 1.0e-8
-
-    rpar = complex(0.0,1.0)
-
-    sol = solve_ivp(fun,(t0,t_eval[-1]),y0,
-        method=ZVODE,
-        t_eval=t_eval,
-        args=(rpar),
-        rtol=1.0e-8,
-        atol=1.0e-9)
-
-    print(sol)
-    print(f'No. f-s = {nfev}, No. J-s = {njev}, No. LU-s = {nlu}')
-
-
