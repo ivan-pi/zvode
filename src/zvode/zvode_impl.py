@@ -24,16 +24,18 @@ def _wrapped_fun(fun):
 
     return zvode_fun
 
-def _wrapped_dense_jac(jac):
+def _wrapped_jac(jac,banded=False):
     """Wraps the Jacobian into a mutating function"""
 
     # pd will be F-contiguous here, and since we are copying the results
     # into it, jac() could be either C or F contiguous
     def zvode_jac(t,y,pd):
-
+        assert y.shape[0] == pd.shape[1]
+        # The pd array may be padded in the first dimension
         n = y.shape[0]
         pd[0:n,0:n] = jac(t,y)
 
+    # TODO: handle banded Jacobian case
     return zvode_jac
 
 #  ITOL    RTOL       ATOL          EWT(i)
@@ -193,8 +195,8 @@ class ZVODE(OdeSolver):
         print("ZVODE parent has been initialized")
 
         self.tout = self.t_bound
-        self.ytmp = np.array(y0,dtype=np.complex128,order='F',copy=True)
-        self.y = self.ytmp.copy()
+        self._ytmp = np.array(y0,dtype=np.complex128,order='F',copy=True)
+        self.y = self._ytmp.copy()
 
         self.istate = 1 # Start integration
         self.itask = 2 # Take one step and return
@@ -217,7 +219,7 @@ class ZVODE(OdeSolver):
 
         # Wrap the SciPy function callback to do in-place modification
         self.wrap_fun = _wrapped_fun(fun)
-        self.wrap_jac = _wrapped_dense_jac(jac) if jac else None
+        self.wrap_jac = _wrapped_jac(jac) if jac else None
 
         # Determine iteration method
         self.miter, self.ml, self.mu = _determine_miter(
@@ -318,7 +320,7 @@ class ZVODE(OdeSolver):
 
         t, istate = _zvode.zvode(
             self.wrap_fun,
-            self.ytmp,
+            self._ytmp,
             self.t,
             self.tout,
             self.itol,
@@ -342,7 +344,7 @@ class ZVODE(OdeSolver):
         self.t = t
         print(f"t = {self.t}")
 
-        self.y[:] = self.ytmp[:]
+        self.y = self._ytmp.copy()
 
         # Succesful step
         return True, None
