@@ -135,13 +135,17 @@ _Static_assert(sizeof(int) == 4, "iwork bridging assumes a 32-bit C int");
 /* Array argument validators                                          */
 /* ------------------------------------------------------------------ */
 
-/* Returns 1 (ok) or 0 (failure, exception set). */
+/* Returns 1 (ok) or 0 (failure, exception set).
+ * ndim     : required number of dimensions
+ * typenum  : required NumPy type (e.g. NPY_COMPLEX128)
+ * order    : 'C' = require C-contiguous, 'F' = require Fortran-contiguous,
+ *            0   = no contiguity check */
 static inline int
-check_array_1d(PyArrayObject *ap, const char *name, int typenum)
+check_array(PyArrayObject *ap, const char *name, int ndim, int typenum, char order)
 {
-    if (PyArray_NDIM(ap) != 1) {
+    if (PyArray_NDIM(ap) != ndim) {
         PyErr_Format(PyExc_ValueError,
-            "zvode: %s must be 1-D (got %d-D)", name, PyArray_NDIM(ap));
+            "zvode: %s must be %d-D (got %d-D)", name, ndim, PyArray_NDIM(ap));
         return 0;
     }
     if (PyArray_TYPE(ap) != typenum) {
@@ -149,12 +153,24 @@ check_array_1d(PyArrayObject *ap, const char *name, int typenum)
             "zvode: %s must have dtype %s", name, dtype_name(typenum));
         return 0;
     }
-    if (!PyArray_IS_C_CONTIGUOUS(ap)) {
+    if (order == 'C' && !PyArray_IS_C_CONTIGUOUS(ap)) {
         PyErr_Format(PyExc_ValueError,
             "zvode: %s must be C-contiguous", name);
         return 0;
     }
+    if (order == 'F' && !PyArray_IS_F_CONTIGUOUS(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be Fortran-contiguous", name);
+        return 0;
+    }
     return 1;
+}
+
+/* Convenience wrappers for the common cases. */
+static inline int
+check_array_1d(PyArrayObject *ap, const char *name, int typenum)
+{
+    return check_array(ap, name, 1, typenum, 'C');
 }
 
 static inline int
@@ -486,19 +502,7 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
         return NULL;
     }
 
-    /* yh must be 2-D, F-contiguous, complex128 */
-    if (PyArray_NDIM(ap_yh) != 2) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: yh must be 2-D");
-        return NULL;
-    }
-    if (PyArray_TYPE(ap_yh) != NPY_COMPLEX128) {
-        PyErr_SetString(PyExc_TypeError, "zvindy: yh must have dtype complex128");
-        return NULL;
-    }
-    if (!PyArray_IS_F_CONTIGUOUS(ap_yh)) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: yh must be Fortran-contiguous");
-        return NULL;
-    }
+    if (!check_array(ap_yh,  "yh",  2, NPY_COMPLEX128, 'F')) return NULL;
 
     if (!check_array_1d(ap_dky, "dky", NPY_COMPLEX128)) return NULL;
     if (!check_writable(ap_dky, "dky"))                 return NULL;
