@@ -195,10 +195,8 @@ class ZVODE(OdeSolver):
                         vectorized=False,
                         support_complex=True)
 
-        print("ZVODE parent has been initialized")
-
         self.tout = self.t_bound
-        self._ytmp = np.array(y0,dtype=np.complex128,order='F',copy=True)
+        self._ytmp = np.array(y0,dtype=np.complex128,order='C',copy=True)
         self.y = self._ytmp.copy()
 
         self.istate = 1 # Start integration
@@ -222,11 +220,12 @@ class ZVODE(OdeSolver):
 
         # Wrap the SciPy function callback to do in-place modification
         self.wrap_fun = _wrapped_fun(fun)
-        self.wrap_jac = _wrapped_jac(jac) if jac else None
 
         # Determine iteration method
         self.miter, self.ml, self.mu = _determine_miter(
             jac, lband, uband, miter)
+
+        self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
         # TODO: Jacobian-saving strategy checks
         self.jsv = jsv
@@ -246,7 +245,7 @@ class ZVODE(OdeSolver):
             elif self.mf < 0:
                 lwm = self.n**2
             else:
-                lwn = None
+                lwm = None
         elif self.miter == 3:
             lwm = self.n
         elif self.miter in (4,5):
@@ -313,19 +312,15 @@ class ZVODE(OdeSolver):
             warnings.warn("'max_steps' are ignored currently")
             # self.iwork[5] = int(max_steps)
 
-        print("ZVODE initialization complete")
-
 
     def _step_impl(self):
         """Call ZVODE for one step"""
-
-        print("entering _step_impl")
 
         t, istate = _zvode.zvode(
             self.wrap_fun,
             self._ytmp,
             self.t,
-            self.tout,
+            self.t_bound,
             self.itol,
             self.rtol,
             self.atol,
@@ -338,14 +333,11 @@ class ZVODE(OdeSolver):
             self.wrap_jac,
             self.mf)
 
-        print(f"_zvode.zvode returned with istate = {istate}")
-
-        if istate != 2:
-            return False, f"ZVODE returned with istate = {istate}"
-
         self.istate = istate
         self.t = t
-        print(f"t = {self.t}")
+
+        if self.istate != 2:
+            return False, f"ZVODE returned with istate = {self.istate}"
 
         self.y = self._ytmp.copy()
 

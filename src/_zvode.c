@@ -237,11 +237,11 @@ static void jac_adaptor(
     struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
     assert(cb != NULL);
     assert(cb->jac != NULL && cb->jac != Py_None);
+    assert(nrowpd >= (cb->jac_is_banded ? ml+mu+1 : neq));
 
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, (void *) y);
-    assert(ap_y);
     if (ap_y == NULL) {
         cb->error = 1;
         return;
@@ -270,18 +270,14 @@ static void jac_adaptor(
         return;
     }
 
-    // TODO: build numpy compatible array objects for y and pd
-    // the arrays pd has dimension nrowpd by neq, but it might represent
-    // either a dense or a banded array (including padding)
 
-    // TODO: use ml and mu in the callback
     PyObject *res;
     if (cb->jac_is_banded) {
-        assert(nrowpd >= ml+mu+1);
+        /* jac(t, y, pd, ml, mu): Python writes the Jacobian into pd in place. */
         res = PyObject_CallFunction(cb->jac, "dOOii", t,
             (PyObject *) ap_y, (PyObject *) ap_pd, ml, mu);
     } else {
-        assert(nrowpd >= neq);
+        /* jac(t, y, pd): Python writes the Jacobian into pd in place. */
         res = PyObject_CallFunction(cb->jac, "dOO", t,
             (PyObject *) ap_y, (PyObject *) ap_pd);
     }
@@ -343,7 +339,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(ap_iwork);
     assert(cb.fun);
     assert(cb.jac); // should be Py_None or a callable
-    assert(istate > 0);
     assert(itask > 0);
     assert(mf > 0);
 
@@ -362,7 +357,11 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     const int miter = abs(mf) % 10;
     cb.jac_is_banded = (miter == 4);
 
-    // Upon initialization of ZVODE, do some stringent checks
+    // Upon initialization of ZVODE, do stringent type checks, but skip
+    // them otherwise, because they are expensive.
+    // The caller should not change any of the arrays when the integration
+    // is active.
+
     if (istate == 1) {
 
         if (!PyCallable_Check(cb.fun)) {
@@ -376,8 +375,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         }
 
         /* Validate dtype, dimensionality, contiguity, and writability for every
-         * array argument.  We check on every call, not only istate==1, because
-         * callers may pass different objects across invocations. */
+         * array argument.*/
         if (!check_array_1d(ap_y,     "y",     NPY_COMPLEX128) || !check_writable(ap_y,     "y"))     return NULL;
         if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128) || !check_writable(ap_zwork, "zwork")) return NULL;
         if (!check_array_1d(ap_rwork, "rwork", NPY_FLOAT64)    || !check_writable(ap_rwork, "rwork")) return NULL;
