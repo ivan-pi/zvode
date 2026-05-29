@@ -235,7 +235,7 @@ static void jac_adaptor(
      * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
      * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
 
-    PyArrayObject *ap_pd;
+    PyArrayObject *ap_pd = NULL;
 
     // TODO: build numpy compatible array objects for y and pd
     // the arrays pd has dimension nrowpd by neq, but it might represent
@@ -285,6 +285,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
        &cb.jac, &mf)) {
         return NULL;
     }
+
     assert(tout >= t);
     assert(ap_y);
     assert(ap_rtol);
@@ -293,7 +294,10 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(ap_rwork);
     assert(ap_iwork);
     assert(cb.fun);
-    assert(cb.jac); // could be Python None
+    assert(cb.jac); // should be Py_None or a callable
+    assert(istate > 0);
+    assert(itask > 0);
+    assert(mf > 0);
 
 #ifdef ZVODE_DEBUG
     dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
@@ -323,16 +327,10 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(zwork);
     assert(rwork);
     assert(iwork);
-    assert(t != tout);
-    assert(istate > 0);
-    assert(itask > 0);
-    assert(mf > 0);
+    assert(rtol);
+    assert(atol);
 
-//      SUBROUTINE C_ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
-//     1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-//     2            JAC, MF, CTX) BIND(C,name="c_zvode")
-
-    // Call the Fortran integrator
+    // Call the actual "C" integrator
     c_zvode(
         &fun_adaptor,
         neq, y, &t, tout,
