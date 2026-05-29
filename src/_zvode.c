@@ -410,9 +410,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         }
     }
 
-   const int lzw = (int) PyArray_SIZE(ap_zwork);
-   const int lrw = (int) PyArray_SIZE(ap_rwork);
-   const int liw = (int) PyArray_SIZE(ap_iwork);
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
 
     double complex *y     = (double complex *) PyArray_DATA(ap_y);
     double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
