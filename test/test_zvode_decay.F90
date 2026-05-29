@@ -119,7 +119,7 @@ program test_zvode_scalar_real_decay
   ! ==================================================================
 #ifdef USE_ZVODE_BIND_C
   call zvode(fex, neq, y, t, tout,               &
-             itol, rtol, atol,                   &
+             itol, [rtol], [atol],                   &
              itask, istate, iopt,                &
              zwork, lzw, rwork, lrw, iwork, liw, &
              dummy_jac, mf, ctx)
@@ -210,17 +210,21 @@ subroutine fex(neq, t, y, ydot, ctx) bind(c)
   use, intrinsic :: iso_c_binding, only: &
       c_int, c_double, c_double_complex, c_ptr, c_associated
   implicit none
-  type(c_ptr),               value         :: ctx
-#else
-subroutine fex(neq, t, y, ydot, rpar, ipar)
-  implicit none
-  double precision, intent(in)  :: rpar(*)
-  integer,          intent(in)  :: ipar(*)
-#endif
   integer(c_int),            value         :: neq
   real(c_double),            value         :: t
   complex(c_double_complex), intent(in)    :: y(neq)
   complex(c_double_complex), intent(out)   :: ydot(neq)
+  type(c_ptr),               value         :: ctx
+#else
+subroutine fex(neq, t, y, ydot, rpar, ipar)
+  implicit none
+  integer, intent(in) :: neq
+  double precision, intent(in) :: t
+  double complex, intent(in)    :: y(neq)
+  double complex, intent(out)   :: ydot(neq)
+  double precision, intent(in)  :: rpar(*)
+  integer,          intent(in)  :: ipar(*)
+#endif
   integer :: i
 
   do i = 1, neq
@@ -240,17 +244,21 @@ subroutine dummy_jac(neq, t, y, ml, mu, pd, nrowpd, ctx) bind(c)
   use, intrinsic :: iso_c_binding, only: &
       c_int, c_double, c_double_complex, c_ptr, c_associated
   implicit none
-  type(c_ptr),               value         :: ctx
-#else
-subroutine dummy_jac(neq, t, y, ml, mu, pd, nrowpd, rpar, ipar)
-  implicit none
-  double precision, intent(in)    :: rpar(*)
-  integer,          intent(in)    :: ipar(*)
-#endif
   integer(c_int),            value         :: neq, ml, mu, nrowpd
   real(c_double),            value         :: t
   complex(c_double_complex), intent(in)    :: y(neq)
   complex(c_double_complex), intent(inout) :: pd(nrowpd, *)
+  type(c_ptr),               value         :: ctx
+#else
+subroutine dummy_jac(neq, t, y, ml, mu, pd, nrowpd, rpar, ipar)
+  implicit none
+  integer,          intent(in)    :: neq, ml, mu, nrowpd
+  double precision, intent(in)    :: t
+  double complex,   intent(in)    :: y(neq)
+  double complex,   intent(inout) :: pd(nrowpd, *)
+  double precision, intent(in)    :: rpar(*)
+  integer,          intent(in)    :: ipar(*)
+#endif
 
   ! Trap any accidental call: this subroutine must never execute.
   write(*, '(a)') &
