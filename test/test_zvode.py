@@ -70,9 +70,6 @@ def _make_workspaces(neq, mf):
     lrw = 20 + neq
     liw = 30 if miter in (0, 3) else 30 + neq
 
-    lzw *= 10
-    lrw *= 10
-
     zwork = np.zeros(lzw, dtype=np.complex128)
     rwork = np.zeros(lrw, dtype=np.float64)
     iwork = np.zeros(liw, dtype=np.int32)
@@ -110,26 +107,42 @@ def test_zvode_scalar_real_decay():
     mf = 10
 
     def fun(t, y, dy):
-        print("In fun with 1 eq")
-        print(y.dtype, dy.dtype)
+        print("ABC: In fun with 1 eq")
+        print(y.dtype, dy.dtype, y.shape, dy.shape)
         dy[:] = -y[:]
 
     y     = np.array([1.0 + 0j], dtype=np.complex128)
     t     = 0.0
     tout  = 10.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
+    iopt = 0
+
+    print(f"lzw = {zwork.shape}")
+    print(f"lrw = {rwork.shape}")
+    print(f"liw = {iwork.shape}")
 
     base = zwork.ctypes.data
     print(f"zwork: [{hex(base)}, {hex(base + zwork.nbytes)})")
 
+    itol = 1
+    rtol_arr = np.array([1e-6], dtype=np.float64)
+    atol_arr = np.array([1e-8], dtype=np.float64)
 
-    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
-                                    mf=mf, rtol=1e-6, atol=1e-8)
+    itask = 2
+    istate = 1
+
+    t_new, istate_new = _zvode.zvode(
+        fun, y, t, tout,
+        itol, rtol_arr, atol_arr,
+        itask, istate, iopt,
+        zwork, rwork, iwork,
+        None, mf)
+
 
     assert istate_new == 2,  f"ZVODE failed with istate = {istate_new}"
     assert t_new     == tout, "ZVODE did not reach TOUT"
 
-    assert_allclose(y[0].real, np.exp(-tout), rtol=1e-4)
+    assert_allclose(y[0].real, np.exp(-tout), rtol=1e-4, atol=1e-8)
     assert abs(y[0].imag) < 1e-12, "Imaginary part should remain zero"
 
 

@@ -69,6 +69,10 @@ static void fun_adaptor(
     assert(ap_dy);
     printf("calling fun at t = %f\n", t);
 
+    fprintf(stderr, "DEBUG: ap_y=%p (rc=%ld)  ap_dy=%p (rc=%ld)\n",
+            (void*)ap_y, Py_REFCNT(ap_y),
+            (void*)ap_dy, Py_REFCNT(ap_dy));
+    fflush(stderr);
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
     PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, ap_y, ap_dy);
     fprintf(stderr, "res = %p, exception set = %d\n",
@@ -78,7 +82,6 @@ static void fun_adaptor(
 
     Py_DECREF(ap_y);     // missing: ap_y is leaking every call
     Py_DECREF(ap_dy);    // missing: ap_dy is leaking every call
-
 }
 
 static void jac_adaptor(
@@ -168,7 +171,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(ap_zwork);
     assert(ap_rwork);
     assert(ap_iwork);
-
     assert(cb.fun);
     assert(cb.jac); // could be Python None
 

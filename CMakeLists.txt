@@ -29,10 +29,10 @@ find_package(Python REQUIRED
 python_add_library(_zvode MODULE
     src/_zvode.c
     extern/zvode.f
-    extern/zgbfa.f
-    extern/zgbsl.f
-    extern/zgefa.f
-    extern/zgesl.f
+    extern/linpack/zgbfa.f
+    extern/linpack/zgbsl.f
+    extern/linpack/zgefa.f
+    extern/linpack/zgesl.f
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
