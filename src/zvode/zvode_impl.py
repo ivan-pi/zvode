@@ -151,24 +151,26 @@ class ZVODEDenseOutput(DenseOutput):
     block state is needed after construction.
     """
 
-    def __init__(self, t_old, t, yh, nq, tn, h):
+    def __init__(self, t_old, t, yh, nq, h):
         super().__init__(t_old, t)
-        # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(tn)
+        # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(t)
         self.yh = yh
         self.nq = nq
-        self.tn = tn   # TCUR at the end of the step
-        self.h  = h    # HCUR at the end of the step
+        self.h  = h    # HCUR: step size the Nordsieck array is scaled to
 
     def _call_impl(self, t):
-        nq, tn, h = self.nq, self.tn, self.h
+        nq, h = self.nq, self.h
+        tn = self.t          # TCUR == right endpoint stored by base class
         scalar = t.ndim == 0
         t = np.atleast_1d(t)
         s = (t - tn) / h            # normalised position, shape (m,)
 
         # Seed Horner with the highest-order Nordsieck column
-        dky = np.outer(self.yh[:, nq], np.ones(t.shape[0]))  # (n, m)
+        c = _falling_factorial(nq, 0)
+        dky = np.outer(c * self.yh[:, nq], np.ones(t.shape[0]))  # (n, m)
         for j in range(nq - 1, -1, -1):
-            dky = self.yh[:, j, np.newaxis] + s * dky
+            c = _falling_factorial(j, 0)
+            dky = c * self.yh[:, j, np.newaxis] + s * dky
 
         return dky[:, 0] if scalar else dky
 
@@ -374,8 +376,7 @@ class ZVODE(OdeSolver):
     def _dense_output_impl(self):
         nq  = int(self.iwork[14])    # IWORK(15) = NQCUR
         h   = float(self.rwork[11])  # RWORK(12) = HCUR
-        tn  = float(self.rwork[12])  # RWORK(13) = TCUR
         nyh = self.n                 # initial NEQ = column length of YH
         # YH occupies zwork[0 : nyh*(nq+1)] in Fortran column-major order
         yh = self.zwork[:nyh * (nq + 1)].reshape((nyh, nq + 1), order='F').copy()
-        return ZVODEDenseOutput(self.t_old, self.t, yh, nq, tn, h)
+        return ZVODEDenseOutput(self.t_old, self.t, yh, nq, h)
