@@ -1,37 +1,52 @@
-! test_zvode_decay.f90
+! test_zvode_decay.F90
 ! ============================================================
 !  Fortran driver that replicates test_zvode_scalar_real_decay
 !  from the Python test-suite.
 !
 !  Problem : dy/dt = -y,  y(0) = 1 + 0i  =>  y(t) = exp(-t)
 !  Method  : Adams (MF = 10), no Jacobian (MITER = 0), NEQ = 1.
-!  State   : DOUBLE COMPLEX array, purely real solution.
 !
-!  Assertions (mirror the Python pytest):
+!  Two ZVODE calling conventions are supported, selected at
+!  compile time with the preprocessor macro USE_ZVODE_BIND_C:
+!
+!  Legacy interface  (default — zvode_original.f):
+!    CALL ZVODE(F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+!               ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
+!               JAC, MF, RPAR, IPAR)
+!    F(NEQ, T, Y, YDOT, RPAR, IPAR)          — Fortran 77 style
+!    JAC(NEQ, T, Y, ML, MU, PD, NROWPD, RPAR, IPAR)
+!
+!  bind(c) interface  (-DUSE_ZVODE_BIND_C — extern/zvode.f):
+!    CALL ZVODE(F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+!               ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
+!               JAC, MF, CTX)
+!    F(NEQ, T, Y, YDOT, CTX) BIND(C)         — all scalars by value
+!    JAC(NEQ, T, Y, ML, MU, PD, NROWPD, CTX) BIND(C)
+!
+!  Assertions mirror the Python pytest (see test_zvode_scalar_real_decay):
 !    1. ISTATE == 2 on return
 !    2. T == TOUT on return
-!    3. numpy-style allclose(Re[y], exp(-TOUT), rtol=1e-4, atol=atol)
+!    3. |Re[y(1)] - exp(-10)| <= 1e-4 * exp(-10) + atol   (numpy-style)
 !    4. |Im[y(1)]| < 1e-12
 !
 !  Exits with status 0 on pass, 1 on any failed assertion.
 !
 !  Compile (see also Makefile):
-!    gfortran -Wall -Wextra -fimplicit-none -fcheck=all -fbacktrace \
-!             -O0 -g -c test_zvode_decay.f90 -o test_zvode_decay.o
-!    gfortran -O2 -g -c zvode_original.f       -o zvode_original.o
-!    gfortran -O2 -g -c zvode_linpack_stubs.f  -o zvode_linpack_stubs.o
-!    gfortran test_zvode_decay.o zvode_original.o \
-!             zvode_linpack_stubs.o -lblas -o test_zvode_decay
+!    Legacy:   gfortran ... -c test_zvode_decay.F90  (no -D flag needed)
+!    bind(c):  gfortran ... -DUSE_ZVODE_BIND_C -c test_zvode_decay.F90
+!              (extern/zvode.f must be compiled first to provide zvode_mod.mod)
 ! ============================================================
 
 program test_zvode_scalar_real_decay
+#ifdef USE_ZVODE_BIND_C
+  use zvode_mod, only: zvode
+  use, intrinsic :: iso_c_binding, only: c_ptr, c_null_ptr
+#endif
   implicit none
 
-  ! ---- Subroutines that we pass to ZVODE as procedure arguments -----
-  ! Must be declared EXTERNAL so gfortran treats them as procedures,
-  ! not as scalar variables, when they appear in the CALL argument list.
-  external :: fex        ! right-hand side  f(t,y)
-  external :: dummy_jac  ! Jacobian stub (never invoked for MF=10)
+#ifndef USE_ZVODE_BIND_C
+  external :: zvode
+#endif
 
   ! ---- Problem / method constants -----------------------------------
   integer, parameter :: neq = 1   ! number of first-order ODEs
@@ -49,7 +64,7 @@ program test_zvode_scalar_real_decay
   double complex    :: y(neq)      ! solution vector (input y0; output y(t))
   double complex    :: zwork(lzw)  ! complex scratch space
   double precision  :: rwork(lrw)  ! real scratch space
-  integer           :: iwork(liw)  ! integer scratch space / diagnostics
+  integer           :: iwork(liw)  ! integer scratch / diagnostics
   double precision  :: t           ! current time (input t0; output t_reached)
   double precision  :: tout        ! target time
   double precision  :: rtol        ! relative tolerance (scalar: ITOL=1)
@@ -59,43 +74,62 @@ program test_zvode_scalar_real_decay
   integer           :: istate      ! 1 = first call; output 2 = success
   integer           :: iopt        ! 0 = all defaults
 
-  ! Pass-through arrays: not used in this test but required by the
-  ! ZVODE/FEX/DUMMY_JAC calling convention.
-  double precision  :: rpar(1)
-  integer           :: ipar(1)
+  ! ---- Interface-specific context / pass-through --------------------
+#ifdef USE_ZVODE_BIND_C
+  ! Opaque context pointer forwarded to every F/JAC callback.
+  ! Null here because this test needs no extra parameters.
+  type(c_ptr) :: ctx
+#else
+  ! Pass-through arrays required by the F77 calling convention.
+  ! Not used in this test.
+  double precision :: rpar(1)
+  integer          :: ipar(1)
+#endif
 
   ! ---- Local variables for result verification ----------------------
   double precision :: exact, abserr, rel_err, imag_part, tol
 
   ! ==================================================================
-  ! Initialise the problem
+  ! Initialise
   ! ==================================================================
   y(1)   = dcmplx(1.0d0, 0.0d0)   ! y(0) = 1 + 0 i
 
   t      = 0.0d0
   tout   = 10.0d0
-
   itol   = 1       ! EWT_i = rtol*|y_i| + atol
   rtol   = 1.0d-6
   atol   = 1.0d-8
-  itask  = 1       ! normal: integrate to TOUT by overshooting + interpolation
+  itask  = 1       ! normal: integrate to TOUT
   istate = 1       ! first call
-  iopt   = 0       ! use all defaults (max steps=500, max order=12, …)
+  iopt   = 0       ! use all defaults
 
   zwork  = dcmplx(0.0d0, 0.0d0)
   rwork  = 0.0d0
   iwork  = 0
-  rpar   = 0.0d0
-  ipar   = 0
+
+#ifdef USE_ZVODE_BIND_C
+  ctx  = c_null_ptr
+#else
+  rpar = 0.0d0
+  ipar = 0
+#endif
 
   ! ==================================================================
   ! Call ZVODE
   ! ==================================================================
+#ifdef USE_ZVODE_BIND_C
+  call zvode(fex, neq, y, t, tout,               &
+             itol, rtol, atol,                   &
+             itask, istate, iopt,                &
+             zwork, lzw, rwork, lrw, iwork, liw, &
+             dummy_jac, mf, ctx)
+#else
   call zvode(fex, neq, y, t, tout,               &
              itol, rtol, atol,                   &
              itask, istate, iopt,                &
              zwork, lzw, rwork, lrw, iwork, liw, &
              dummy_jac, mf, rpar, ipar)
+#endif
 
   ! ==================================================================
   ! Assertions — mirror test_zvode_scalar_real_decay
@@ -108,8 +142,7 @@ program test_zvode_scalar_real_decay
   end if
 
   ! 2.  assert t_new == tout
-  !     ZVODE with ITASK=1 sets T exactly to TOUT on success; we verify
-  !     this with < / > rather than /= to avoid -Wcompare-reals.
+  !     Avoid -Wcompare-reals: use < / > rather than /=.
   if (t < tout .or. t > tout) then
     write(*, '(a,es22.14)') 'FAIL: ZVODE did not reach TOUT, T = ', t
     stop 1
@@ -119,15 +152,14 @@ program test_zvode_scalar_real_decay
   !
   !     numpy.testing.assert_allclose checks:
   !       |actual - desired| <= atol_check + rtol_check * |desired|
-  !     The Python call uses rtol_check=1e-4 and atol_check=0 (default).
+  !     The Python call uses rtol_check=1e-4, atol_check=0 (default).
   !     At t=10 the solution exp(-10) ≈ 4.54e-5 is tiny, so the solver's
   !     own atol=1e-8 dominates the error weight and the absolute error is
-  !     O(1e-9).  We therefore use atol_check = atol (solver's absolute
-  !     tolerance) as a sensible floor, matching the intent of the check:
+  !     O(1e-9).  We therefore floor with atol to match the intent:
   !       |Re[y] - exp(-10)| <= 1e-4 * exp(-10) + 1e-8
   exact   = exp(-tout)
-  abserr  = abs(dble(y(1)) - exact)   ! dble() extracts real part of DOUBLE COMPLEX
-  rel_err = abserr / exact             ! reported for diagnostics only
+  abserr  = abs(dble(y(1)) - exact)
+  rel_err = abserr / exact
   tol     = 1.0d-4 * abs(exact) + atol
   if (abserr > tol) then
     write(*, '(a,es16.8,a,es16.8)') &
@@ -138,7 +170,7 @@ program test_zvode_scalar_real_decay
   end if
 
   ! 4.  assert abs(y[0].imag) < 1e-12
-  imag_part = abs(aimag(y(1)))         ! aimag() extracts imaginary part
+  imag_part = abs(aimag(y(1)))
   if (imag_part > 1.0d-12) then
     write(*, '(a,es10.2)') 'FAIL: Im[y(1)] = ', imag_part
     stop 1
@@ -166,70 +198,65 @@ program test_zvode_scalar_real_decay
   write(*, '(a,i0)')  '  NETF (error-test failures)    = ', iwork(23)
   write(*, '(a)') ''
 
-end program test_zvode_scalar_real_decay
-
+contains
 
 ! ==================================================================
 !  FEX — right-hand side subroutine
 !
-!  Interface required by ZVODE:
-!    SUBROUTINE F(NEQ, T, Y, YDOT, RPAR, IPAR)
-!    DOUBLE COMPLEX Y(NEQ), YDOT(NEQ)
-!    DOUBLE PRECISION T
-!
 !  Implements: YDOT(i) = -Y(i)
 ! ==================================================================
+#ifdef USE_ZVODE_BIND_C
+subroutine fex(neq, t, y, ydot, ctx) bind(c)
+  use, intrinsic :: iso_c_binding, only: &
+      c_int, c_double, c_double_complex, c_ptr, c_associated
+  implicit none
+  type(c_ptr),               value         :: ctx
+#else
 subroutine fex(neq, t, y, ydot, rpar, ipar)
   implicit none
-  integer,          intent(in)  :: neq
-  double precision, intent(in)  :: t
-  double complex,   intent(in)  :: y(neq)
-  double complex,   intent(out) :: ydot(neq)
-  double precision, intent(in)  :: rpar(*)   ! not used in this test
-  integer,          intent(in)  :: ipar(*)   ! not used in this test
+  double precision, intent(in)  :: rpar(*)
+  integer,          intent(in)  :: ipar(*)
+#endif
+  integer(c_int),            value         :: neq
+  real(c_double),            value         :: t
+  complex(c_double_complex), intent(in)    :: y(neq)
+  complex(c_double_complex), intent(out)   :: ydot(neq)
   integer :: i
 
   do i = 1, neq
     ydot(i) = -y(i)
   end do
 
-  ! Suppress -Wunused-dummy-argument (-Wextra) for t, rpar, ipar.
-  ! The condition t < -huge(t) is permanently false for any finite t
-  ! that ZVODE passes in, so this branch never executes at runtime.
-  if (t < -huge(t)) ydot(1) = ydot(1) + dcmplx(rpar(1), dble(ipar(1)))
-
 end subroutine fex
-
 
 ! ==================================================================
 !  DUMMY_JAC — Jacobian stub
 !
-!  Interface required by ZVODE:
-!    SUBROUTINE JAC(NEQ, T, Y, ML, MU, PD, NROWPD, RPAR, IPAR)
-!    DOUBLE COMPLEX Y(NEQ), PD(NROWPD, NEQ)
-!    DOUBLE PRECISION T
-!
-!  For MF = 10 (Adams / MITER = 0) ZVODE never calls the Jacobian
-!  routine; a dummy subroutine is all that is required.
+!  For MF = 10 (Adams / MITER = 0) ZVODE never calls the Jacobian;
+!  this stub exists solely to satisfy the linker.
 ! ==================================================================
+#ifdef USE_ZVODE_BIND_C
+subroutine dummy_jac(neq, t, y, ml, mu, pd, nrowpd, ctx) bind(c)
+  use, intrinsic :: iso_c_binding, only: &
+      c_int, c_double, c_double_complex, c_ptr, c_associated
+  implicit none
+  type(c_ptr),               value         :: ctx
+#else
 subroutine dummy_jac(neq, t, y, ml, mu, pd, nrowpd, rpar, ipar)
   implicit none
-  integer,          intent(in)    :: neq, ml, mu, nrowpd
-  double precision, intent(in)    :: t
-  double complex,   intent(in)    :: y(neq)
-  double complex,   intent(inout) :: pd(nrowpd, neq)
   double precision, intent(in)    :: rpar(*)
   integer,          intent(in)    :: ipar(*)
+#endif
+  integer(c_int),            value         :: neq, ml, mu, nrowpd
+  real(c_double),            value         :: t
+  complex(c_double_complex), intent(in)    :: y(neq)
+  complex(c_double_complex), intent(inout) :: pd(nrowpd, *)
 
   ! Trap any accidental call: this subroutine must never execute.
   write(*, '(a)') &
     'BUG: dummy_jac called — should never happen for MF = 10 (MITER = 0)'
   stop 1
 
-  ! Dead code below this STOP.
-  ! Referencing every dummy argument suppresses -Wunused-dummy-argument
-  ! from -Wextra.  The STOP above ensures this code never runs at runtime.
-  pd(1, 1) = y(neq) * dcmplx( t + dble(ml + mu + nrowpd) + rpar(1), &
-                               dble(ipar(1)) )
-
 end subroutine dummy_jac
+
+end program test_zvode_scalar_real_decay
