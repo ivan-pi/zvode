@@ -41,7 +41,7 @@ void zvode (
     int mf, void *ctx);
 */
 
-void zvode(
+void c_zvode(
     zvode_fun f,
     const int neq,
     double complex y[],

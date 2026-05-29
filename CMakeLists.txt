@@ -29,6 +29,7 @@ find_package(Python REQUIRED
 python_add_library(_zvode MODULE
     src/_zvode.c
     extern/zvode.f
+    extern/c_zvode.f90
     extern/linpack/zgbfa.f
     extern/linpack/zgbsl.f
     extern/linpack/zgefa.f

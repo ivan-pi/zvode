@@ -1,48 +1,73 @@
-      module zvode_mod
-         use, intrinsic :: iso_c_binding
-         implicit none
-         private
+      MODULE ZVODE_MOD
+      IMPLICIT NONE
+      PRIVATE
 
-         public :: zvode, zvode_fun, zvode_jac, zvindy
+      PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
+      PUBLIC :: XSETF, XSETUN, ZVSRCO
 
-         abstract interface
-            subroutine zvode_fun(neq,t,y,ydot,ctx) bind(c)
-               import c_int, c_double, c_double_complex, c_ptr
-               implicit none
-               integer(c_int), value :: neq
-               real(c_double), value :: t
-               complex(c_double_complex), intent(in) :: y(neq)
-               complex(c_double_complex), intent(out) :: ydot(neq)
-               type(c_ptr), value :: ctx
-            end subroutine
-            subroutine zvode_jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
-               import c_int, c_double, c_double_complex, c_ptr
-               integer(c_int), value :: neq, ml, mu, nrowpd
-               real(c_double), value :: t
-               complex(c_double_complex), intent(in) :: y(neq)
-               complex(c_double_complex), intent(inout) :: pd(nrowpd,*)
-               type(c_ptr), value :: ctx
-            end subroutine
-         end interface
+      INTEGER, PARAMETER :: DP = KIND(1.0D0)
 
-      contains
+      TYPE, ABSTRACT :: ZVODE_FUN
+         INTEGER :: NEQ
+      CONTAINS
+         PROCEDURE(ZVODE_FUN_EVAL), PASS(FUN), DEFERRED :: EVAL
+      END TYPE
 
-C NOTE: This version of ZVODE has been modified
+      TYPE, ABSTRACT :: ZVODE_JAC
+         INTEGER :: NEQ
+      CONTAINS
+         PROCEDURE(ZVODE_JAC_EVAL), PASS(JAC), DEFERRED :: EVAL
+      END TYPE
+
+      ABSTRACT INTERFACE
+         SUBROUTINE ZVODE_FUN_EVAL(FUN,T,Y,YDOT)
+            IMPORT ZVODE_FUN, C_DOUBLE, C_DOUBLE_COMPLEX
+            CLASS(ZVODE_FUN) :: FUN
+            REAL(C_DOUBLE), INTENT(IN) :: T
+            COMPLEX(C_DOUBLE_COMPLEX), INTENT(IN) :: Y(FUN%NEQ)
+            COMPLEX(C_DOUBLE_COMPLEX), INTENT(OUT) :: YDOT(FUN%NEQ)
+         END SUBROUTINE
+         SUBROUTINE ZVODE_JAC_EVAL(JAC,T,Y,ML,MU,PD,NROWPD)
+            IMPORT ZVODE_JAC, C_DOUBLE, C_DOUBLE_COMPLEX
+            CLASS(ZVODE_JAC) :: JAC
+            INTEGER, INTENT(IN) :: ML, MU, NROWPD
+            REAL(C_DOUBLE), INTENT(IN) :: T
+            COMPLEX(C_DOUBLE_COMPLEX), INTENT(IN) :: Y(JAC%NEQ)
+            COMPLEX(C_DOUBLE_COMPLEX), INTENT(INOUT) :: PD(NROWPD,*)
+         END SUBROUTINE
+      END INTERFACE
+
+      ABSTRACT INTERFACE
+         SUBROUTINE VNLS_SUB (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR,
+     1                        IWM, WM, F, JAC, PDUM, NFLAG)
+            IMPORT ZVODE_FUN, ZVODE_JAC, DP
+            CLASS(ZVODE_FUN) :: F
+            CLASS(ZVODE_JAC) :: JAC
+            CLASS(ZVODE_FUN) :: PDUM
+            INTEGER :: LDYH, IWM(*), NFLAG
+            COMPLEX(DP) :: Y(*), YH(LDYH,*), VSAV(*), SAVF(*)
+            COMPLEX(DP) :: ACOR(*), WM(*)
+            REAL(DP) :: EWT(*)
+         END SUBROUTINE
+      END INTERFACE
+
+      CONTAINS
+C
+C NOTE: This version of ZVODE has been modified to use functors
+C       instead of external procedures
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-     2            JAC, MF, CTX) BIND(C,name="zvode")
+     2            JAC, MF)
 C Argument list
-      procedure(zvode_fun) :: f
-      procedure(zvode_jac) :: jac
-      integer(c_int), intent(in), value :: neq, itol, itask, iopt, lzw,
-     1      lrw, liw, mf
-      real(c_double), intent(in), value :: tout
-      real(c_double), intent(inout) :: t
-      complex(c_double_complex), intent(inout) :: y(neq), zwork(lzw)
-      real(c_double), intent(inout) :: rwork(lrw)
-      real(c_double), intent(in) :: rtol(*), atol(*)
-      integer(c_int), intent(inout) :: istate, iwork(liw)
-      type(c_ptr), value :: ctx
+      class(zvode_fun) :: f
+      class(zvode_jac) :: jac
+      integer, intent(in), :: neq, itol, itask, iopt, lzw, lrw, liw, mf
+      real(dp), intent(in), :: tout
+      real(dp), intent(inout) :: t
+      complex(dp), intent(inout) :: y(neq), zwork(lzw)
+      real(dp), intent(inout) :: rwork(lrw)
+      real(dp), intent(in) :: rtol(*), atol(*)
+      integer, intent(inout) :: istate, iwork(liw)
 C-----------------------------------------------------------------------
 C ZVODE: Variable-coefficient Ordinary Differential Equation solver,
 C with fixed-leading-coefficient implementation.
@@ -1103,15 +1128,15 @@ C
       INTEGER I, IER, IFLAG, IMXER, JCO, KGO, LENIW, LENJ, LENP, LENZW,
      1   LENRW, LENWM, LF0, MBAND, MFA, ML, MORD, MU, MXHNL0, MXSTP0,
      2   NITER, NSLAST
-      CHARACTER*80 MSG
+      CHARACTER(len=80) MSG
 C
       DIMENSION MORD(2)
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to ZVODE.
 C-----------------------------------------------------------------------
-      SAVE MORD, MXHNL0, MXSTP0
-      SAVE ZERO, ONE, TWO, FOUR, PT2, HUN
+C      SAVE MORD, MXHNL0, MXSTP0
+C      SAVE ZERO, ONE, TWO, FOUR, PT2, HUN
 C-----------------------------------------------------------------------
 C The following internal COMMON blocks contain variables which are
 C communicated between subroutines in the ZVODE package, or which are
@@ -1378,7 +1403,7 @@ C-----------------------------------------------------------------------
       NQU = 0
 C Initial call to F.  (LF0 points to YH(*,2).) -------------------------
       LF0 = LYH + NYH
-      CALL F (N, T, Y, ZWORK(LF0), CTX)
+      CALL F % EVAL(T, Y, ZWORK(LF0))
       NFE = 1
 C Load the initial value vector in YH. ---------------------------------
       CALL ZCOPY (N, Y, 1, ZWORK(LYH), 1)
@@ -1391,7 +1416,7 @@ C Load and invert the EWT array.  (H is temporarily set to 1.0.) -------
  120    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
       IF (H0 .NE. ZERO) GO TO 180
 C Call ZVHIN to set initial step size H0 to be attempted. --------------
-      CALL ZVHIN (N, T, ZWORK(LYH), ZWORK(LF0), F, CTX, TOUT,
+      CALL ZVHIN (N, T, ZWORK(LYH), ZWORK(LF0), F, TOUT,
      1   UROUND, RWORK(LEWT), ITOL, ATOL, Y, ZWORK(LACOR), H0,
      2   NITER, IER)
       NFE = NFE + NITER
@@ -1476,11 +1501,11 @@ C-----------------------------------------------------------------------
  290  CONTINUE
 C-----------------------------------------------------------------------
 C CALL ZVSTEP (Y, YH, NYH, YH, EWT, SAVF, VSAV, ACOR,
-C              WM, IWM, F, JAC, F, ZVNLSD, CTX)
+C              WM, IWM, F, JAC, F, ZVNLSD)
 C-----------------------------------------------------------------------
       CALL ZVSTEP (Y, ZWORK(LYH), NYH, ZWORK(LYH), RWORK(LEWT),
      1   ZWORK(LSAVF), Y, ZWORK(LACOR), ZWORK(LWM), IWORK(LIWM),
-     2   F, JAC, F, ZVNLSD, CTX)
+     2   F, JAC, F, ZVNLSD)
       KGO = 1 - KFLAG
 C Branch on KFLAG.  Note: In this version, KFLAG can not be set to -3.
 C  KFLAG .eq. 0,   -1,  -2
@@ -1729,17 +1754,16 @@ C
 C----------------------- End of Subroutine ZVODE -----------------------
       END
 *DECK ZVHIN
-      SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, CTX, TOUT, UROUND,
+      SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, TOUT, UROUND,
      1   EWT, ITOL, ATOL, Y, TEMP, H0, NITER, IER)
-      procedure(zvode_fun) :: f
-      DOUBLE COMPLEX Y0, YDOT, Y, TEMP
+      class(zvode_fun) :: f
+      complex(dp) Y0, YDOT, Y, TEMP
       DOUBLE PRECISION T0, TOUT, UROUND, EWT, ATOL, H0
-      INTEGER N, IPAR, ITOL, NITER, IER
+      INTEGER N, ITOL, NITER, IER
       DIMENSION Y0(*), YDOT(*), EWT(*), ATOL(*), Y(*),
      1   TEMP(*)
-      TYPE(C_PTR), VALUE :: CTX
 C-----------------------------------------------------------------------
-C Call sequence input -- N, T0, Y0, YDOT, F, CTX, TOUT, UROUND,
+C Call sequence input -- N, T0, Y0, YDOT, F, TOUT, UROUND,
 C                        EWT, ITOL, ATOL, Y, TEMP
 C Call sequence output -- H0, NITER, IER
 C COMMON block variables accessed -- None
@@ -1822,7 +1846,7 @@ C Estimate the second derivative as a difference quotient in f. --------
       T1 = T0 + H
       DO 60 I = 1, N
  60     Y(I) = Y0(I) + H*YDOT(I)
-      CALL F (N, T1, Y, TEMP, CTX)
+      CALL F % EVAL(T1, Y, TEMP)
       DO 70 I = 1, N
  70     TEMP(I) = (TEMP(I) - YDOT(I))/H
       YDDNRM = ZVNORM (N, TEMP, EWT)
@@ -1865,7 +1889,7 @@ C----------------------- End of Subroutine ZVHIN -----------------------
       END
 *DECK ZVINDY
       SUBROUTINE ZVINDY (T, K, YH, LDYH, DKY, IFLAG)
-      DOUBLE COMPLEX YH, DKY
+      complex(dp) YH, DKY
       DOUBLE PRECISION T
       INTEGER K, LDYH, IFLAG
       DIMENSION YH(LDYH,*), DKY(*)
@@ -1921,7 +1945,7 @@ C Type declarations for local variables --------------------------------
 C
       DOUBLE PRECISION C, HUN, R, S, TFUZZ, TN1, TP, ZERO
       INTEGER I, IC, J, JB, JB2, JJ, JJ1, JP1
-      CHARACTER*80 MSG
+      CHARACTER(LEN=80) MSG
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this integrator.
@@ -1989,16 +2013,16 @@ C----------------------- End of Subroutine ZVINDY ----------------------
       END
 *DECK ZVSTEP
       SUBROUTINE ZVSTEP (Y, YH, LDYH, YH1, EWT, SAVF, VSAV, ACOR,
-     1                  WM, IWM, F, JAC, PSOL, VNLS, CTX)
-      EXTERNAL PSOL, VNLS
-      procedure(zvode_fun) :: f
-      procedure(zvode_jac) :: jac
-      DOUBLE COMPLEX Y, YH, YH1, SAVF, VSAV, ACOR, WM
+     1                  WM, IWM, F, JAC, PSOL, VNLS)
+      class(zvode_fun) :: PSOL
+      procedure(VNLS_SUB) :: VNLS
+      class(zvode_fun) :: f
+      class(zvode_jac) :: jac
+      complex(dp) Y, YH, YH1, SAVF, VSAV, ACOR, WM
       DOUBLE PRECISION EWT
-      INTEGER LDYH, IWM, IPAR
+      INTEGER LDYH, IWM
       DIMENSION Y(*), YH(LDYH,*), YH1(*), EWT(*), SAVF(*), VSAV(*),
      1   ACOR(*), WM(*), IWM(*)
-      TYPE(C_PTR), VALUE :: CTX
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, YH1, EWT, SAVF, VSAV,
 C                        ACOR, WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR
@@ -2237,7 +2261,7 @@ C
 C Call the nonlinear system solver. ------------------------------------
 C
       CALL VNLS (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
-     1           F, JAC, PSOL, NFLAG, CTX)
+     1           F, JAC, PSOL, NFLAG)
 C
       IF (NFLAG .EQ. 0) GO TO 450
 C-----------------------------------------------------------------------
@@ -2344,7 +2368,7 @@ C-----------------------------------------------------------------------
       H = H*ETA
       HSCAL = H
       TAU(1) = H
-      CALL F (N, TN, Y, SAVF, CTX)
+      CALL F % EVAL (TN, Y, SAVF)
       NFE = NFE + 1
       DO 550 I = 1, N
  550    YH(I,2) = H*SAVF(I)
@@ -2623,7 +2647,7 @@ C----------------------- End of Subroutine ZVSET -----------------------
       END
 *DECK ZVJUST
       SUBROUTINE ZVJUST (YH, LDYH, IORD)
-      DOUBLE COMPLEX YH
+      complex(dp) YH
       INTEGER LDYH, IORD
       DIMENSION YH(LDYH,*)
 C-----------------------------------------------------------------------
@@ -2783,16 +2807,15 @@ C----------------------- End of Subroutine ZVJUST ----------------------
       END
 *DECK ZVNLSD
       SUBROUTINE ZVNLSD (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
-     1                 F, JAC, PDUM, NFLAG, CTX)
-      EXTERNAL PDUM
-      procedure(zvode_fun) :: f
-      procedure(zvode_jac) :: jac
-      DOUBLE COMPLEX Y, YH, VSAV, SAVF, ACOR, WM
-      DOUBLE PRECISION EWT
-      INTEGER LDYH, IWM, NFLAG, IPAR
+     1                 F, JAC, PDUM, NFLAG)
+      class(zvode_fun) :: pdum
+      class(zvode_fun) :: f
+      class(zvode_jac) :: jac
+      COMPLEX(DP) :: Y, YH, VSAV, SAVF, ACOR, WM
+      REAL(DP) :: EWT
+      INTEGER LDYH, IWM, NFLAG
       DIMENSION Y(*), YH(LDYH,*), VSAV(*), SAVF(*), EWT(*), ACOR(*),
      1          IWM(*), WM(*)
-      TYPE(C_PTR), value :: CTX
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, SAVF, EWT, ACOR, IWM, WM,
 C                        F, JAC, NFLAG, RPAR, IPAR
@@ -2922,7 +2945,7 @@ C-----------------------------------------------------------------------
  220  M = 0
       DELP = ZERO
       CALL ZCOPY (N, YH(1,1), 1, Y, 1 )
-      CALL F (N, TN, Y, SAVF, CTX)
+      CALL F % EVAL(TN, Y, SAVF)
       NFE = NFE + 1
       IF (IPUP .LE. 0) GO TO 250
 C-----------------------------------------------------------------------
@@ -2930,8 +2953,7 @@ C If indicated, the matrix P = I - h*rl1*J is reevaluated and
 C preprocessed before starting the corrector iteration.  IPUP is set
 C to 0 as an indicator that this has been done.
 C-----------------------------------------------------------------------
-      CALL ZVJAC (Y, YH, LDYH, EWT, ACOR, SAVF, WM, IWM, F, JAC, IERPJ,
-     1           CTX)
+      CALL ZVJAC (Y, YH, LDYH, EWT, ACOR, SAVF, WM, IWM, F, JAC, IERPJ)
       IPUP = 0
       RC = ONE
       DRC = ZERO
@@ -2986,7 +3008,7 @@ C-----------------------------------------------------------------------
       IF (M .EQ. MAXCOR) GO TO 410
       IF (M .GE. 2 .AND. DEL .GT. RDIV*DELP) GO TO 410
       DELP = DEL
-      CALL F (N, TN, Y, SAVF, CTX)
+      CALL F % EVAL (TN, Y, SAVF)
       NFE = NFE + 1
       GO TO 270
 C
@@ -3012,15 +3034,14 @@ C----------------------- End of Subroutine ZVNLSD ----------------------
       END
 *DECK ZVJAC
       SUBROUTINE ZVJAC (Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM, F, JAC,
-     1                 IERPJ, CTX)
-      procedure(zvode_fun) :: f
-      procedure(zvode_jac) :: jac
-      DOUBLE COMPLEX Y, YH, FTEM, SAVF, WM
+     1                 IERPJ)
+      class(zvode_fun) :: f
+      class(zvode_jac) :: jac
+      complex(dp) :: Y, YH, FTEM, SAVF, WM
       DOUBLE PRECISION EWT
-      INTEGER LDYH, IWM, IERPJ, IPAR
+      INTEGER LDYH, IWM, IERPJ
       DIMENSION Y(*), YH(LDYH,*), EWT(*), FTEM(*), SAVF(*),
      1   WM(*), IWM(*)
-      type(c_ptr), value :: ctx
 C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM,
 C                        F, JAC, RPAR, IPAR
@@ -3092,7 +3113,7 @@ C
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE COMPLEX DI, R1, YI, YJ, YJJ
+      complex(dp) DI, R1, YI, YJ, YJJ
       DOUBLE PRECISION CON, FAC, ONE, PT1, R, R0, THOU, ZERO
       INTEGER I, I1, I2, IER, II, J, J1, JJ, JOK, LENP, MBA, MBAND,
      1        MEB1, MEBAND, ML, ML1, MU, NP1
@@ -3133,7 +3154,7 @@ C If JOK = -1 and MITER = 1, call JAC to evaluate Jacobian. ------------
       LENP = N*N
       DO 110 I = 1,LENP
  110    WM(I) = ZERO
-      CALL JAC (N, TN, Y, 0, 0, WM, N, CTX)
+      CALL JAC % EVAL (TN, Y, 0, 0, WM, N)
       IF (JSV .EQ. 1) CALL ZCOPY (LENP, WM, 1, WM(LOCJS), 1)
       ENDIF
 C
@@ -3151,7 +3172,7 @@ C If MITER = 2, make N calls to F to approximate the Jacobian. ---------
         R = MAX(SRUR*ABS(YJ),R0/EWT(J))
         Y(J) = Y(J) + R
         FAC = ONE/R
-        CALL F (N, TN, Y, FTEM, CTX)
+        CALL F % EVAL (TN, Y, FTEM)
         DO 220 I = 1,N
  220      WM(I+J1) = (FTEM(I) - SAVF(I))*FAC
         Y(J) = YJ
@@ -3191,7 +3212,7 @@ C If MITER = 3, construct a diagonal approximation to J and P. ---------
       R = RL1*PT1
       DO 310 I = 1,N
  310    Y(I) = Y(I) + R*(H*SAVF(I) - YH(I,2))
-      CALL F (N, TN, Y, WM, CTX)
+      CALL F % EVAL (TN, Y, WM)
       NFE = NFE + 1
       DO 320 I = 1,N
         R1 = H*SAVF(I) - YH(I,2)
@@ -3222,7 +3243,7 @@ C If JOK = -1 and MITER = 4, call JAC to evaluate Jacobian. ------------
       JCUR = 1
       DO 410 I = 1,LENP
  410    WM(I) = ZERO
-      CALL JAC (N, TN, Y, ML, MU, WM(ML1), MEBAND, CTX)
+      CALL JAC % EVAL (TN, Y, ML, MU, WM(ML1), MEBAND)
       IF (JSV .EQ. 1)
      1   CALL ZACOPY (MBAND, N, WM(ML1), MEBAND, WM(LOCJS), MBAND)
       ENDIF
@@ -3242,7 +3263,7 @@ C If MITER = 5, make ML+MU+1 calls to F to approximate the Jacobian. ---
           YI = Y(I)
           R = MAX(SRUR*ABS(YI),R0/EWT(I))
  530      Y(I) = Y(I) + R
-        CALL F (N, TN, Y, FTEM, CTX)
+        CALL F % EVAL (TN, Y, FTEM)
         DO 550 JJ = J,N,MBAND
           Y(JJ) = YH(JJ,1)
           YJJ = Y(JJ)
@@ -3282,7 +3303,7 @@ C----------------------- End of Subroutine ZVJAC -----------------------
       END
 *DECK ZACOPY
       SUBROUTINE ZACOPY (NROW, NCOL, A, NROWA, B, NROWB)
-      DOUBLE COMPLEX A, B
+      complex(dp) A, B
       INTEGER NROW, NCOL, NROWA, NROWB
       DIMENSION A(NROWA,NCOL), B(NROWB,NCOL)
 C-----------------------------------------------------------------------
@@ -3308,7 +3329,7 @@ C----------------------- End of Subroutine ZACOPY ----------------------
       END
 *DECK ZVSOL
       SUBROUTINE ZVSOL (WM, IWM, X, IERSL)
-      DOUBLE COMPLEX WM, X
+      complex(dp) WM, X
       INTEGER IWM, IERSL
       DIMENSION WM(*), IWM(*), X(*)
 C-----------------------------------------------------------------------
@@ -3351,7 +3372,7 @@ C
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE COMPLEX DI
+      complex(dp) DI
       DOUBLE PRECISION ONE, PHRL1, R, ZERO
       INTEGER I, MEBAND, ML, MU
 C-----------------------------------------------------------------------
@@ -3479,7 +3500,7 @@ C***ROUTINES CALLED  (NONE)
 C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN, modified from DEWSET of 930809.
 C***END PROLOGUE  ZEWSET
-      DOUBLE COMPLEX YCUR
+      complex(dp) YCUR
       DOUBLE PRECISION RTOL, ATOL, EWT
       INTEGER N, ITOL
       INTEGER I
@@ -3525,7 +3546,7 @@ C***ROUTINES CALLED  ZABSSQ
 C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN, modified from DVNORM of 930809.
 C***END PROLOGUE  ZVNORM
-      DOUBLE COMPLEX V
+      complex(dp) V
       DOUBLE PRECISION W,   SUM
       INTEGER N,   I
       DIMENSION V(N), W(N)
@@ -3553,7 +3574,7 @@ C    ZABSSQ = DREAL(Z)**2 * DIMAG(Z)**2
 C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN.
 C***END PROLOGUE  ZABSSQ
-      DOUBLE COMPLEX Z
+      complex(dp) Z
       ZABSSQ = DREAL(Z)**2 + DIMAG(Z)**2
       RETURN
 C----------------------- END OF FUNCTION ZABSSQ ------------------------
@@ -3571,7 +3592,7 @@ C  Minor modification of BLAS routine ZSCAL.
 C***REVISION HISTORY  (YYMMDD)
 C   060530  DATE WRITTEN.
 C***END PROLOGUE  DZSCAL
-      DOUBLE COMPLEX ZX(*)
+      complex(dp) ZX(*)
       DOUBLE PRECISION DA
       INTEGER I,INCX,IX,N
 C
@@ -3602,7 +3623,7 @@ C  Minor modification of BLAS routine ZAXPY.
 C***REVISION HISTORY  (YYMMDD)
 C   060530  DATE WRITTEN.
 C***END PROLOGUE  DZAXPY
-      DOUBLE COMPLEX ZX(*),ZY(*)
+      complex(dp) ZX(*),ZY(*)
       DOUBLE PRECISION DA
       INTEGER I,INCX,INCY,IX,IY,N
       IF(N.LE.0)RETURN

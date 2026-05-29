@@ -13,7 +13,6 @@
 
 #include "zvode.h"
 
-
 /* ------------------------------------------------------------------ */
 /* Debug helpers (compile with -DZVODE_DEBUG to enable)               */
 /* ------------------------------------------------------------------ */
@@ -188,15 +187,16 @@ static void fun_adaptor(
     }
 
     printf("dy is ready.\n");
-    assert(ap_y);
-    assert(ap_dy);
+    assert(ap_y && y);
+    assert(ap_dy && dy);
+
     printf("calling fun at t = %f\n", t);
     fprintf(stderr, "DEBUG: ap_y=%p (rc=%ld)  ap_dy=%p (rc=%ld)\n",
             (void*)ap_y, Py_REFCNT(ap_y),
             (void*)ap_dy, Py_REFCNT(ap_dy));
     fflush(stderr);
 
-#if 1
+#if 0
 /* Safely convert the double to a Python Float */
     PyObject *py_t = PyFloat_FromDouble(t);
     if (!py_t) {
@@ -221,7 +221,20 @@ static void fun_adaptor(
         NULL // Must be NULL-terminated!
     );
 #else
+
+/* 1. Check if the function pointer matches the original */
+    void *expected_fun = (void *) cb->fun;
+
+    /* 2. Read the raw CPU Stack Pointer */
+    void *sp = __builtin_frame_address(0);
+    int is_aligned = ((uintptr_t)sp % 16 == 0);
+
+    fprintf(stderr, ">>> DIAGNOSTIC: cb->fun = %p | SP = %p | ALIGNED = %s\n",
+            expected_fun, sp, is_aligned ? "YES" : "NO");
+    fflush(stderr);
+
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
+    assert(cb->fun && ap_y && ap_dy);
     PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, (PyObject *)ap_y, (PyObject *)ap_dy);
 #endif
 
@@ -329,6 +342,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
                     itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
                     cb.jac, mf);
+    fprintf(stderr, ">>> cb->fun = %p\n",cb.fun);
 #endif
 
     if (istate == 1) {
@@ -365,7 +379,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 //     2            JAC, MF, CTX) BIND(C,name="zvode")
 
     // Call the Fortran integrator
-    zvode(
+    c_zvode(
         &fun_adaptor,
         neq, y, &t, tout,
         itol, rtol, atol,
