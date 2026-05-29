@@ -468,9 +468,9 @@ PyDoc_STRVAR(zvindy_doc,
 "hu  : float  -- HU, the last successfully used step size.\n"
 "dky : complex128 ndarray, 1-D length n, writable -- receives the result.\n"
 "\n"
-"Returns\n"
-"-------\n"
-"iflag : int -- 0 if successful, -1 if k is out of range, -2 if t is illegal.\n");
+"Raises\n"
+"------\n"
+"ValueError -- if k is out of range or t is outside [tn - hu, tn].\n");
 
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
 
@@ -503,14 +503,14 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     if (!check_array_1d(ap_dky, "dky", NPY_COMPLEX128)) return NULL;
     if (!check_writable(ap_dky, "dky"))                 return NULL;
 
-    const int n    = (int) PyArray_DIM(ap_yh, 0);   /* number of equations */
-    const int ldyh = n;                              /* leading dimension   */
-    const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order     */
+    const int n    = (int) PyArray_DIM(ap_dky, 0);      /* number of equations */
+    const int ldyh = (int) PyArray_DIM(ap_yh, 0);       /* leading dimension (>= n) */
+    const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1;   /* current order     */
 
-    if ((int) PyArray_SIZE(ap_dky) < n) {
+    if (ldyh < n) {
         PyErr_Format(PyExc_ValueError,
-            "zvindy: dky must have length >= %d (got %d)",
-            n, (int) PyArray_SIZE(ap_dky));
+            "zvindy: yh leading dimension (%d) must be >= len(dky) (%d)",
+            ldyh, n);
         return NULL;
     }
     if (k < 0 || k > nq) {
@@ -525,7 +525,19 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     int iflag = 0;
     zvindy(t, k, yh, ldyh, dky, &iflag);
 
-    return PyLong_FromLong((long) iflag);
+    if (iflag == -1) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: k=%d is out of range [0, nq=%d] (Fortran IFLAG=-1)", k, nq);
+        return NULL;
+    }
+    if (iflag == -2) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: t=%.17g is outside the valid interval [tn-hu, tn] "
+            "(Fortran IFLAG=-2)", t);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
 }
 
 static struct PyMethodDef zvode_module_methods[] = {
