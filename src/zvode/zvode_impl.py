@@ -18,14 +18,14 @@ MESSAGES = {
 }
 
 def _wrapped_fun(fun):
-    """Wraps the ODE function into a mutating function"""
+    """Adapt a SciPy-style f(t, y) → dy/dt callable to the in-place ZVODE signature."""
     def zvode_fun(t, y, dy):
         dy[:] = fun(t, y)
 
     return zvode_fun
 
 def _wrapped_jac(jac,banded=False):
-    """Wraps the Jacobian into a mutating function"""
+    """Adapt a SciPy-style jac(t, y) callable to the in-place ZVODE Jacobian signature."""
 
     # pd will be F-contiguous here, and since we are copying the results
     # into it, jac() could be either C or F contiguous
@@ -41,12 +41,20 @@ def _wrapped_jac(jac,banded=False):
 
     return zvode_banded_jac if banded else zvode_jac
 
-#  ITOL    RTOL       ATOL          EWT(i)
-#   1     scalar     scalar     RTOL*ABS(Y(i)) + ATOL
-#   2     scalar     array      RTOL*ABS(Y(i)) + ATOL(i)
-#   3     array      scalar     RTOL(i)*ABS(Y(i)) + ATOL
-#   4     array      array      RTOL(i)*ABS(Y(i)) + ATOL(i)
 def _check_tolerances(rtol, atol, n):
+    """Validate rtol/atol, warn if too small, and return the ZVODE ITOL flag.
+
+    ITOL encodes which combination of scalar/array tolerances is used:
+
+    ======  ==========  ==========  ===========================
+    ITOL    RTOL        ATOL        EWT(i)
+    ======  ==========  ==========  ===========================
+    1       scalar      scalar      RTOL*|Y(i)| + ATOL
+    2       scalar      array       RTOL*|Y(i)| + ATOL(i)
+    3       array       scalar      RTOL(i)*|Y(i)| + ATOL
+    4       array       array       RTOL(i)*|Y(i)| + ATOL(i)
+    ======  ==========  ==========  ===========================
+    """
     rtol = np.asarray(rtol)
     atol = np.asarray(atol)
 
@@ -86,10 +94,7 @@ def _check_tolerances(rtol, atol, n):
 
 
 def _determine_miter(jac, lband, uband, explicit_miter=None):
-    """
-    Determines the MITER flag, normalizes bandwidths, and enforces
-    integer/Jacobian constraints.
-    """
+    """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
 
     # --- 1. Validate Band Types ---
     def _validate_band(band, name):
@@ -146,9 +151,30 @@ def _falling_factorial(j, k):
 class ZVODEDenseOutput(DenseOutput):
     """Dense output interpolant for ZVODE using the Nordsieck history array.
 
-    Evaluates the interpolating polynomial via Horner's method on the
-    snapshot of YH taken at the end of the step.  No Fortran COMMON
-    block state is needed after construction.
+    Evaluates the interpolating polynomial via Horner's method applied to the
+    snapshot of the Nordsieck array YH captured at the end of each accepted
+    step.  The Nordsieck array column *j* holds ``H**j / j! * y^(j)(t)``, so
+    the polynomial is evaluated by the recurrence
+
+    .. math::
+
+        p(t) = \\sum_{j=0}^{nq} \\binom{s}{j}^{(k)} \\, yh_j,
+        \\quad s = (t - t_n) / h
+
+    where the falling-factorial weights are computed iteratively via Horner's
+    method.  No internal Fortran state is required after construction.
+
+    Parameters
+    ----------
+    t_old : float
+        Start of the step.
+    t : float
+        End of the step.
+    yh : ndarray, shape (n, nq+1), complex128
+        Nordsieck history array, column-major copy taken at the end of the
+        step and scaled to step size *h*.
+    h : float
+        Step size the Nordsieck array is scaled to (``HCUR`` in ZVODE).
     """
 
     def __init__(self, t_old, t, yh, h):
@@ -160,7 +186,7 @@ class ZVODEDenseOutput(DenseOutput):
         self.h = h      # HCUR: step size the Nordsieck array is scaled to
 
     def _call_impl(self, t):
-
+        """Evaluate the interpolant at time(s) *t*; returns shape (n,) or (n, m)."""
         nq, h = self.nq, self.h
         tn = self.t
 
@@ -182,32 +208,103 @@ class ZVODEDenseOutput(DenseOutput):
         return dky[:,0] if scalar else dky
 
 class ZVODE(OdeSolver):
-    """Wrapper of ZVODE
+    """Solver for complex-valued ODEs using ZVODE (Variable-coefficient, fixed-leading-coefficient).
+
+    ZVODE solves the initial value problem for stiff or non-stiff systems of
+    first-order complex ODEs::
+
+        dy/dt = f(t, y),   y(t0) = y0
+
+    where *y* is a complex vector.  It is based on the EPISODE/EPISODEB
+    packages and implements Adams (non-stiff) and BDF (stiff) methods with
+    orders up to 12 and 5 respectively.
+
+    .. note::
+
+        When using ZVODE for a stiff system, *f* must be analytic (i.e., each
+        component f(i) must be an analytic function of each y(j)).  For a
+        complex stiff system where *f* is not analytic, use a real-valued
+        solver on the equivalent real system of doubled dimension.
 
     Parameters
     ----------
     fun : callable
-        Right-hand side of the system.
+        Right-hand side of the system, ``f(t, y)``.  The output must be
+        array-like with the same shape as *y*.
     t0 : float
-        Initial time
-    y0 : array_like, shape(n,)
-        Initial state
+        Initial value of the independent variable.
+    y0 : array_like, shape (n,)
+        Initial state; will be cast to ``complex128``.
     t_bound : float
-        Boundary time - the integration won't continue beyond it.
-        Determines the driection of the integration
-    method : string
-
+        Boundary time.  Integration will not proceed past this value; also
+        determines the direction of integration.
+    zvode_method : {'BDF', 'Adams'}, optional
+        Integration method.  ``'BDF'`` (default) uses the stiff
+        Backward-Differentiation Formula method (max order 5).  ``'Adams'``
+        uses the non-stiff Adams method (max order 12).
     rtol, atol : float or array_like, optional
-        Relative and absolute local error tolerances
+        Relative and absolute local error tolerances.  The solver keeps the
+        local error roughly below ``rtol * |y(i)| + atol`` for each
+        component.  Scalar or per-component arrays are accepted.  Defaults
+        are ``rtol=1e-3``, ``atol=1e-6``.
+    first_step : float, optional
+        Initial step size.  Chosen automatically if not given.
+    min_step : float, optional
+        Minimum allowed step size.  Default 0.
+    max_step : float, optional
+        Maximum allowed step size.  Default ``np.inf``.
+    jac : callable or None, optional
+        Jacobian matrix of *f* with respect to *y*, ``jac(t, y)``.
+        For a full Jacobian, return an ``(n, n)`` array ``J[i, j] = df(i)/dy(j)``.
+        For a banded Jacobian (when *lband* / *uband* are set), return an
+        ``(ml + mu + 1, n)`` array where ``PD[i-j+mu, j] = df(i)/dy(j)``.
+        If not supplied, ZVODE approximates the Jacobian by finite differences.
+    lband, uband : int or None, optional
+        Lower and upper half-bandwidths of a banded Jacobian.  Must be
+        non-negative integers.  When either is set, the banded Jacobian path
+        is used and the other defaults to 0.  The full band has width
+        ``lband + uband + 1``.
+    max_order : int, optional
+        Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
+    max_steps : int, optional
+        Maximum number of internal steps (currently ignored).
+    miter : {0, 1, 2, 3, 4, 5}, optional
+        Iteration method override.  Normally inferred from *jac* and *lband*/*uband*:
 
-    See Also
-    --------
+        * 0 – functional iteration (no Jacobian, non-stiff only)
+        * 1 – chord with user-supplied full Jacobian
+        * 2 – chord with internally generated full Jacobian (default for BDF without *jac*)
+        * 3 – chord with diagonal Jacobian approximation
+        * 4 – chord with user-supplied banded Jacobian
+        * 5 – chord with internally generated banded Jacobian
+    jsv : {1, -1}, optional
+        Jacobian-saving flag.  ``1`` (default) saves and reuses the Jacobian;
+        ``-1`` recomputes it every step.
 
+    Attributes
+    ----------
+    n : int
+        Number of equations.
+    status : str
+        Current solver status: ``'running'``, ``'finished'``, or ``'failed'``.
+    t : float
+        Current time.
+    y : ndarray
+        Current state vector.
+    t_bound : float
+        Boundary time.
+    nfev : int
+        Number of right-hand side evaluations.
+    njev : int
+        Number of Jacobian evaluations.
+    nlu : int
+        Number of LU decompositions.
 
     References
     ----------
-    .. [1] ...
-
+    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A Variable
+       Coefficient ODE Solver," SIAM J. Sci. Stat. Comput., 10(5), 1038–1051
+       (1989).
     """
 
     def __init__(self, fun, t0, y0, t_bound, *,
@@ -383,7 +480,7 @@ class ZVODE(OdeSolver):
         return True, None
 
     def _dense_output_impl(self):
-
+        """Capture the current Nordsieck array and return a ZVODEDenseOutput interpolant."""
         nq = int(self.iwork[14]) # IWORK(15) = NQCUR
         h = float(self.rwork[11]) # RWORK(12) = HCUR
 
