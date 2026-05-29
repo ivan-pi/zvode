@@ -3929,6 +3929,7 @@ C----------------------- End of Function IXSAV -------------------------
       END
 *DECK IUMACH
       INTEGER FUNCTION IUMACH()
+      USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: OUTPUT_UNIT
 C***BEGIN PROLOGUE  IUMACH
 C***PURPOSE  Provide standard output unit number.
 C***CATEGORY  R1
@@ -3955,7 +3956,7 @@ C  The built-in value of 6 is standard on a wide range of Fortran
 C  systems.  This may be machine-dependent.
 C**End
 C***FIRST EXECUTABLE STATEMENT  IUMACH
-      IUMACH = 6
+      IUMACH = OUTPUT_UNIT
 C
       RETURN
 C----------------------- End of Function IUMACH ------------------------
