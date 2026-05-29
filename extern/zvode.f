@@ -1126,17 +1126,17 @@ C
       DOUBLE PRECISION ATOLI, BIG, EWTI, FOUR, H0, HMAX, HMX, HUN, ONE,
      1   PT2, RH, RTOLI, SIZE, TCRIT, TNEXT, TOLSF, TP, TWO, ZERO
       INTEGER I, IER, IFLAG, IMXER, JCO, KGO, LENIW, LENJ, LENP, LENZW,
-     1   LENRW, LENWM, LF0, MBAND, MFA, ML, MORD, MU, MXHNL0, MXSTP0,
+     1   LENRW, LENWM, LF0, MBAND, MFA, ML, MU, MXHNL0, MXSTP0,
      2   NITER, NSLAST
-      CHARACTER(len=80) MSG
+      CHARACTER(LEN=80) MSG
 C
-      DIMENSION MORD(2)
+      INTEGER, PARAMETER :: MORD(2) = [12, 5]
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to ZVODE.
 C-----------------------------------------------------------------------
-C      SAVE MORD, MXHNL0, MXSTP0
-C      SAVE ZERO, ONE, TWO, FOUR, PT2, HUN
+      SAVE MXHNL0, MXSTP0
+      SAVE ZERO, ONE, TWO, FOUR, PT2, HUN
 C-----------------------------------------------------------------------
 C The following internal COMMON blocks contain variables which are
 C communicated between subroutines in the ZVODE package, or which are
@@ -1243,7 +1243,7 @@ C-----------------------------------------------------------------------
      7                NSLP, NYH
       COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
-      DATA  MORD(1) /12/, MORD(2) /5/, MXSTP0 /500/, MXHNL0 /10/
+      DATA  MXSTP0 /500/, MXHNL0 /10/
       DATA ZERO /0.0D0/, ONE /1.0D0/, TWO /2.0D0/, FOUR /4.0D0/,
      1     PT2 /0.2D0/, HUN /100.0D0/
 C-----------------------------------------------------------------------
