@@ -3,7 +3,7 @@
          implicit none
          private
 
-         public :: zvode
+         public :: zvode, zvode_fun, zvode_jac, zvindy
 
          abstract interface
             subroutine zvode_fun(neq,t,y,ydot,ctx) bind(c)
