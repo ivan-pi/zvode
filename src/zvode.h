@@ -7,7 +7,7 @@
 typedef void (*zvode_fun)(
     int neq,
     double t,
-    double complex y[],
+    const double complex y[],
     double complex ydot[],
     void *ctx);
 
@@ -15,11 +15,31 @@ typedef void (*zvode_fun)(
 typedef void (*zvode_jac)(
     int neq,
     double t,
-    double complex y[],
+    const double complex y[],
     int ml, int mu,
     double complex pd[],
     int nrowpd,
     void *ctx);
+
+/*
+void zvode (
+    void (*f) (),
+    int neq,
+    __GFORTRAN_DOUBLE_COMPLEX *y,
+    double *t,
+    double tout,
+    int itol,
+    const double *rtol,
+    const double *atol,
+    int itask,
+    int *istate,
+    int iopt,
+    __GFORTRAN_DOUBLE_COMPLEX *zwork, int lzw,
+    double *rwork, int lrw,
+    int *iwork, int liw,
+    void (*jac) (),
+    int mf, void *ctx);
+*/
 
 void zvode(
     zvode_fun f,

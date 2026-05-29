@@ -91,9 +91,20 @@ def _call_zvode(fun, y, t, tout, zwork, rwork, iwork, *,
         jac, mf)
 
 
+def _array_range(arr):
+    base = arr.ctypes.data
+    return f"[{hex(base)}, {hex(base + arr.nbytes)})"
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+def fun(t, y, dy):
+    print(f"ABC: In fun at t = {t} with y = {y}")
+    print(y.dtype, dy.dtype, y.shape, dy.shape)
+    dy[:] = -y[:]
+    print("ABC: Done")
+
 
 def test_zvode_scalar_real_decay():
     """
@@ -106,14 +117,9 @@ def test_zvode_scalar_real_decay():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        print("ABC: In fun with 1 eq")
-        print(y.dtype, dy.dtype, y.shape, dy.shape)
-        dy[:] = -y[:]
-
     y     = np.array([1.0 + 0j], dtype=np.complex128)
     t     = 0.0
-    tout  = 10.0
+    tout  = 1.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
     iopt = 0
 
@@ -121,14 +127,16 @@ def test_zvode_scalar_real_decay():
     print(f"lrw = {rwork.shape}")
     print(f"liw = {iwork.shape}")
 
-    base = zwork.ctypes.data
-    print(f"zwork: [{hex(base)}, {hex(base + zwork.nbytes)})")
+    print(f"y     : {_array_range(y)}")
+    print(f"zwork : {_array_range(zwork)}")
+    print(f"rwork : {_array_range(rwork)}")
+    print(f"iwork : {_array_range(iwork)}")
 
     itol = 1
     rtol_arr = np.array([1e-6], dtype=np.float64)
     atol_arr = np.array([1e-8], dtype=np.float64)
 
-    itask = 2
+    itask = 1
     istate = 1
 
     t_new, istate_new = _zvode.zvode(
@@ -138,11 +146,12 @@ def test_zvode_scalar_real_decay():
         zwork, rwork, iwork,
         None, mf)
 
+    print(f"t = {t}, tout = {tout}, t_new = {t_new}")
 
     assert istate_new == 2,  f"ZVODE failed with istate = {istate_new}"
     assert t_new     == tout, "ZVODE did not reach TOUT"
 
-    assert_allclose(y[0].real, np.exp(-tout), rtol=1e-4, atol=1e-8)
+    assert_allclose(y[0].real, np.exp(-tout), rtol=1e-6, atol=1e-8)
     assert abs(y[0].imag) < 1e-12, "Imaginary part should remain zero"
 
 

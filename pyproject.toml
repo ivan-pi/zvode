@@ -18,6 +18,8 @@ build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
 wheel.packages = ["src/zvode"]
 
 [tool.scikit-build.cmake.define]
-CMAKE_Fortran_COMPILER = "flang"
+CMAKE_C_FLAGS = "-g -O0 -Wall -Wextra -Wconversion -fno-omit-frame-pointer"
+CMAKE_Fortran_COMPILER = "gfortran"
+CMAKE_Fortran_FLAGS="-g -O0 -fcheck=all -fbacktrace -ffpe-trap=invalid,zero,overflow"
 BLAS_LIBRARIES = "/opt/OpenBLAS/lib/libopenblas.a"
 BUILD_TYPE = "Debug"

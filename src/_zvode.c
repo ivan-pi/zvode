@@ -4,12 +4,126 @@
 #include <assert.h>
 #include <complex.h>
 
+#define ZVODE_DEBUG
 #include <stdio.h> // For debugging only
+#include <stdint.h>
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
 #include "zvode.h"
+
+
+/* ------------------------------------------------------------------ */
+/* Debug helpers (compile with -DZVODE_DEBUG to enable)               */
+/* ------------------------------------------------------------------ */
+
+static const char *dtype_name(int typenum) {
+    switch (typenum) {
+        case NPY_FLOAT32:    return "float32";
+        case NPY_FLOAT64:    return "float64";
+        case NPY_COMPLEX64:  return "complex64";
+        case NPY_COMPLEX128: return "complex128";
+        case NPY_INT32:      return "int32";
+        case NPY_INT64:      return "int64";
+        default:             return "?";
+    }
+}
+
+static void dump_repr(const char *label, PyObject *obj) {
+    if (obj == NULL) {
+        fprintf(stderr, "  %-8s = <NULL>\n", label);
+        return;
+    }
+    PyObject *r = PyObject_Repr(obj);
+    const char *s = r ? PyUnicode_AsUTF8(r) : NULL;
+    fprintf(stderr, "  %-8s = %s\n", label, s ? s : "<repr failed>");
+    Py_XDECREF(r);
+}
+
+static void dump_array(const char *label, PyArrayObject *arr) {
+    if (arr == NULL) {
+        fprintf(stderr, "  %-8s = <NULL>\n", label);
+        return;
+    }
+    fprintf(stderr, "  %-8s = ndarray(shape=(", label);
+    int nd = PyArray_NDIM(arr);
+    npy_intp *dims = PyArray_DIMS(arr);
+    for (int i = 0; i < nd; ++i) {
+        fprintf(stderr, "%lld%s",
+                (long long) dims[i], (i + 1 < nd) ? ", " : "");
+    }
+    fprintf(stderr, "), dtype=%s, size=%lld, C=%d F=%d W=%d A=%d, data=%p",
+            dtype_name(PyArray_TYPE(arr)),
+            (long long) PyArray_SIZE(arr),
+            PyArray_IS_C_CONTIGUOUS(arr) ? 1 : 0,
+            PyArray_IS_F_CONTIGUOUS(arr) ? 1 : 0,
+            PyArray_ISWRITEABLE(arr)     ? 1 : 0,
+            PyArray_ISALIGNED(arr)       ? 1 : 0,
+            PyArray_DATA(arr));
+
+    /* Small value preview — first up to 3 elements. */
+    npy_intp n = PyArray_SIZE(arr);
+    npy_intp k = n < 3 ? n : 3;
+    if (k > 0) {
+        fprintf(stderr, ", head=[");
+        switch (PyArray_TYPE(arr)) {
+        case NPY_FLOAT64: {
+            const double *p = PyArray_DATA(arr);
+            for (npy_intp i = 0; i < k; ++i)
+                fprintf(stderr, "%.6g%s", p[i], (i + 1 < k) ? ", " : "");
+            break;
+        }
+        case NPY_COMPLEX128: {
+            const double complex *p = PyArray_DATA(arr);
+            for (npy_intp i = 0; i < k; ++i)
+                fprintf(stderr, "(%.6g%+.6gj)%s",
+                        creal(p[i]), cimag(p[i]),
+                        (i + 1 < k) ? ", " : "");
+            break;
+        }
+        case NPY_INT32: {
+            const int32_t *p = PyArray_DATA(arr);
+            for (npy_intp i = 0; i < k; ++i)
+                fprintf(stderr, "%d%s", (int) p[i], (i + 1 < k) ? ", " : "");
+            break;
+        }
+        default:
+            fprintf(stderr, "<unprinted>");
+        }
+        fprintf(stderr, "%s]", (n > k) ? ", ..." : "");
+    }
+    fprintf(stderr, ")\n");
+}
+
+static void dump_zvode_args(
+        PyObject *fun, PyArrayObject *ap_y,
+        double t, double tout, int itol,
+        PyArrayObject *ap_rtol, PyArrayObject *ap_atol,
+        int itask, int istate, int iopt,
+        PyArrayObject *ap_zwork, PyArrayObject *ap_rwork,
+        PyArrayObject *ap_iwork,
+        PyObject *jac, int mf) {
+
+    fprintf(stderr, "---- zvode args ----\n");
+    dump_repr ("fun",   fun);
+    dump_array("y",     ap_y);
+    fprintf(stderr, "  t        = %.17g\n", t);
+    fprintf(stderr, "  tout     = %.17g\n", tout);
+    fprintf(stderr, "  itol     = %d\n",    itol);
+    dump_array("rtol",  ap_rtol);
+    dump_array("atol",  ap_atol);
+    fprintf(stderr, "  itask    = %d\n",    itask);
+    fprintf(stderr, "  istate   = %d\n",    istate);
+    fprintf(stderr, "  iopt     = %d\n",    iopt);
+    dump_array("zwork", ap_zwork);
+    dump_array("rwork", ap_rwork);
+    dump_array("iwork", ap_iwork);
+    dump_repr ("jac",   jac);
+    fprintf(stderr, "  mf       = %d\n",    mf);
+    fprintf(stderr, "--------------------\n");
+    fflush(stderr);
+}
 
 /* ZVODE's IWORK is Fortran default INTEGER, declared as `int` in the C
  * header.  We expose it to Python as int32, so the two must agree. */
@@ -22,13 +136,14 @@ _Static_assert(sizeof(int) == 4, "iwork bridging assumes a 32-bit C int");
 struct zvode_callbacks {
     PyObject *fun;
     PyObject *jac;
+    int error;
     // TODO: add zewset and zwnorm in the future
 };
 
 static void fun_adaptor(
         int neq,
         double t,
-        double complex y[],
+        const double complex y[],
         double complex dy[],
         void *ctx) {
 
@@ -36,16 +151,24 @@ static void fun_adaptor(
     assert(cb != NULL);
     assert(cb->fun != NULL);
 
-    printf("In fun_adaptor.\n");
     fprintf(stderr, "fun_adaptor: y=%p  dy=%p  neq=%d\n",
             (void*)y, (void*)dy, neq);
     fflush(stderr);
+
+#if 0
+    /* OVERRIDE */
+    for (int i = 0; i < neq; i++) {
+        dy[i] = -y[i];
+    }
+    return;
+    /* OVERRIDE */
+#endif
 
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned buffers as NumPy views (no copy). */
     PyArrayObject *ap_y =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, y);
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (double complex *) y);
     assert(ap_y);
     if (ap_y == NULL) {
         return;
@@ -68,13 +191,40 @@ static void fun_adaptor(
     assert(ap_y);
     assert(ap_dy);
     printf("calling fun at t = %f\n", t);
-
     fprintf(stderr, "DEBUG: ap_y=%p (rc=%ld)  ap_dy=%p (rc=%ld)\n",
             (void*)ap_y, Py_REFCNT(ap_y),
             (void*)ap_dy, Py_REFCNT(ap_dy));
     fflush(stderr);
+
+#if 1
+/* Safely convert the double to a Python Float */
+    PyObject *py_t = PyFloat_FromDouble(t);
+    if (!py_t) {
+        // Handle float creation failure
+        Py_DECREF(ap_y);
+        Py_DECREF(ap_dy);
+        return;
+    }
+
+    /* Check for ANY lingering exceptions before we call */
+    if (PyErr_Occurred()) {
+        fprintf(stderr, "WARNING: Exception state was dirty before call!\n");
+        PyErr_Clear();
+    }
+
+/* Call the function directly without va_args parsing */
+    PyObject *res = PyObject_CallFunctionObjArgs(
+        cb->fun,
+        py_t,
+        (PyObject *)ap_y,
+        (PyObject *)ap_dy,
+        NULL // Must be NULL-terminated!
+    );
+#else
     /* fun(t, y, dy): Python writes the derivative into dy in place. */
-    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, ap_y, ap_dy);
+    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t, (PyObject *)ap_y, (PyObject *)ap_dy);
+#endif
+
     fprintf(stderr, "res = %p, exception set = %d\n",
             (void*)res, PyErr_Occurred() != NULL);
     fflush(stderr);
@@ -87,7 +237,7 @@ static void fun_adaptor(
 static void jac_adaptor(
         int neq,
         double t,
-        double complex y[],
+        const double complex y[],
         int ml, int mu,
         double complex pd[],
         int nrowpd,
@@ -174,7 +324,12 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(cb.fun);
     assert(cb.jac); // could be Python None
 
+#ifdef ZVODE_DEBUG
     printf("Args are parsed.\n");
+    dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
+                    itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
+                    cb.jac, mf);
+#endif
 
     if (istate == 1) {
         // Initialization of ZVODE
@@ -183,9 +338,9 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     }
 
    const int neq = (int) PyArray_DIM(ap_y, 0); assert(neq > 0);
-   const int lzw = (int) PyArray_SIZE(ap_zwork);
-   const int lrw = (int) PyArray_SIZE(ap_rwork);
-   const int liw = (int) PyArray_SIZE(ap_iwork);
+   const int lzw = (int) PyArray_SIZE(ap_zwork); assert(lzw > 0);
+   const int lrw = (int) PyArray_SIZE(ap_rwork); assert(lrw > 0);
+   const int liw = (int) PyArray_SIZE(ap_iwork); assert(liw > 0);
 
     double complex *y     = (double complex *) PyArray_DATA(ap_y);
     double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
@@ -194,15 +349,10 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     const double   *rtol  = (const double *)   PyArray_DATA(ap_rtol);
     const double   *atol  = (const double *)   PyArray_DATA(ap_atol);
 
-
     assert(y);
     assert(zwork);
     assert(rwork);
     assert(iwork);
-    assert(lzw > 0);
-    assert(lrw > 0);
-    assert(liw > 0);
-
     assert(t != tout);
     assert(istate > 0);
     assert(itask > 0);
@@ -223,7 +373,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         iopt, zwork, lzw, rwork, lrw, iwork, liw,
         &jac_adaptor,
         mf,
-        (void *) &cb
+        &cb
     );
 
     printf("Returned from ZVODE.\n");
