@@ -20,11 +20,7 @@ MESSAGES = {
 def _wrapped_fun(fun):
     """Wraps the ODE function into a mutating function"""
     def zvode_fun(t, y, dy):
-        print("In callback wrapper")
-        neq = y.shape[0]
-        assert neq == len(dy), "Shape mismatch"
-        dy[0:neq] = fun(t, y)
-        print("Callback complete")
+        dy[:] = fun(t, y)
 
     return zvode_fun
 

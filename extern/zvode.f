@@ -1,73 +1,73 @@
+C NOTE: This version of ZVODE has been modified extensively
+C       to use functors instead of external procedures
       MODULE ZVODE_MOD
-      IMPLICIT NONE
-      PRIVATE
+        IMPLICIT NONE
+        PRIVATE
 
-      PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
-      PUBLIC :: XSETF, XSETUN, ZVSRCO
+        PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
+        PUBLIC :: XSETF, XSETUN, ZVSRCO
 
-      INTEGER, PARAMETER :: DP = KIND(1.0D0)
+        INTEGER, PARAMETER :: DP = KIND(1.0D0)
 
-      TYPE, ABSTRACT :: ZVODE_FUN
-         INTEGER :: NEQ
-      CONTAINS
-         PROCEDURE(ZVODE_FUN_EVAL), PASS(FUN), DEFERRED :: EVAL
-      END TYPE
+        TYPE, ABSTRACT :: ZVODE_FUN
+          INTEGER :: NEQ
+        CONTAINS
+          PROCEDURE(ZVODE_FUN_EVAL), PASS(FUN), DEFERRED :: EVAL
+        END TYPE
 
-      TYPE, ABSTRACT :: ZVODE_JAC
-         INTEGER :: NEQ
-      CONTAINS
-         PROCEDURE(ZVODE_JAC_EVAL), PASS(JAC), DEFERRED :: EVAL
-      END TYPE
+        TYPE, ABSTRACT :: ZVODE_JAC
+          INTEGER :: NEQ
+        CONTAINS
+          PROCEDURE(ZVODE_JAC_EVAL), PASS(JAC), DEFERRED :: EVAL
+        END TYPE
 
-      ABSTRACT INTERFACE
-         SUBROUTINE ZVODE_FUN_EVAL(FUN,T,Y,YDOT)
-            IMPORT ZVODE_FUN, DP
-            CLASS(ZVODE_FUN) :: FUN
-            REAL(DP), INTENT(IN) :: T
-            COMPLEX(DP), INTENT(IN) :: Y(FUN%NEQ)
-            COMPLEX(DP), INTENT(OUT) :: YDOT(FUN%NEQ)
-         END SUBROUTINE
-         SUBROUTINE ZVODE_JAC_EVAL(JAC,T,Y,ML,MU,PD,NROWPD)
-            IMPORT ZVODE_JAC, DP
-            CLASS(ZVODE_JAC) :: JAC
-            INTEGER, INTENT(IN) :: ML, MU, NROWPD
-            REAL(DP), INTENT(IN) :: T
-            COMPLEX(DP), INTENT(IN) :: Y(JAC%NEQ)
-            COMPLEX(DP), INTENT(INOUT) :: PD(NROWPD,*)
-         END SUBROUTINE
-      END INTERFACE
+        ABSTRACT INTERFACE
+          SUBROUTINE ZVODE_FUN_EVAL(FUN,T,Y,YDOT)
+             IMPORT ZVODE_FUN, DP
+             CLASS(ZVODE_FUN) :: FUN
+             REAL(DP), INTENT(IN) :: T
+             COMPLEX(DP), INTENT(IN) :: Y(FUN%NEQ)
+             COMPLEX(DP), INTENT(OUT) :: YDOT(FUN%NEQ)
+          END SUBROUTINE
+          SUBROUTINE ZVODE_JAC_EVAL(JAC,T,Y,ML,MU,PD,NROWPD)
+             IMPORT ZVODE_JAC, DP
+             CLASS(ZVODE_JAC) :: JAC
+             INTEGER, INTENT(IN) :: ML, MU, NROWPD
+             REAL(DP), INTENT(IN) :: T
+             COMPLEX(DP), INTENT(IN) :: Y(JAC%NEQ)
+             COMPLEX(DP), INTENT(INOUT) :: PD(NROWPD,*)
+          END SUBROUTINE
+        END INTERFACE
 
-      ABSTRACT INTERFACE
-         SUBROUTINE VNLS_SUB (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR,
-     1                        IWM, WM, F, JAC, PDUM, NFLAG)
-            IMPORT ZVODE_FUN, ZVODE_JAC, DP
-            CLASS(ZVODE_FUN) :: F
-            CLASS(ZVODE_JAC) :: JAC
-            CLASS(ZVODE_FUN) :: PDUM
-            INTEGER :: LDYH, IWM(*), NFLAG
-            COMPLEX(DP) :: Y(*), YH(LDYH,*), VSAV(*), SAVF(*)
-            COMPLEX(DP) :: ACOR(*), WM(*)
-            REAL(DP) :: EWT(*)
-         END SUBROUTINE
-      END INTERFACE
-
+        ABSTRACT INTERFACE
+          SUBROUTINE VNLS_SUB (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR,
+     1                         IWM, WM, F, JAC, PDUM, NFLAG)
+             IMPORT ZVODE_FUN, ZVODE_JAC, DP
+             CLASS(ZVODE_FUN) :: F
+             CLASS(ZVODE_JAC) :: JAC
+             CLASS(ZVODE_FUN) :: PDUM
+             INTEGER :: LDYH, IWM(*), NFLAG
+             COMPLEX(DP) :: Y(*), YH(LDYH,*), VSAV(*), SAVF(*)
+             COMPLEX(DP) :: ACOR(*), WM(*)
+             REAL(DP) :: EWT(*)
+          END SUBROUTINE
+        END INTERFACE
+C
       CONTAINS
 C
-C NOTE: This version of ZVODE has been modified to use functors
-C       instead of external procedures
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
      2            JAC, MF)
 C Argument list
-      class(zvode_fun) :: f
-      class(zvode_jac) :: jac
-      integer, intent(in) :: neq, itol, itask, iopt, lzw, lrw, liw, mf
-      real(dp), intent(in) :: tout
-      real(dp), intent(inout) :: t
-      complex(dp), intent(inout) :: y(neq), zwork(lzw)
-      real(dp), intent(inout) :: rwork(lrw)
-      real(dp), intent(in) :: rtol(*), atol(*)
-      integer, intent(inout) :: istate, iwork(liw)
+      CLASS(ZVODE_FUN) :: F
+      CLASS(ZVODE_JAC) :: JAC
+      INTEGER, INTENT(IN) :: NEQ, ITOL, ITASK, IOPT, LZW, LRW, LIW, MF
+      REAL(DP), INTENT(IN) :: TOUT
+      REAL(DP), INTENT(INOUT) :: T
+      COMPLEX(DP), INTENT(INOUT) :: Y(NEQ), ZWORK(LZW)
+      REAL(DP), INTENT(INOUT) :: RWORK(LRW)
+      REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
+      INTEGER, INTENT(INOUT) :: ISTATE, IWORK(LIW)
 C-----------------------------------------------------------------------
 C ZVODE: Variable-coefficient Ordinary Differential Equation solver,
 C with fixed-leading-coefficient implementation.
