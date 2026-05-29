@@ -13,6 +13,12 @@ module c_zvode_mod
     public :: c_zvode_jac
     public :: c_zvindy
 
+    ! Struct to hold information needed by zvindy
+    type, bind(c) :: step_t
+        real(c_double) :: h, tn, hu
+        integer(c_int) :: nq
+    end type
+
     !
     ! C callback interface
     !
@@ -98,13 +104,98 @@ contains
         call jac%jac(jac%neq,t,y,ml,mu,pd(1,1),nrowpd,jac%ctx)
     end subroutine c_jac_eval
 
-    function c_zvindy(t,k,yh,ldyh,dky) result(iflag) bind(c)
+    !-----------------------------------------------------------------------
+    ! ZVINDY computes interpolated values of the K-th derivative of the
+    ! dependent variable vector y, and stores it in DKY.  This routine
+    ! is called within the package with K = 0 and T = TOUT, but may
+    ! also be called by the user for any K up to the current order.
+    ! (See detailed instructions in the usage documentation.)
+    !-----------------------------------------------------------------------
+    ! The computed values in DKY are gotten by interpolation using the
+    ! Nordsieck history array YH.  This array corresponds uniquely to a
+    ! vector-valued polynomial of degree NQCUR or less, and DKY is set
+    ! to the K-th derivative of this polynomial at T.
+    ! The formula for DKY is:
+    !              q
+    !  DKY(i)  =  sum  c(j,K) * (T - TN)**(j-K) * H**(-j) * YH(i,j+1)
+    !             j=K
+    ! where  c(j,K) = j*(j-1)*...*(j-K+1), q = NQCUR, TN = TCUR, H = HCUR.
+    ! The quantities  NQ = NQCUR, L = NQ+1, N, TN, and H are
+    ! communicated by COMMON.  The above sum is done in reverse order.
+    ! IFLAG is returned negative if either K or T is out of bounds.
+    !
+    ! Discussion above and comments in driver explain all variables.
+    !-----------------------------------------------------------------------
+    function c_zvindy(n, t, yh, ldyh, k, dky, step) result(iflag) bind(c)
+        implicit none
+        integer, parameter :: dp = kind(1.0d0)
+
+        integer, value :: n, ldyh, k
         real(c_double), value :: t
-        integer(c_int), value :: k, ldyh
-        complex(c_double_complex), intent(in) :: yh(ldyh,*)
-        complex(c_double_complex), intent(out) :: dky(*)
+        complex(c_double_complex), intent(in) :: yh(ldyh,*) ! LDYH >= N
+        complex(c_double_complex), intent(out) :: dky(n)
+        type(step_t), intent(in) :: step
         integer(c_int) :: iflag
-        call zvindy(t,k,yh,ldyh,dky,iflag)
-    end function c_zvindy
+
+        external :: dzscal, xerrwd
+
+        real(dp) ::  c, s, tfuzz, tn1, tp
+        integer :: j
+        character(len=80) :: msg
+
+        real(dp), parameter :: hun = 100, one = 1, zero = 0
+
+        associate(h=>step%h, tn=>step%tn, hu=>step%hu, nq=>step%nq)
+
+            iflag = 0
+
+            if (k .lt. 0 .or. k .gt. step%nq) then
+                msg = 'zvindy-- k (=i1) illegal      '
+                call xerrwd (msg, 30, 51, 1, 1, k, 0, 0, zero, zero)
+                iflag = -1
+                return
+            end if
+
+            tfuzz = hun*epsilon(1.0_dp)*sign(abs(tn) + abs(hu), hu)
+            tp = tn - hu - tfuzz
+            tn1 = tn + tfuzz
+            if ((t-tp)*(t-tn1) .gt. zero) then
+                msg = 'zvindy-- t (=r1) illegal      '
+                call xerrwd (msg, 30, 52, 1, 0, 0, 0, 1, t, zero)
+                msg = '      t not in interval tcur - hu (= r1) to tcur (=r2)      '
+                call xerrwd (msg, 60, 52, 1, 0, 0, 0, 2, tp, tn)
+                iflag = -2
+                return
+            end if
+
+            s = (t - tn)/h
+            c = falling_factorial(nq,k)
+            dky(1:n) = c*yh(1:n,nq+1)
+            do j = nq-1,k,-1
+                c = falling_factorial(j, k)
+                dky(1:n) = c*yh(1:n,j+1) + s*dky(1:n)
+            end do
+
+            if (k == 0) return
+
+            call dzscal (n, (one/h)**k, dky, 1)
+
+        end associate
+
+    contains
+
+      pure function falling_factorial(j,k) result(c)
+        implicit none
+        integer, intent(in) :: j, k
+        real(dp) :: c
+        integer :: ic, jj
+        ic = 1
+        do jj = j - k + 1, j
+          ic = ic*jj
+        end do
+        c = ic
+      end function
+
+    end subroutine c_zvindy
 
 end module c_zvode_mod

@@ -60,11 +60,18 @@ void c_zvode(
     const int mf,
     void *ctx);
 
+struct zvode_step_t {
+    double h, tn, hu;
+    int nq;
+};
+
 int c_zvindy(
+    int n,
     double t,
-    int k,
     const double complex yh[],
     int ldyh,
-    double complex dky[]);
+    int k,
+    double complex dky[],
+    const struct zvode_step_t *step);
 
 #endif /* ZVODE_H */

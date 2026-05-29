@@ -454,7 +454,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
 /* ------------------------------------------------------------------ */
 
 PyDoc_STRVAR(zvindy_doc,
-"zvindy(t, k, zwork, nyh, dky) -> iflag\n"
+"zvindy(t, yh, k, dky, step) -> iflag\n"
 "\n"
 "Interpolate the K-th derivative of y at time T using the ZVODE history array.\n"
 "\n"
@@ -465,10 +465,11 @@ PyDoc_STRVAR(zvindy_doc,
 "Parameters\n"
 "----------\n"
 "t     : float  -- interpolation time; must lie in [TCUR - HU, TCUR].\n"
+"yh    : complex128 ndarray, 2-D -- Nordsieck history array (dimensions LDYH x NQ+1).\n"
+"ldyh  : int    -- column length of the YH history matrix (= initial NEQ).\n"
 "k     : int    -- derivative order; must satisfy 0 <= k <= NQCUR.\n"
-"zwork : complex128 ndarray, 1-D -- ZVODE complex work array (unmodified).\n"
-"nyh   : int    -- column length of the YH history matrix (= initial NEQ).\n"
 "dky   : complex128 ndarray, 1-D, writable -- receives the computed derivative.\n"
+"step  : "
 "\n"
 "Returns\n"
 "-------\n"
@@ -476,26 +477,27 @@ PyDoc_STRVAR(zvindy_doc,
 
 static PyObject* zvindy_py(PyObject* self, PyObject *args) {
 
-    PyArrayObject *ap_zwork = NULL, *ap_dky = NULL;
     double t;
-    int k, nyh;
+    PyArrayObject *ap_yh = NULL, *ap_dky = NULL;
+    int k;
 
-    if (!PyArg_ParseTuple(args, "diO!iO!:zvindy",
-            &t, &k,
-            &PyArray_Type, &ap_zwork,
-            &nyh,
+    if (!PyArg_ParseTuple(args, "dO!iO!(ddd):zvindy",
+            &t,
+            &PyArray_Type, &ap_yh,
+            &k
             &PyArray_Type, &ap_dky)) {
         return NULL;
     }
 
-    if (!check_array_1d(ap_zwork, "zwork", NPY_COMPLEX128)) return NULL;
-    if (!check_array_1d(ap_dky,   "dky",   NPY_COMPLEX128)) return NULL;
-    if (!check_writable(ap_dky,   "dky"))                   return NULL;
+    const int neq = PyArray_DIM(ap_dky, 0);
+    const int ldyh = PyArray_DIM(ap_yh, 0);
+    const int nq = PyArray_DIM(ap_yh, 1) - 1;
+    assert(ldyh >= neq);
 
-    if (nyh <= 0) {
-        PyErr_SetString(PyExc_ValueError, "zvindy: nyh must be positive");
-        return NULL;
-    }
+    if (!check_array_1d(ap_yh, "zwork", NPY_COMPLEX128)) return NULL;
+    if (!check_array_1d(ap_dky,  "dky", NPY_COMPLEX128)) return NULL;
+    if (!check_writable(ap_dky,  "dky"))                 return NULL;
+
     if (k < 0) {
         PyErr_SetString(PyExc_ValueError, "zvindy: k must be non-negative");
         return NULL;
@@ -505,7 +507,14 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     double complex *yh  = (double complex *) PyArray_DATA(ap_zwork);
     double complex *dky = (double complex *) PyArray_DATA(ap_dky);
 
-    int iflag = c_zvindy(t, k, yh, nyh, dky);
+    struct zvode_step step = {.h = , .tn =, .hu = };
+
+    int iflag = c_zvindy(neq, t, yh, ldyh, k, dky,
+        &step):
+    if (iflag) {
+        PyErr_SetString(PyExc_ValueError, "zvindy: returned with positive iflag");
+        return NULL;
+    };
 
     return PyLong_FromLong((long) iflag);
 }
