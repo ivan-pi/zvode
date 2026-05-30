@@ -32,6 +32,11 @@ python_add_library(_zvode MODULE
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
+# In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
+# (BLAS no-op), however m+1 > lda which trips gfortran's bound checker.
+# See my chat with Claude for a full description of the problem
+#   https://claude.ai/code/session_01P6jXN7Mrzxv28HirHe8UhG
+# Originally surfaced in the banded test_oscillator_miter
 set_source_files_properties(
   extern/linpack/zgbfa.f
   PROPERTIES

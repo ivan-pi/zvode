@@ -165,9 +165,7 @@ def test_decay_banded_miters(miter, jac):
     (1, jac_oscillator_dense, {}),
     (2, None, {}),
     pytest.param(4, jac_oscillator_banded, {'lband': 0, 'uband': 1}),
-#                 marks=pytest.mark.skip(reason="banded path under investigation")),
     pytest.param(5, None, {'lband': 0, 'uband': 1}),
-#                 marks=pytest.mark.skip(reason="banded path under investigation")),
 ])
 def test_oscillator_miter(miter, jac, extra_kwargs):
     """Complex oscillator trajectory checked at solver-selected output points."""
