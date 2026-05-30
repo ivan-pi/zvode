@@ -181,6 +181,28 @@ check_writable(PyArrayObject *ap, const char *name) {
     return 1;
 }
 
+static inline int
+check_array_scalar_or_1d(PyArrayObject *ap, const char *name, int typenum)
+{
+    if (PyArray_NDIM(ap) > 1) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be a scalar or 1-D array (got %d-D)",
+            name, PyArray_NDIM(ap));
+        return 0;
+    }
+    if (PyArray_TYPE(ap) != typenum) {
+        PyErr_Format(PyExc_TypeError,
+            "zvode: %s must have dtype %s", name, dtype_name(typenum));
+        return 0;
+    }
+    if (PyArray_NDIM(ap) == 1 && !PyArray_IS_C_CONTIGUOUS(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s must be C-contiguous", name);
+        return 0;
+    }
+    return 1;
+}
+
 /* ------------------------------------------------------------------ */
 /* Callback plumbing                                                  */
 /* ------------------------------------------------------------------ */
@@ -353,8 +375,7 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(ap_iwork);
     assert(cb.fun);
     assert(cb.jac); // should be Py_None or a callable
-    assert(itask > 0);
-    assert(mf > 0);
+    assert(itask >=1 && itask <= 5);
 
     if (ZVODE_DEBUG) {
         dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
@@ -395,8 +416,8 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         if (!check_array_1d(ap_rwork, "rwork", NPY_FLOAT64)    || !check_writable(ap_rwork, "rwork")) return NULL;
         if (!check_array_1d(ap_iwork, "iwork", NPY_INT32)      || !check_writable(ap_iwork, "iwork")) return NULL;
 
-//        if (!check_array_1d(ap_rtol,  "rtol",  NPY_FLOAT64))  return NULL;
-//        if (!check_array_1d(ap_atol,  "atol",  NPY_FLOAT64))  return NULL;
+        if (!check_array_scalar_or_1d(ap_rtol, "rtol", NPY_FLOAT64)) return NULL;
+        if (!check_array_scalar_or_1d(ap_atol, "atol", NPY_FLOAT64)) return NULL;
 
         /* itol controls whether rtol/atol are scalar (length 1) or per-component
          * (length neq).  ZVODE convention: bit 0 set → rtol is array, bit 1 set →
@@ -533,7 +554,7 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     const int iflag = c_zvindy(n, t, yh, ldyh, k, dky,
         &(struct zvode_step_t){.h = h, .tn = tn, .hu = hu, .nq = nq});
 
-    if (iflag) {
+    if (iflag != 0) {
         if (iflag == -1) {
             PyErr_Format(PyExc_ValueError,
                 "zvindy: k=%d is out of range [0, nq=%d] (Fortran IFLAG=-1)", k, nq);
@@ -545,7 +566,8 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
                 "(Fortran IFLAG=-2)", t);
             return NULL;
         }
-    };
+        assert(0 && "zvindy: unexpected IFLAG — contract violation");
+    }
 
     Py_RETURN_NONE;
 }

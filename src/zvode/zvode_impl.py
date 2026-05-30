@@ -200,7 +200,7 @@ class ZVODEDenseOutput(DenseOutput):
 
         # Seed Horner with the highest-order Nordsieck column
         c = _falling_factorial(nq, k)
-        dky = np.outer(self.yh[:,nq], np.ones(t.shape[0])) # (n, m)
+        dky = c*np.outer(self.yh[:,nq], np.ones(t.shape[0])) # (n, m)
         for j in range(nq - 1, -1, -1):
             c = _falling_factorial(j, k)
             dky = c*self.yh[:,j,np.newaxis] + s*dky
@@ -342,7 +342,7 @@ class ZVODE(OdeSolver):
             maxord_allowed = 5
         else:
             raise ValueError(
-                f"Invalid method '{method}'. Valid options are 'Adams' or 'BDF'."
+                f"Invalid method '{zvode_method}'. Valid options are 'Adams' or 'BDF'."
             )
 
         # Determine tolerance settings
@@ -437,10 +437,15 @@ class ZVODE(OdeSolver):
                     f"for the selected method. The solver will automatically reduce it.",
                     stacklevel=2
                 )
-                # The Fortran solver will do this
+
+            # Load the potentially "wrong" value; the capping
+            # happens within the Fortran routine
             self.iwork[4] = max_order
 
         if max_steps is not None:
+            if max_order <= 0:
+                raise ValueError("'max_steps' must be a positive integer.")
+
             warnings.warn("'max_steps' are ignored currently")
             # self.iwork[5] = int(max_steps)
 
