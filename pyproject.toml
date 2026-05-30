@@ -65,12 +65,12 @@ test-requires = ["pytest"]
 test-command  = "python -m pytest {project}/test -x -q"
 
 [tool.cibuildwheel.linux]
-# manylinux2014 images ship gfortran; just need BLAS headers.
-before-all = "yum install -y openblas-devel"
+# manylinux2014 (yum) and manylinux_2_28 (dnf) both carry gfortran;
+# just need OpenBLAS development headers and pkg-config support.
+before-all = "yum install -y openblas-devel || dnf install -y openblas-devel"
 
 [tool.cibuildwheel.macos]
-# FC is set by fortran-lang/setup-fortran in the workflow; only BLAS needed.
-before-all = """
-    brew install openblas
-    echo "CMAKE_PREFIX_PATH=$(brew --prefix openblas)" >> "$CIBW_ENVIRONMENT_FILE"
-"""
+# FC is set by fortran-lang/setup-fortran in the workflow.
+# install OpenBLAS and tell CMake where to find it via PKG_CONFIG_PATH.
+before-all = "brew install openblas"
+environment = {PKG_CONFIG_PATH = "$(brew --prefix openblas)/lib/pkgconfig"}
