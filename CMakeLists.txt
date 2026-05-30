@@ -1,16 +1,10 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.15)
 
 project(
   ${SKBUILD_PROJECT_NAME}
   VERSION ${SKBUILD_PROJECT_VERSION}
   LANGUAGES C Fortran)
 
-set(CMAKE_Fortran_COMPILER "gfortran-15")
-set(CMAKE_Fortran_FLAGS "-Wall -pedantic -Og -fcheck=all")
-set(BUILD_TYPE "Debug")
-
-set(BLAS_LIBRARIES /opt/OpenBLAS/lib/libopenblas.a)
-find_package(BLAS REQUIRED)
 
 # Only request the module-building components. Do NOT request the full
 # `Development` package: that pulls in Development.Embed, which needs the
@@ -22,6 +16,8 @@ find_package(Python REQUIRED
     "${SKBUILD_SABI_COMPONENT}"
     NumPy
 )
+
+find_package(BLAS REQUIRED) # only COPY is used; we should vendor it
 
 # Build the C extension. Compiling the Fortran straight into the module
 # target lets CMake pull in the Fortran runtime (libgfortran) automatically
