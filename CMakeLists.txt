@@ -16,11 +16,6 @@ find_package(Python REQUIRED
     NumPy
 )
 
-# Prefer pkg-config so PKG_CONFIG_PATH hints (e.g. from cibuildwheel) are used.
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-  pkg_check_modules(OPENBLAS QUIET openblas)
-endif()
 find_package(BLAS REQUIRED)
 
 # Build the C extension. Compiling the Fortran straight into the module

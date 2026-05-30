@@ -65,12 +65,11 @@ test-requires = ["pytest"]
 test-command  = "python -m pytest {project}/test -x -q"
 
 [tool.cibuildwheel.linux]
-# manylinux2014 (yum) and manylinux_2_28 (dnf) both carry gfortran;
-# just need OpenBLAS development headers and pkg-config support.
+# manylinux images carry gfortran; install OpenBLAS headers then tell CMake.
 before-all = "yum install -y openblas-devel || dnf install -y openblas-devel"
+config-settings = "cmake.define.BLA_VENDOR=OpenBLAS"
 
 [tool.cibuildwheel.macos]
+# Accelerate is always present on macOS — no installation required.
 # FC is set by fortran-lang/setup-fortran in the workflow.
-# install OpenBLAS and tell CMake where to find it via PKG_CONFIG_PATH.
-before-all = "brew install openblas"
-environment = {PKG_CONFIG_PATH = "$(brew --prefix openblas)/lib/pkgconfig"}
+config-settings = "cmake.define.BLA_VENDOR=Apple"
