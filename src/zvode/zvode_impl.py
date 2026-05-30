@@ -483,7 +483,7 @@ class ZVODE(OdeSolver):
     def _dense_output_impl(self):
         """Capture the current Nordsieck array and return a ZVODEDenseOutput interpolant."""
         nq = int(self.iwork[14]) # IWORK(15) = NQCUR
-        h = float(self.rwork[11]) # RWORK(12) = HCUR
+        h = float(self.rwork[10]) # RWORK(11) = HU: step size last used
 
         # YH occupies zwork[0 : n*(nq+1)] in Fortran column-major order
 
