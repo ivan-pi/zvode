@@ -18,10 +18,8 @@ have only special applications):
     miter=4 – BDF + user-supplied banded Jacobian
     miter=5 – BDF + internally-generated banded Jacobian
 
-Correctness is checked at the automatically selected output points.
-
-# TODO: add tests for dense output (solve_ivp dense_output=True) once
-#       that path is fully wired up in the ZVODE solver.
+Correctness is checked at both the automatically selected output points and
+at a predetermined fine grid via dense output (solve_ivp dense_output=True).
 """
 
 import numpy as np
@@ -230,6 +228,57 @@ def test_solver_counters_without_jacobian():
 
     assert sol.success
     assert sol.nfev > 0
+
+
+# ---------------------------------------------------------------------------
+# Dense output
+# ---------------------------------------------------------------------------
+
+def test_dense_output_decay():
+    """sol(t) must match the analytic decay solution at a fine predetermined grid."""
+    y0 = np.array([0.5 + 1j], dtype=np.complex128)
+    t_span = (0.0, 2.0)
+    t_eval = np.linspace(t_span[0], t_span[1], 50)
+
+    sol = solve_ivp(fun_decay, t_span, y0,
+                    method=ZVODE,
+                    miter=2,
+                    dense_output=True,
+                    rtol=1e-8, atol=1e-10)
+
+    assert sol.success
+    assert sol.sol is not None
+
+    y_interp = sol.sol(t_eval)          # shape (1, 50)
+    expected = sol_decay(t_eval, y0[0]) # shape (50,)
+    assert y_interp.shape == (1, len(t_eval))
+    assert_allclose(y_interp[0], expected, rtol=1e-5, atol=1e-8,
+                    err_msg="Dense output mismatch for decay problem")
+
+
+def test_dense_output_oscillator():
+    """sol(t) must match the analytic oscillator solution at a fine predetermined grid."""
+    t0 = 0.0
+    t_end = 2 * np.pi
+    y0 = np.array([1.0 / 2.1, 1.0], dtype=np.complex128)
+    t_eval = np.linspace(t0, t_end, 80)
+
+    sol = solve_ivp(fun_oscillator, (t0, t_end), y0,
+                    method=ZVODE,
+                    miter=2,
+                    dense_output=True,
+                    rtol=1e-9, atol=1e-9)
+
+    assert sol.success
+    assert sol.sol is not None
+
+    y_interp = sol.sol(t_eval)   # shape (2, 80)
+    assert y_interp.shape == (2, len(t_eval))
+
+    for i, t in enumerate(t_eval):
+        expected = sol_oscillator(t)
+        assert_allclose(y_interp[:, i], expected, rtol=1e-5, atol=1e-7,
+                        err_msg=f"Dense output mismatch for oscillator at t={t:.4f}")
 
 
 # ---------------------------------------------------------------------------
