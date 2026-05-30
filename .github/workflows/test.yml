@@ -31,7 +31,14 @@ jobs:
 
       - name: Install Fortran compiler and BLAS (macOS)
         if: runner.os == 'macOS'
-        run: brew install gcc openblas
+        run: |
+          brew install gcc openblas
+          # Homebrew installs gfortran as a versioned binary (e.g. gfortran-14).
+          # Export FC so CMake finds it without a hardcoded name.
+          FC="$(ls "$(brew --prefix gcc)/bin/gfortran-"* | sort | tail -1)"
+          echo "FC=$FC" >> "$GITHUB_ENV"
+          # Help CMake's find_package(BLAS) locate Homebrew's OpenBLAS.
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix openblas)" >> "$GITHUB_ENV"
 
       - name: Install package from source
         run: pip install -v ".[test]"

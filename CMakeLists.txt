@@ -1,10 +1,9 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.17)
 
 project(
   ${SKBUILD_PROJECT_NAME}
   VERSION ${SKBUILD_PROJECT_VERSION}
   LANGUAGES C Fortran)
-
 
 # Only request the module-building components. Do NOT request the full
 # `Development` package: that pulls in Development.Embed, which needs the
@@ -17,7 +16,7 @@ find_package(Python REQUIRED
     NumPy
 )
 
-find_package(BLAS REQUIRED) # only COPY is used; we should vendor it
+find_package(BLAS REQUIRED)
 
 # Build the C extension. Compiling the Fortran straight into the module
 # target lets CMake pull in the Fortran runtime (libgfortran) automatically
