@@ -54,8 +54,6 @@ def _wrapped_jac(jac, banded=False):
 
     return _zvode_banded_jac if banded else _zvode_jac
 
-    return _zvode_banded_jac if banded else _zvode_jac
-
 def _check_tolerances(rtol, atol, n):
     """Validate rtol/atol, warn if too small, and return the ZVODE ITOL flag.
 
