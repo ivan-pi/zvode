@@ -137,13 +137,6 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
     return miter, lband, uband
 
 
-def _falling_factorial(j, k):
-    """Compute j*(j-1)*...*(j-k+1); returns 1 for k=0 (empty product)."""
-    result = 1
-    for m in range(j - k + 1, j + 1):
-        result *= m
-    return result
-
 class ZVODEDenseOutput(DenseOutput):
     """Dense output interpolant for ZVODE using the Nordsieck history array.
 
@@ -154,11 +147,12 @@ class ZVODEDenseOutput(DenseOutput):
 
     .. math::
 
-        p(t) = \\sum_{j=0}^{nq} \\binom{s}{j}^{(k)} \\, yh_j,
+        p(t) = \\sum_{j=0}^{nq} \\binom{s}{j} \\, yh_j,
         \\quad s = (t - t_n) / h
 
-    where the falling-factorial weights are computed iteratively via Horner's
-    method.  No internal Fortran state is required after construction.
+    where the binomial weights collapse to 1 for plain interpolation (k=0),
+    giving a simple Horner evaluation.  No internal Fortran state is required
+    after construction.
 
     Parameters
     ----------
@@ -193,19 +187,16 @@ class ZVODEDenseOutput(DenseOutput):
         # Horner's method along the Nordsieck columns; for plain interpolation
         # all falling-factorial weights are 1, so the recurrence simplifies to:
         #   p = yh[:,nq]; for j = nq-1 ... 0: p = yh[:,j] + s*p
-        # yh[:,j, np.newaxis] is (n,1) and s*dky is (n,m), broadcasting gives (n,m).
+        # One (n, m) buffer is allocated upfront; each iteration is then two
+        # in-place operations with no temporaries: dky *= s; dky += yh[:,j].
+        # Starting from a view of yh would corrupt the stored Nordsieck array.
 
-        c = _falling_factorial(self.nq, k=0)
-        dky = c*np.outer(self.yh[:, self.nq], np.ones(t.shape[0])) # (n, m)
+        n = self.yh.shape[0]
+        dky = np.empty((n, len(t)), dtype=self.yh.dtype)
+        dky[:] = self.yh[:, self.nq, np.newaxis]  # seed: broadcast (n,1) -> (n,m)
         for j in range(self.nq - 1, -1, -1):
-            c = _falling_factorial(j, k=0)
-            dky = c*self.yh[:,j,np.newaxis] + s*dky
-
-# TODO: check if the Horner alg here can be rewritten with more
-# efficient in place operations, e.g.
-#   dky *= s
-#   dky += c*self.yh
-
+            dky *= s                              # dky = s * dky  (broadcasts m)
+            dky += self.yh[:, j, np.newaxis]      # dky = yh[:,j] + s * dky
 
         return dky[:, 0] if scalar else dky
 
