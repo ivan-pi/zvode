@@ -345,7 +345,7 @@ PyDoc_STRVAR(zvode_doc,
 "`fun` is called as fun(t, y, dy) and must fill `dy`; `jac` (or None) is\n"
 "called as jac(t, y, pd).  Returns the advanced time and the ZVODE istate.\n");
 
-static PyObject* zvode_py(PyObject* self, PyObject *args) {
+static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     PyArrayObject *ap_y = NULL, *ap_rtol = NULL, *ap_atol = NULL;
     PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
@@ -524,7 +524,7 @@ PyDoc_STRVAR(zvindy_doc,
 "------\n"
 "ValueError -- if k is out of range or t is outside [tn - hu, tn].\n");
 
-static PyObject* zvindy_py(PyObject* self, PyObject *args) {
+static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     double t, h, tn, hu;
     PyArrayObject *ap_yh = NULL, *ap_dky = NULL;
