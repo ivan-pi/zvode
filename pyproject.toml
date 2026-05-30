@@ -50,26 +50,3 @@ sdist.exclude = [
     "TODO.txt",
     "notes.txt",
 ]
-
-# ---------------------------------------------------------------------------
-# cibuildwheel
-# ---------------------------------------------------------------------------
-
-[tool.cibuildwheel]
-# CPython 3.9–3.12; skip PyPy and 32-bit builds.
-build = "cp39-* cp310-* cp311-* cp312-*"
-skip  = "*-win32 *-manylinux_i686 *-musllinux*"
-
-# Run the test suite inside every wheel environment.
-test-requires = ["pytest"]
-test-command  = "python -m pytest {project}/test -x -q"
-
-[tool.cibuildwheel.linux]
-# manylinux images carry gfortran; install OpenBLAS headers then tell CMake.
-before-all = "yum install -y openblas-devel || dnf install -y openblas-devel"
-config-settings = "cmake.define.BLA_VENDOR=OpenBLAS"
-
-[tool.cibuildwheel.macos]
-# Accelerate is always present on macOS — no installation required.
-# FC is set by fortran-lang/setup-fortran in the workflow.
-config-settings = "cmake.define.BLA_VENDOR=Apple"
