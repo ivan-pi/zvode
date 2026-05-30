@@ -109,16 +109,11 @@ def _check_tolerances(rtol, atol, n):
 def _determine_miter(jac, lband, uband, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
 
-    # --- 1. Validate Band Types ---
-    def _validate_band(band, name):
-        if band is not None:
-            # Check for integer types (including NumPy integers) and non-negativity
-            if not isinstance(band, (int, np.integer)) or band < 0:
-                raise ValueError(f"`{name}` must be a non-negative integer.")
-        return band
-
-    lband = _validate_band(lband, 'lband')
-    uband = _validate_band(uband, 'uband')
+    # --- 1. Validate Band Value ---
+    if lband is not None and lband < 0:
+        raise ValueError("`lband` must be a non-negative integer.")
+    if uband is not None and uband < 0:
+        raise ValueError("`uband` must be a non-negative integer.")
 
     # --- 2. Manual Override Logic ---
     if explicit_miter is not None:
