@@ -81,8 +81,8 @@ def jac_oscillator_banded(t, y):
     #   J[1,1] -> pd[1-1+1, 1] = pd[1, 1]
     w, z = y[0], y[1]
     pd = np.zeros((2, 2), dtype=np.complex128)
-    pd[1, 0] = -2j * w * z
     pd[0, 1] = -1j * w**2
+    pd[1, 0] = -2j * w * z
     pd[1, 1] = 1j
     return pd
 
@@ -130,7 +130,6 @@ def test_decay_dense_miters(miter, jac):
 # Decay problem: miter 4 and 5 (banded Jacobian, ml=0 mu=0)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="banded path under investigation")
 @pytest.mark.parametrize("miter,jac", [
     (4, jac_decay_banded),
     (5, None),
@@ -165,10 +164,10 @@ def test_decay_banded_miters(miter, jac):
 @pytest.mark.parametrize("miter,jac,extra_kwargs", [
     (1, jac_oscillator_dense, {}),
     (2, None, {}),
-    pytest.param(4, jac_oscillator_banded, {'lband': 0, 'uband': 1},
-                 marks=pytest.mark.skip(reason="banded path under investigation")),
-    pytest.param(5, None, {'lband': 0, 'uband': 1},
-                 marks=pytest.mark.skip(reason="banded path under investigation")),
+    pytest.param(4, jac_oscillator_banded, {'lband': 0, 'uband': 1}),
+#                 marks=pytest.mark.skip(reason="banded path under investigation")),
+    pytest.param(5, None, {'lband': 0, 'uband': 1}),
+#                 marks=pytest.mark.skip(reason="banded path under investigation")),
 ])
 def test_oscillator_miter(miter, jac, extra_kwargs):
     """Complex oscillator trajectory checked at solver-selected output points."""

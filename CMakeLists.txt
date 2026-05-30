@@ -32,6 +32,15 @@ python_add_library(_zvode MODULE
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
+set_source_files_properties(
+  extern/linpack/zgbfa.f
+  PROPERTIES
+    COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
+
+# Disable bounds checking on the LINPACK routines, because it
+# produces false positives in some corner cases (e.g. ml = 0)
+
+
 target_include_directories(
   _zvode
   PRIVATE src)
