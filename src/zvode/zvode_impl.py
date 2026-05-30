@@ -331,7 +331,7 @@ class ZVODE(OdeSolver):
         self.y = self._ytmp.copy()
 
         self.istate = 1 # Start integration
-        self.itask = 2 # Take one step and return
+        self.itask = 5 # Take one step, without passing t_bound, and return
 
         # Select method
         if zvode_method == 'Adams':
