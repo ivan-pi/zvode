@@ -19,18 +19,22 @@ classifiers = [
     "Programming Language :: Fortran",
 ]
 dependencies = [
-	"numpy>=1.23",
-	"scipy>=1.9"
+    "numpy>=1.23",
+    "scipy>=1.9",
 ]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/ivan-pi/zvode"
 Repository = "https://github.com/ivan-pi/zvode"
+Issues = "https://github.com/ivan-pi/zvode/issues"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 build.targets = ["_zvode"]
-build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
+build-dir = "build/{wheel_tag}"
 wheel.packages = ["src/zvode"]
 sdist.include = [
     "CMakeLists.txt",

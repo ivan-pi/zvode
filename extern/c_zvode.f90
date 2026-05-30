@@ -127,6 +127,7 @@ contains
     ! Discussion above and comments in driver explain all variables.
     !-----------------------------------------------------------------------
     function c_zvindy(n, t, yh, ldyh, k, dky, step) result(iflag) bind(c)
+        use zvode_mod, only: dzscal, xerrwd
         implicit none
         integer, parameter :: dp = kind(1.0d0)
 
@@ -136,8 +137,6 @@ contains
         complex(c_double_complex), intent(out) :: dky(n)
         type(step_t), intent(in) :: step
         integer(c_int) :: iflag
-
-        external :: dzscal, xerrwd
 
         real(dp) ::  c, s, tfuzz, tn1, tp
         integer :: j
