@@ -42,3 +42,11 @@ sdist.include = [
     "src/_zvode.c",
     "src/zvode.h",
 ]
+sdist.exclude = [
+    ".github/**",
+    ".gitignore",
+    "docs/**",
+    "orig/**",
+    "TODO.txt",
+    "notes.txt",
+]
