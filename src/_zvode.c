@@ -513,7 +513,7 @@ PyDoc_STRVAR(zvindy_doc,
 "----------\n"
 "t   : float  -- interpolation time; must lie in [tn - hu, tn].\n"
 "k   : int    -- derivative order; must satisfy 0 <= k <= yh.shape[1] - 1.\n"
-"yh  : complex128 ndarray, shape (n, nq+1), F-contiguous -- Nordsieck array.\n"
+"yh  : complex128 ndarray, shape (ldyh, nq+1), F-contiguous -- Nordsieck array.\n"
 "h   : float  -- HCUR, the step size the Nordsieck array is scaled to.\n"
 "tn  : float  -- TCUR, the current solver time.\n"
 "hu  : float  -- HU, the last successfully used step size.\n"
@@ -541,9 +541,10 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
     if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
     if (!check_writable(ap_dky, "dky"))                 return NULL;
 
-    const int n    = (int) PyArray_DIM(ap_yh, 0);     /* number of equations */
-    const int ldyh = n;                               /* leading dimension   */
+    const int n    = (int) PyArray_DIM(ap_dky,0);     /* number of equations */
+    const int ldyh = (int) PyArray_DIM(ap_yh, 0);     /* leading dimension   */
     const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order       */
+
     assert(ldyh >= n);
 
     if ((int) PyArray_SIZE(ap_dky) < n) {
