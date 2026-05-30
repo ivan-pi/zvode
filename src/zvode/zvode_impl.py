@@ -331,7 +331,7 @@ class ZVODE(OdeSolver):
         self.y = self._ytmp.copy()
 
         self.istate = 1 # Start integration
-        self.itask = 2 # Take one step and return
+        self.itask = 5 # Take one step, without passing t_bound, and return
 
         # Select method
         if zvode_method == 'Adams':
@@ -412,7 +412,8 @@ class ZVODE(OdeSolver):
         self.iwork[4:9] = 0
 
         # TODO: domain checks for step-sizes
-        #self.rwork[0] = t_bound
+        if self.itask == 5:
+            self.rwork[0] = t_bound
 
         if first_step is not None:
             self.h0 = validate_first_step(first_step,t0,t_bound)
