@@ -572,9 +572,11 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
             return NULL;
         }
         if (iflag == -2) {
+            char tbuf[32];
+            snprintf(tbuf, sizeof(tbuf), "%.17g", t);
             PyErr_Format(PyExc_ValueError,
-                "zvindy: t=%.17g is outside the valid interval [tn-hu, tn] "
-                "(Fortran IFLAG=-2)", t);
+                "zvindy: t=%s is outside the valid interval [tn-hu, tn] "
+                "(Fortran IFLAG=-2)", tbuf);
             return NULL;
         }
         assert(0 && "zvindy: unexpected IFLAG — contract violation");
