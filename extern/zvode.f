@@ -6,6 +6,7 @@ C       to use functors instead of external procedures
 
         PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
         PUBLIC :: XSETF, XSETUN, ZVSRCO
+        PUBLIC :: DZSCAL, XERRWD
 
         INTEGER, PARAMETER :: DP = KIND(1.0D0)
 
