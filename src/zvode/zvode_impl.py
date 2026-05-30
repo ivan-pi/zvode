@@ -109,42 +109,30 @@ def _check_tolerances(rtol, atol, n):
 def _determine_miter(jac, lband, uband, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
 
+    if jac is not None and not callable(jac):
+        raise TypeError("`jac` must be callable or None.")
     if lband is not None and lband < 0:
         raise ValueError("`lband` must be a non-negative integer.")
     if uband is not None and uband < 0:
         raise ValueError("`uband` must be a non-negative integer.")
 
-    # --- 2. Manual Override Logic ---
+    is_banded = lband is not None or uband is not None
+    lband = lband if lband is not None else 0
+    uband = uband if uband is not None else 0
+
     if explicit_miter is not None:
-        if explicit_miter not in (0, 1, 2, 3, 4, 5):
-            raise ValueError("Explicit `miter` must be an integer between 0 and 5.")
-
-        # ENFORCEMENT: miter 1 and 4 strictly require a user-supplied Jacobian
-        if explicit_miter in (1, 4) and jac is None:
+        if explicit_miter not in range(6):
+            raise ValueError("`miter` must be an integer between 0 and 5.")
+        if explicit_miter in (1, 4) and not jac:
             raise ValueError(
-                f"`jac` must be provided when `miter` is {explicit_miter} "
-                "(user-supplied Jacobian method)."
+                f"`jac` must be provided when `miter` is {explicit_miter}."
             )
-
-        # Normalize bands for banded methods
-        if explicit_miter in (4, 5):
-            lband = 0 if lband is None else lband
-            uband = 0 if uband is None else uband
-
         return explicit_miter, lband, uband
 
-    # --- 3. Automatic Deduction Logic ---
-    is_banded = (lband is not None) or (uband is not None)
-
     if is_banded:
-        # Normalize missing bands to 0
-        lband = 0 if lband is None else lband
-        uband = 0 if uband is None else uband
-
-        miter = 4 if jac is not None else 5
+        miter = 4 if jac else 5
     else:
-        miter = 1 if jac is not None else 2
-
+        miter = 1 if jac else 2
     return miter, lband, uband
 
 
