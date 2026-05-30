@@ -19,6 +19,7 @@
 - Support for Python Array-API interface (cupy?); we need to support execution in the memory spaces of the respective array libraries
 - Add Python typing hints (the .pyi files)
 - Implement testing with pytest.
+- ZVODE already does input checking internally; we should not do redundant checking or only if ZVODE can't do it itself (e.g. properties of numpy arrays)
 
 Developer notes:
 - NumPy Array API: https://numpy.org/doc/stable/reference/c-api/array.html

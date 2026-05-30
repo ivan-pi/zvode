@@ -225,6 +225,7 @@ static void fun_adaptor(
     struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
     assert(cb != NULL);
     assert(cb->fun != NULL);
+    assert(neq > 0);
 
     const npy_intp dims[1] = { neq };
 
@@ -273,6 +274,8 @@ static void jac_adaptor(
     struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
     assert(cb != NULL);
     assert(cb->jac != NULL && cb->jac != Py_None);
+    assert(neq > 0);
+    assert(ml >= 0 && mu >= 0);
     assert(nrowpd >= (cb->jac_is_banded ? ml+mu+1 : neq));
 
     const npy_intp dims_y[1] = { (npy_intp) neq };
@@ -375,7 +378,6 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
     assert(ap_iwork);
     assert(cb.fun);
     assert(cb.jac); // should be Py_None or a callable
-    assert(itask >=1 && itask <= 5);
 
     if (ZVODE_DEBUG) {
         dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
@@ -389,7 +391,16 @@ static PyObject* zvode_py(PyObject* self, PyObject *args) {
         return NULL;
     }
 
+    if (itask < 1 || itask > 5) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: itask must be between 1 and 5 (got %d)", itask);
+        return NULL;
+    }
+
     const int miter = abs(mf) % 10;
+    assert(miter <= 5);
+    assert(abs(mf)/10 == 1 || abs(mf)/10 == 2); /* method */
+
     cb.jac_is_banded = (miter == 4);
 
     // Upon initialization of ZVODE, do stringent type checks, but skip
