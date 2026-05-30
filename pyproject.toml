@@ -16,6 +16,10 @@ dependencies = [
     "numpy>=1.23",
     "scipy>=1.9",
 ]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
 keywords = ["ODE", "solver", "ZVODE", "ODEPACK", "complex", "scientific computing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
