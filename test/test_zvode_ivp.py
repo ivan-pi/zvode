@@ -11,12 +11,16 @@ excluded):
        w(0) = 1/2.1,  z(0) = 1
        Solution:  z(t) = exp(it),  w(t) = 1/(exp(it) + 1.1)
 
-The four standard miter options are tested (0 and 3 are omitted as they
-have only special applications):
+The following miter options are tested:
     miter=1 – BDF + user-supplied dense Jacobian
     miter=2 – BDF + internally-generated dense Jacobian
+    miter=3 – BDF + diagonal Jacobian approximation (decay problem only)
     miter=4 – BDF + user-supplied banded Jacobian
     miter=5 – BDF + internally-generated banded Jacobian
+
+miter=3 is exercised only on the decay problem because its Jacobian is
+purely diagonal (ml=0, mu=0), so the diagonal approximation is exact and
+convergence at the requested tolerance is guaranteed.
 
 Correctness is checked at both the automatically selected output points and
 at a predetermined fine grid via dense output (solve_ivp dense_output=True).
@@ -155,6 +159,39 @@ def test_decay_banded_miters(miter, jac):
     expected = sol_decay(sol.t, y0[0])
     assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
                     err_msg=f"miter={miter}: solution mismatch")
+
+
+# ---------------------------------------------------------------------------
+# Decay problem: miter 3 (diagonal Jacobian approximation)
+# ---------------------------------------------------------------------------
+
+def test_decay_diagonal_miter():
+    """Complex decay solved with the diagonal Jacobian approximation (miter=3).
+
+    The decay problem has a purely diagonal Jacobian (ml=0, mu=0), so
+    ZVODE's diagonal approximation (miter=3) captures the exact Jacobian
+    structure.  This makes it a clean regression test for miter=3 that
+    we know must converge with high accuracy.
+    """
+    y0 = np.array([0.5 + 1j], dtype=np.complex128)
+    t_span = (0.0, 2.0)
+
+    sol = solve_ivp(fun_decay, t_span, y0,
+                    method=ZVODE,
+                    miter=3,
+                    rtol=1e-8, atol=1e-10)
+
+    assert sol.success, f"miter=3: {sol.message}"
+    assert sol.status == 0
+    assert sol.t[0] == t_span[0]
+    assert sol.t[-1] == t_span[1]
+    assert sol.nfev > 0
+    assert sol.y.shape == (1, len(sol.t))
+    assert sol.y.dtype == np.complex128
+
+    expected = sol_decay(sol.t, y0[0])
+    assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
+                    err_msg="miter=3: solution mismatch")
 
 
 # ---------------------------------------------------------------------------
