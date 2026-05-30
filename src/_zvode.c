@@ -4,12 +4,9 @@
 #include <assert.h>
 #include <complex.h>
 
-#ifndef ZVODE_DEBUG
-#define ZVODE_DEBUG 0
-#endif
 
-#include <stdio.h> // For debugging only
 #include <stdint.h>
+#include <stdio.h>
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
@@ -19,6 +16,10 @@
 /* ------------------------------------------------------------------ */
 /* Debug helpers (compile with -DZVODE_DEBUG to enable)               */
 /* ------------------------------------------------------------------ */
+
+#ifndef ZVODE_DEBUG
+#define ZVODE_DEBUG 0
+#endif
 
 static const char *dtype_name(int typenum) {
     switch (typenum) {
@@ -573,11 +574,11 @@ static PyObject* zvindy_py(PyObject* self, PyObject *args) {
             return NULL;
         }
         if (iflag == -2) {
-            char tbuf[32];
-            snprintf(tbuf, sizeof(tbuf), "%.17g", t);
-            PyErr_Format(PyExc_ValueError,
-                "zvindy: t=%s is outside the valid interval [tn-hu, tn] "
-                "(Fortran IFLAG=-2)", tbuf);
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                "zvindy: t=%.17g is outside the valid interval [tn-hu, tn] "
+                "(Fortran IFLAG=-2)", t);
+            PyErr_SetString(PyExc_ValueError, msg);
             return NULL;
         }
         assert(0 && "zvindy: unexpected IFLAG — contract violation");
