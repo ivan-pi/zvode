@@ -50,3 +50,30 @@ sdist.exclude = [
     "TODO.txt",
     "notes.txt",
 ]
+
+# ---------------------------------------------------------------------------
+# cibuildwheel
+# ---------------------------------------------------------------------------
+
+[tool.cibuildwheel]
+# CPython 3.9–3.12; skip PyPy and 32-bit builds.
+build = "cp39-* cp310-* cp311-* cp312-*"
+skip  = "*-win32 *-manylinux_i686 *-musllinux*"
+
+# Run the test suite inside every wheel environment.
+test-requires = ["pytest"]
+test-command  = "python -m pytest {project}/test -x -q"
+
+[tool.cibuildwheel.linux]
+# manylinux2014 images ship gfortran; just need BLAS headers.
+before-all = "yum install -y openblas-devel"
+
+[tool.cibuildwheel.macos]
+# Install gfortran (via gcc) and OpenBLAS, then expose them to CMake.
+before-all = """
+    brew install gcc openblas
+    FC=$(ls "$(brew --prefix gcc)/bin/gfortran-"* | sort | tail -1)
+    echo "FC=$FC"               >> "$CIBW_ENVIRONMENT_FILE"
+    echo "CMAKE_PREFIX_PATH=$(brew --prefix openblas)" \
+                                >> "$CIBW_ENVIRONMENT_FILE"
+"""
