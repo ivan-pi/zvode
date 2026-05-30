@@ -18,28 +18,41 @@ MESSAGES = {
 }
 
 def _wrapped_fun(fun):
-    """Adapt a SciPy-style f(t, y) → dy/dt callable to the in-place ZVODE signature."""
-    def zvode_fun(t, y, dy):
+    """Adapt a SciPy-style ``f(t, y)`` to the in-place ZVODE signature."""
+    def _zvode_fun(t, y, dy):
         dy[:] = fun(t, y)
 
-    return zvode_fun
+    return _zvode_fun
 
 def _wrapped_jac(jac,banded=False):
-    """Adapt a SciPy-style jac(t, y) callable to the in-place ZVODE Jacobian signature."""
+    """Adapt a SciPy-style ``jac(t, y)`` to the in-place ZVODE Jacobian signature.
 
-    # pd will be F-contiguous here, and since we are copying the results
-    # into it, jac() could be either C or F contiguous
-    def zvode_jac(t,y,pd):
-        assert y.shape[0] == pd.shape[1]
-        # The pd array may be padded in the first dimension
+    ZVODE passes an output array ``pd`` of shape ``(nrowpd, neq)`` in Fortran
+    (column-major) order.  For the dense case ``nrowpd >= neq``.  For the banded
+    case ``nrowpd >= 2*ml + mu + 1``: the extra ``ml`` rows beyond the user band
+    ``ml + mu + 1`` are fill-in workspace that ZGBFA (or the equivalent
+    LAPACK routines) need during LU factorisation and should be ignored
+    by the Jacobian callback.
+
+    Within the user band, ``df(i)/dy(j)`` goes into ``pd[i - j + mu, j]``.
+    The triangular corner entries that correspond to nonexistent matrix elements
+    (where the band extends beyond the matrix) can be set to any value.
+
+    Note: ZVODE's native interface only requires callers to set the non-zero
+    elements of ``pd``; unset entries are ignored.  Because this wrapper copies
+    the return value of ``jac(t, y)`` into ``pd``, the full slice is always
+    overwritten, which is a minor overhead paid for SciPy interface compatibility.
+    """
+
+    def _zvode_jac(t, y, pd):
         n = y.shape[0]
-        pd[0:n,0:n] = jac(t,y)
+        pd[:n,:n] = jac(t, y)
 
-    def zvode_banded_jac(t,y,pd,ml,mu):
+    def _zvode_banded_jac(t, y, pd, ml, mu):
         n = y.shape[0]
-        pd[0:ml+mu+1,0:n] = jac(t,y)
+        pd[:ml+mu+1,:n] = jac(t, y)
 
-    return zvode_banded_jac if banded else zvode_jac
+    return _zvode_banded_jac if banded else _zvode_jac
 
 def _check_tolerances(rtol, atol, n):
     """Validate rtol/atol, warn if too small, and return the ZVODE ITOL flag.
@@ -355,6 +368,16 @@ class ZVODE(OdeSolver):
         # Determine iteration method
         self.miter, self.ml, self.mu = _determine_miter(
             jac, lband, uband, miter)
+
+        if self.miter in (4, 5):
+            bandwidth = self.ml + self.mu + 1
+            if bandwidth * 2 > self.n:
+                warnings.warn(
+                    f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
+                    f"the system size neq = {self.n}; verify that a banded "
+                    "solver is appropriate for this problem.",
+                    stacklevel=2,
+                )
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
