@@ -412,7 +412,8 @@ class ZVODE(OdeSolver):
         self.iwork[4:9] = 0
 
         # TODO: domain checks for step-sizes
-        #self.rwork[0] = t_bound
+        if self.itask == 5:
+            self.rwork[0] = t_bound
 
         if first_step is not None:
             self.h0 = validate_first_step(first_step,t0,t_bound)
