@@ -24,7 +24,7 @@ def _wrapped_fun(fun):
 
     return _zvode_fun
 
-def _wrapped_jac(jac,banded=False):
+def _wrapped_jac(jac, banded=False):
     """Adapt a SciPy-style ``jac(t, y)`` to the in-place ZVODE Jacobian signature.
 
     ZVODE passes an output array ``pd`` of shape ``(nrowpd, neq)`` in Fortran
@@ -46,11 +46,13 @@ def _wrapped_jac(jac,banded=False):
 
     def _zvode_jac(t, y, pd):
         n = y.shape[0]
-        pd[:n,:n] = jac(t, y)
+        pd[:n, :n] = jac(t, y)
 
     def _zvode_banded_jac(t, y, pd, ml, mu):
         n = y.shape[0]
-        pd[:ml+mu+1,:n] = jac(t, y)
+        pd[:ml + mu + 1, :n] = jac(t, y)
+
+    return _zvode_banded_jac if banded else _zvode_jac
 
     return _zvode_banded_jac if banded else _zvode_jac
 
