@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core", "numpy"]
+requires = ["scikit-build-core>=0.10", "numpy>=2.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -7,19 +7,41 @@ name = "zvode"
 version = "0.1.0"
 description = "Python bindings to the classic ZVODE ODE solver"
 readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Ivan Pribec", email = "ivan.pribec@gmail.com"},
+]
 requires-python = ">=3.9"
-dependencies = ["numpy", "scipy"]
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.9",
+]
+keywords = ["ODE", "solver", "ZVODE", "ODEPACK", "complex", "scientific computing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "License :: OSI Approved :: BSD Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Fortran",
+]
+
+[project.urls]
+Homepage = "https://github.com/ivan-pi/zvode"
+Repository = "https://github.com/ivan-pi/zvode"
+Issues = "https://github.com/ivan-pi/zvode/issues"
 
 [tool.scikit-build]
-#wheel.py-api = "cp38"
-cmake.version = "CMakeLists.txt"
+minimum-version = "build-system.requires"
 build.targets = ["_zvode"]
-build-dir = "build/{wheel_tag}"   # caches CMake between builds; nice for dev
+build-dir = "build/{wheel_tag}"
 wheel.packages = ["src/zvode"]
 
-[tool.scikit-build.cmake.define]
-CMAKE_C_FLAGS = "-g -O0 -Wall -Wextra -Wconversion -fno-omit-frame-pointer"
-CMAKE_Fortran_COMPILER = "gfortran"
-CMAKE_Fortran_FLAGS="-g -O0 -fcheck=all -fbacktrace -ffpe-trap=invalid,zero,overflow"
-BLAS_LIBRARIES = "/opt/OpenBLAS/lib/libopenblas.a"
-BUILD_TYPE = "Debug"
+# Explicitly list non-Python sources so the sdist is self-contained even if
+# git-tracking assumptions change.
+sdist.include = [
+    "CMakeLists.txt",
+    "extern/**",
+    "src/_zvode.c",
+    "src/zvode.h",
+]
