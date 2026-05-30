@@ -1,32 +1,43 @@
 name: Build and publish wheels
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
+  release:
+    types:
+      - published
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   build_wheels:
-    name: ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-13, macos-latest]
-        # ubuntu-latest  → Linux x86-64 (manylinux + musllinux)
-        # macos-13       → macOS x86-64
-        # macos-latest   → macOS arm64
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+        # ubuntu-latest  → Linux x86-64 (manylinux)
+        # macos-14       → macOS arm64
+        # macos-15-intel → macOS x86-64
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Fortran (macOS)
+        if: runner.os == 'macOS'
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 14
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-wheels-${{ matrix.os }}
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: wheelhouse/*.whl
 
   build_sdist:
@@ -35,11 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build frontend
-        run: pip install build
-
       - name: Build sdist
-        run: python -m build --sdist
+        run: pipx run build --sdist
 
       - uses: actions/upload-artifact@v4
         with:
@@ -50,13 +58,12 @@ jobs:
     name: Publish to PyPI
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    # Only publish on tag pushes, not workflow_dispatch.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release' && github.event.action == 'published'
     environment:
       name: pypi
       url: https://pypi.org/p/zvode
     permissions:
-      id-token: write   # required for OIDC trusted publishing
+      id-token: write
 
     steps:
       - uses: actions/download-artifact@v4

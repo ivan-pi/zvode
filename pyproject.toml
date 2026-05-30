@@ -69,11 +69,8 @@ test-command  = "python -m pytest {project}/test -x -q"
 before-all = "yum install -y openblas-devel"
 
 [tool.cibuildwheel.macos]
-# Install gfortran (via gcc) and OpenBLAS, then expose them to CMake.
+# FC is set by fortran-lang/setup-fortran in the workflow; only BLAS needed.
 before-all = """
-    brew install gcc openblas
-    FC=$(ls "$(brew --prefix gcc)/bin/gfortran-"* | sort | tail -1)
-    echo "FC=$FC"               >> "$CIBW_ENVIRONMENT_FILE"
-    echo "CMAKE_PREFIX_PATH=$(brew --prefix openblas)" \
-                                >> "$CIBW_ENVIRONMENT_FILE"
+    brew install openblas
+    echo "CMAKE_PREFIX_PATH=$(brew --prefix openblas)" >> "$CIBW_ENVIRONMENT_FILE"
 """
