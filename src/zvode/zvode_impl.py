@@ -295,12 +295,12 @@ class ZVODE(OdeSolver):
 
     Notes
     -----
-    **Thread safety:** each ``ZVODE`` instance is *not* thread-safe.  The
-    underlying Fortran library stores solver state in global Fortran COMMON
-    blocks, so stepping two instances concurrently from different threads will
-    produce data races and incorrect results.  Create one instance per thread,
-    or protect shared instances with a ``threading.Lock``.  Running multiple
-    independent integrations in separate *processes* (e.g. via
+    **Thread safety:** ``ZVODE`` is *not* thread-safe.  The underlying Fortran
+    library stores solver state in process-global COMMON blocks, so stepping
+    any two instances concurrently from different threads — even distinct
+    objects — will corrupt that shared state.  Protect all calls to
+    :meth:`step` with a single process-wide ``threading.Lock``.  Running
+    multiple independent integrations in separate *processes* (e.g. via
     ``multiprocessing``) is safe.
 
     References
