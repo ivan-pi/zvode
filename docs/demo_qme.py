@@ -1,3 +1,31 @@
+"""
+Generated with the assistance of Google Gemini.
+
+Solves and visualizes a Quantum Master Equation (QME) for a two-level
+open quantum system (qubit) using a custom ZVODE backend.
+
+This script models a qubit undergoing Rabi oscillations while simultaneously
+losing energy to the environment via spontaneous emission. It uses the
+Lindblad Master Equation formalism:
+
+    d(rho)/dt = -i[H, rho] + gamma * (L * rho * L^dagger - 0.5 * {L^dagger * L, rho})
+
+Where:
+    - H (Hamiltonian) drives transitions between states (Rabi frequency, omega=2.0).
+    - L (Jump Operator) represents spontaneous emission to the ground state (rate, gamma=0.5).
+    - rho is the 2x2 density matrix of the quantum state.
+
+Key Features:
+- Vectorizes the 2x2 density matrix into a 1D complex array to interface
+  with SciPy's `solve_ivp` and the custom ZVODE solver.
+- Reshapes the 1D state back to 2x2 internally for exact matrix algebra.
+- Plots the real populations (diagonal elements) and complex coherences
+  (off-diagonal elements) over time.
+
+Dependencies:
+    numpy, scipy, matplotlib, custom zvode extension
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
@@ -42,8 +70,6 @@ def lindblad_deriv(t, y_flat):
 # Initial state: Pure excited state |1><1|
 rho0 = np.array([[0.0, 0.0], 
                  [0.0, 1.0]], dtype=np.complex128)
-
-print("Import complete; calling solve_ivp with ZVODE")
 
 sol = solve_ivp(
     fun=lindblad_deriv,
