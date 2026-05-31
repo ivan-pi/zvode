@@ -183,17 +183,16 @@ contains
 
     contains
 
-      pure function falling_factorial(j, k) result(c)
-        implicit none
-        integer, intent(in) :: j, k
-        real(dp) :: c
-        integer :: ic, jj
-        ic = 1
-        do jj = j - k + 1, j
-          ic = ic*jj
-        end do
-        c = ic
-      end function
+        pure function falling_factorial(j, k) result(c)
+            integer, intent(in) :: j, k
+            real(dp) :: c
+            integer :: ic, jj
+            ic = 1
+            do jj = j - k + 1, j
+              ic = ic*jj
+            end do
+            c = ic
+        end function
 
     end function c_zvindy
 
