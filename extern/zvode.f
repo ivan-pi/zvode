@@ -54,6 +54,9 @@ C       to use functors instead of external procedures
           END SUBROUTINE
         END INTERFACE
 C
+C BLAS PROCEDURES
+      EXTERNAL :: ZCOPY
+C
       INCLUDE 'linpack.fi'
 C
       CONTAINS
@@ -3757,7 +3760,7 @@ C  Declare arguments.
 C
       DOUBLE PRECISION R1, R2
       INTEGER NMES, NERR, LEVEL, NI, I1, I2, NR
-      CHARACTER*(*) MSG
+      CHARACTER(LEN=*) MSG
 C
 C  Declare local variables.
 C
