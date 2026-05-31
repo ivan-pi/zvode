@@ -19,6 +19,25 @@ argument.
 > **Warning** — This integrator is not re-entrant. You cannot have two `ode`
 > instances using the `"zvode"` integrator at the same time.
 
+## Differences from upstream ZVODE
+
+This package ships a **modified** copy of ZVODE (see [`extern/zvode.f`](extern/zvode.f)).
+The [Netlib source](https://netlib.org/ode/zvode.f) has been changed in the following ways:
+
+- **Module wrapping** — the entire code is enclosed in a Fortran 90 `MODULE ZVODE_MOD`
+  with `IMPLICIT NONE` and explicit `PUBLIC`/`PRIVATE` declarations.
+- **Abstract class callbacks** — the right-hand side function `F` and the Jacobian `JAC`
+  were external subroutines in the original; here they are polymorphic `CLASS(ZVODE_FUN)`
+  and `CLASS(ZVODE_JAC)` objects with deferred `EVAL` procedures (Fortran 2003 abstract
+  classes). This is the most significant departure from the original design.
+- **`RPAR`/`IPAR` removed** — the original interface passes user context through a real/complex
+  array `RPAR` and an integer array `IPAR`. In the functor design, context is carried by the
+  class object itself, so these arguments are no longer present.
+
+The internal numerics — the `ZVOD01`/`ZVOD02` Fortran `COMMON` blocks, the Adams and BDF
+stepping logic, and the vendored LINPACK routines (`ZGEFA`, `ZGESL`, `ZGBFA`, `ZGBSL`) —
+are **unchanged** from the 2006 LLNL release.
+
 ## Installation
 
 ```bash
