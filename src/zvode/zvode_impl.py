@@ -320,6 +320,12 @@ class ZVODE(OdeSolver):
                          support_complex=True)
 
         self.tout = self.t_bound
+        if np.isrealobj(y0):
+            warnings.warn(
+                "y0 has a real dtype and will be cast to complex128. "
+                "Pass a complex array to suppress this warning.",
+                stacklevel=2,
+            )
         self._ytmp = np.array(y0, dtype=np.complex128, order='C', copy=True)
         self.y = self._ytmp.copy()
 
