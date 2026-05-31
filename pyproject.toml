@@ -49,4 +49,6 @@ sdist.exclude = [
     "orig/**",
     "TODO.txt",
     "notes.txt",
+    "test/*.f",
+    "test/*.F90",
 ]
