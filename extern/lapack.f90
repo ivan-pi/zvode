@@ -13,7 +13,8 @@ module lapack_interfaces
       import dp
       integer,     intent(in)    :: m, n, kl, ku, ldab
       complex(dp), intent(inout) :: ab(ldab,*)
-      integer,     intent(out)   :: ipiv(*), info
+      integer,     intent(inout) :: ipiv(*)
+      integer,     intent(out)   :: info
     end subroutine ZGBTRF
 
     ! Solve a banded system using the LU factors from ZGBTRF
@@ -32,7 +33,8 @@ module lapack_interfaces
       import dp
       integer,     intent(in)    :: m, n, lda
       complex(dp), intent(inout) :: a(lda,*)
-      integer,     intent(out)   :: ipiv(*), info
+      integer,     intent(inout) :: ipiv(*)
+      integer,     intent(out)   :: info
     end subroutine ZGETRF
 
     ! Solve a general system using the LU factors from ZGETRF
@@ -65,7 +67,7 @@ module blas_interfaces
       import dp
       integer,     intent(in)  :: n, incx, incy
       complex(dp), intent(in)  :: zx(*)
-      complex(dp), intent(out) :: zy(*)
+      complex(dp), intent(inout) :: zy(*)
     end subroutine ZCOPY
 
   end interface
