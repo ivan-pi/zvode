@@ -147,3 +147,15 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 ## License
 
 `zvode` is distributed under the BSD license. See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Bug reports and suggestions are welcome via the [issue tracker](https://github.com/ivan-pi/zvode/issues).
+The most useful reports are:
+
+- **Documentation errors** — typos, incorrect parameter descriptions, or misleading examples.
+- **Integration failures** — cases where the solver returns a wrong result, fails to converge,
+  or raises an unexpected error. A minimal reproducer (ODE, initial condition, tolerances) is
+  very helpful.
+- **Feature requests** — even if a feature is not planned, requests help track what practitioners
+  actually need.
