@@ -23,6 +23,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install BLAS (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libopenblas-dev
+
       - name: Select Fortran compiler (macOS)
         if: runner.os == 'macOS'
         run: echo "FC=gfortran-14" >> "$GITHUB_ENV"
