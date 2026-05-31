@@ -10,8 +10,9 @@ Analytic solution: w = 1/(z + 1.1), z = exp(i*t).
 As z traces the unit circle, w traces a circle of radius 10/2.1
 centered at 11/2.1.
 
-The imaginary unit i is passed as rpar for convenience, matching
-the Fortran convention. Uses MF = 21 (BDF with user-supplied Jacobian).
+The imaginary unit i is passed as an extra argument to demonstrate
+the use of the args parameter in solve_ivp. Uses MF = 21 (BDF with
+user-supplied Jacobian).
 """
 import numpy as np
 import matplotlib.pyplot as plt
