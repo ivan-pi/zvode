@@ -29,15 +29,6 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y gfortran libopenblas-dev
 
-      - name: Install Fortran compiler (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install gcc
-          # Homebrew installs gfortran as a versioned binary (e.g. gfortran-14).
-          # Export FC so CMake finds it without a hardcoded name.
-          FC="$(ls "$(brew --prefix gcc)/bin/gfortran-"* | sort | tail -1)"
-          echo "FC=$FC" >> "$GITHUB_ENV"
-
       - name: Install package and test dependencies from source
         run: pip install -v ".[test]"
 
