@@ -342,9 +342,9 @@ PyDoc_STRVAR(zvode_doc,
 "Advance a complex ODE system with a single ZVODE call.\n"
 "\n"
 "`y`, `zwork`, `rwork`, `iwork` are modified in place and must be\n"
-"contiguous arrays of dtype complex128, complex128, float64 and int32.\n"
-"`fun` is called as fun(t, y, dy) and must fill `dy`; `jac` (or None) is\n"
-"called as jac(t, y, pd).  Returns the advanced time and the ZVODE istate.\n");
+"contiguous arrays of dtype ``complex128``, ``complex128``, ``float64`` and ``int32``.\n"
+"`fun` is called as ``fun(t, y, dy)`` and must fill `dy`; `jac` (or None) is\n"
+"called as ``jac(t, y, pd)``.  Returns the advanced time and the ZVODE istate.\n");
 
 static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
@@ -501,21 +501,21 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 PyDoc_STRVAR(zvindy_doc,
 "zvindy(t, k, yh, h, tn, hu, dky) -> None\n"
 "\n"
-"Interpolate the K-th derivative of y at time T using the the Nordsieck array.\n"
+"Interpolate the `k`-th derivative of `y` at time `t` using the Nordsieck array.\n"
 "\n"
 "Must be called after at least one successful ZVODE step.  The ZVODE internal\n"
-"state (TN, H, NQ, ...) is shared via Fortran COMMON blocks, so no explicit\n"
+"state (``TN``, ``H``, ``NQ``, ...) is shared via Fortran COMMON blocks, so no explicit\n"
 "state argument is needed.\n"
 "\n"
 "Parameters\n"
 "----------\n"
-"t   : float  -- interpolation time; must lie in [tn - hu, tn].\n"
-"k   : int    -- derivative order; must satisfy 0 <= k <= yh.shape[1] - 1.\n"
-"yh  : complex128 ndarray, shape (ldyh, nq+1), F-contiguous -- Nordsieck array.\n"
-"h   : float  -- HCUR, the step size the Nordsieck array is scaled to.\n"
-"tn  : float  -- TCUR, the current solver time.\n"
-"hu  : float  -- HU, the last successfully used step size.\n"
-"dky : complex128 ndarray, 1-D length n, writable -- receives the result.\n"
+"t   : float  -- interpolation time; must lie in ``[tn - hu, tn]``.\n"
+"k   : int    -- derivative order; must satisfy ``0 <= k <= yh.shape[1] - 1``.\n"
+"yh  : ``complex128`` ndarray, shape ``(ldyh, nq+1)``, F-contiguous -- Nordsieck array.\n"
+"h   : float  -- ``HCUR``, the step size the Nordsieck array is scaled to.\n"
+"tn  : float  -- ``TCUR``, the current solver time.\n"
+"hu  : float  -- ``HU``, the last successfully used step size.\n"
+"dky : ``complex128`` ndarray, 1-D length n, writable -- receives the result.\n"
 "\n"
 "Raises\n"
 "------\n"
