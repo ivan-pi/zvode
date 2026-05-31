@@ -1,5 +1,5 @@
 """
-Example from the ZVODE source file (zvode.f, lines 232-305).
+Example from the ZVODE source file (zvode.f).
 
 Solves a 2-ODE complex system:
 
