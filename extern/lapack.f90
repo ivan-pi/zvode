@@ -49,3 +49,25 @@ module lapack_interfaces
   end interface
 
 end module lapack_interfaces
+
+module blas_interfaces
+  implicit none
+  private
+
+  integer, parameter :: dp = kind(1.0d0)
+
+  public :: zcopy
+
+  interface
+
+    ! Copy a complex vector: zy = zx
+    subroutine ZCOPY(n, zx, incx, zy, incy)
+      import dp
+      integer,     intent(in)  :: n, incx, incy
+      complex(dp), intent(in)  :: zx(*)
+      complex(dp), intent(out) :: zy(*)
+    end subroutine ZCOPY
+
+  end interface
+
+end module blas_interfaces
