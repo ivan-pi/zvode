@@ -50,7 +50,6 @@ def _wrapped_jac(jac, banded=False):
         pd[:n, :n] = jac(t, y)
 
     def _zvode_banded_jac(t, y, pd, ml, mu):
-        print(f"in _zvode_banded_jac: pd.shape = {pd.shape}, ml = {ml}, mu = {mu}")
         n = y.shape[0]
         pd[:ml + mu + 1, :n] = jac(t, y)
 
@@ -294,6 +293,16 @@ class ZVODE(OdeSolver):
     nlu : int
         Number of LU decompositions.
 
+    Notes
+    -----
+    **Thread safety:** ``ZVODE`` is *not* thread-safe.  The underlying Fortran
+    library stores solver state in process-global COMMON blocks, so stepping
+    any two instances concurrently from different threads — even distinct
+    objects — will corrupt that shared state.  Protect all calls to
+    :meth:`step` with a single process-wide ``threading.Lock``.  Running
+    multiple independent integrations in separate *processes* (e.g. via
+    ``multiprocessing``) is safe.
+
     References
     ----------
     .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A Variable
@@ -321,6 +330,12 @@ class ZVODE(OdeSolver):
                          support_complex=True)
 
         self.tout = self.t_bound
+        if np.isrealobj(y0):
+            warnings.warn(
+                "y0 has a real dtype and will be cast to complex128. "
+                "Pass a complex array to suppress this warning.",
+                stacklevel=2,
+            )
         self._ytmp = np.array(y0, dtype=np.complex128, order='C', copy=True)
         self.y = self._ytmp.copy()
 
