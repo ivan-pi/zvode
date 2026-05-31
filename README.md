@@ -50,12 +50,9 @@ Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
 The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
 **ifx**, and **flang** are also known to work.
 
-A BLAS library is required at link time. CMake locates it via
-`find_package(BLAS)`. The routines called from an external BLAS are
-`ZCOPY`, `ZAXPY`, and `ZSCAL` (standard Level 1 complex BLAS); the
-mixed real/complex helpers `DZSCAL` and `DZAXPY` are vendored inside
-`extern/zvode.f`. On Linux, [OpenBLAS](https://www.openblas.net/) or a
-vendor BLAS (e.g. MKL, BLIS) will all work. On macOS, the system
+A BLAS library is required at link time (located by CMake's
+`find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
+or a vendor BLAS (MKL, BLIS, …) will all work. On macOS, the system
 Accelerate framework is picked up automatically.
 
 ```bash
@@ -105,8 +102,8 @@ arguments when constructing `ZVODE` directly.
 | `zvode_method` | `'BDF'` or `'Adams'` | `'BDF'` | Integration method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
 | `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
 | `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)` → `(n, n)` array. Estimated by finite differences if not provided. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths for a banded Jacobian. |
+| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. For a full Jacobian return an `(n, n)` array; for a banded Jacobian return an `(lband + uband + 1, n)` array. Estimated by finite differences if not provided. |
+| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths of the Jacobian band. Setting either activates the banded solver path; the other defaults to 0. |
 | `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
 | `first_step` | float | auto | Initial step size. |
 | `max_step` | float | `np.inf` | Maximum step size. |
