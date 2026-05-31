@@ -1,4 +1,4 @@
-name: Tests
+name: Tests (NumPy 2)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    name: NumPy 2 / Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
       FC: ${{ matrix.FC }}
@@ -28,14 +28,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Fortran compiler and BLAS (Linux)
+      - name: Install BLAS (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y gfortran libopenblas-dev
+          sudo apt-get install -y libopenblas-dev
 
       - name: Install package and test dependencies from source
-        run: pip install -v ".[test]"
+        run: pip install -v ".[test]" "numpy>=2.0,<3"
 
       - name: Run tests
         run: python -m pytest test/ -v
