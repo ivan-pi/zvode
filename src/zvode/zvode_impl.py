@@ -259,8 +259,6 @@ class ZVODE(OdeSolver):
         ``lband + uband + 1``.
     max_order : int, optional
         Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
-    max_steps : int, optional
-        Maximum number of internal steps (currently ignored).
     miter : {0, 1, 2, 3, 4, 5}, optional
         Iteration method override.  Normally inferred from `jac` and `lband`/`uband`:
 
@@ -319,7 +317,6 @@ class ZVODE(OdeSolver):
                  jac=None,
                  lband=None, uband=None,
                  max_order=None,
-                 max_steps=None,
                  miter=None,
                  jsv=1,
                  **extraneous):
@@ -485,12 +482,6 @@ class ZVODE(OdeSolver):
             # Load the potentially "wrong" value; capping happens inside Fortran
             self.iwork[4] = max_order
 
-        if max_steps is not None:
-            if max_steps <= 0:
-                raise ValueError("'max_steps' must be a positive integer.")
-
-            warnings.warn("'max_steps' are ignored currently")
-            # self.iwork[5] = int(max_steps)
 
 
     def _step_impl(self):
