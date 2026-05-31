@@ -16,16 +16,12 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
   array `RPAR` and an integer array `IPAR`. In the functor design, context is carried by the
   class object itself, so these arguments are no longer present.
 
-The internal numerics — the `ZVOD01`/`ZVOD02` Fortran `COMMON` blocks, and the Adams and BDF
-stepping logic — are unchanged.
+The internal numerics — the `ZVOD01`/`ZVOD02` Fortran `COMMON` blocks, and the Adams and BDF stepping logic — are unchanged.
 
 ## `linpack/` — changes from the Netlib release
 
 The LINPACK routines (`zgefa.f`, `zgesl.f`, `zgbfa.f`, `zgbsl.f`) are taken from the
-[Netlib LINPACK distribution](https://netlib.org/linpack/). The following change has been
-applied to each file:
+[Netlib LINPACK distribution](https://netlib.org/linpack/).
+The following change has been applied to each file:
 
-- **Assumed-size array argument declarations** — dummy array arguments that were declared
-  with an explicit length (e.g. `DIMENSION A(LDA,1)`) have been updated to use the standard
-  assumed-size notation (`DIMENSION A(LDA,*)`). This silences warnings from strict Fortran
-  compilers about incorrect array bound declarations.
+- **Assumed-size array argument declarations** — dummy array arguments that were declaredwith an explicit length (e.g. `DIMENSION A(LDA,1)`) have been updated to use the standard assumed-size notation (`DIMENSION A(LDA,*)`). This silences warnings from strict Fortran compilers about incorrect array bound declarations.
