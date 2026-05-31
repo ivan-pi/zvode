@@ -293,6 +293,16 @@ class ZVODE(OdeSolver):
     nlu : int
         Number of LU decompositions.
 
+    Notes
+    -----
+    **Thread safety:** each ``ZVODE`` instance is *not* thread-safe.  The
+    underlying Fortran library stores solver state in global Fortran COMMON
+    blocks, so stepping two instances concurrently from different threads will
+    produce data races and incorrect results.  Create one instance per thread,
+    or protect shared instances with a ``threading.Lock``.  Running multiple
+    independent integrations in separate *processes* (e.g. via
+    ``multiprocessing``) is safe.
+
     References
     ----------
     .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A Variable
