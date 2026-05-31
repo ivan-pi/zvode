@@ -373,6 +373,30 @@ class ZVODE(OdeSolver):
             raise RuntimeError("Error setting the method flag")
 
         # Complex workspace size
+        #
+        # The Fortran source computes LENWM = (1+JCO)*N*N and LENP = N*N using
+        # int32 (LP64 calling convention).  For N >= 46341, N*N overflows int32,
+        # which would corrupt internal array offsets even though Python allocates
+        # the arrays correctly (Python integers are arbitrary-precision).
+        # Detect this before calling into Fortran.
+        _INT32_MAX = 2**31 - 1
+        if self.miter in (1, 2):
+            # worst case: LENWM = 2*N*N  (JSV=1, JCO=1)
+            if self.n**2 > _INT32_MAX:
+                raise ValueError(
+                    f"neq = {self.n} exceeds the maximum of 46340 for dense "
+                    f"Jacobian methods: neq**2 overflows the 32-bit integer "
+                    f"arithmetic used internally by the Fortran library."
+                )
+        elif self.miter in (4, 5):
+            # worst case: LENWM = (2*ML + MU + 1 + ML)*N = (3*ML + MU + 1)*N
+            _lenwm_max = (3*self.ml + self.mu + 1) * self.n
+            if _lenwm_max > _INT32_MAX:
+                raise ValueError(
+                    f"Banded workspace size ({_lenwm_max:,}) overflows the "
+                    f"32-bit integer arithmetic used internally by the Fortran library."
+                )
+
         if self.miter == 0:
             lwm = 0
         elif self.miter in (1,2):
@@ -392,9 +416,7 @@ class ZVODE(OdeSolver):
             else:
                 lwm = None
         else:
-            # TODO: this cannot occur, maybe it's better if this was
-            #       assert false.
-            raise RuntimeError("Unhandled miter value {self.miter}.")
+            assert False, f"Unhandled miter value {self.miter}."
 
         if lwm is None:
             raise ValueError()

@@ -536,6 +536,45 @@ def test_negative_rtol_raises():
         solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, rtol=-1e-6)
 
 
+def test_dense_jac_int32_overflow_guard():
+    """Dense Jacobian with neq >= 46341 must raise before calling Fortran.
+
+    The Fortran library computes neq² in 32-bit integer arithmetic; 46341² > 2³¹-1
+    would silently overflow and corrupt internal array offsets.  The Python
+    wrapper must detect this and raise ValueError instead.
+    """
+    # Use a minimal fake y0 of the offending size; the error fires during __init__
+    # before any RHS evaluation, so the rhs function body doesn't matter.
+    neq = 46341
+    y0 = np.zeros(neq, dtype=np.complex128)
+
+    def _rhs(t, y):
+        return np.zeros_like(y)
+
+    # miter=2: BDF with internally-generated dense Jacobian (default for stiff)
+    with pytest.raises(ValueError, match="neq"):
+        ZVODE(_rhs, 0.0, y0, 1.0)
+
+    # miter=1: user-supplied dense Jacobian
+    with pytest.raises(ValueError, match="neq"):
+        ZVODE(_rhs, 0.0, y0, 1.0, jac=lambda t, y: np.zeros((neq, neq), dtype=np.complex128))
+
+
+def test_banded_jac_int32_overflow_guard():
+    """Banded workspace overflow is also caught before calling Fortran."""
+    # Choose ml, mu, neq such that (3*ml + mu + 1)*neq > 2**31 - 1.
+    # E.g. ml=10000, mu=0, neq=71530: (30001)*71530 ≈ 2.146e9 < 2^31-1, fine.
+    # ml=10000, mu=0, neq=71600: 30001*71600 ≈ 2.149e9 > 2^31-1, overflow.
+    ml, mu, neq = 10000, 0, 71600
+    y0 = np.zeros(neq, dtype=np.complex128)
+
+    def _rhs(t, y):
+        return np.zeros_like(y)
+
+    with pytest.raises(ValueError, match="Banded workspace"):
+        ZVODE(_rhs, 0.0, y0, 1.0, lband=ml, uband=mu)
+
+
 # ---------------------------------------------------------------------------
 # Complex linear system tests
 # (adapted from scipy/integrate/tests/test_banded_ode_solvers.py)
