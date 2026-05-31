@@ -1,8 +1,8 @@
 ! DZSCAL and DZAXPY use a real(dp) scalar to avoid the 4 multiplies/element
-! of a full complex*complex product. However, without -ffast-math (gfortran) or
-! equivalent, the compiler may still emit the complex multiply pattern to
-! preserve IEEE 754 NaN/Inf propagation semantics for real*complex, negating
-! the benefit.
+! of a full complex*complex product. Gfortran requires -ffast-math to exploit
+! this, as it otherwise emits a complex multiply pattern to preserve IEEE 754
+! NaN/Inf propagation semantics for real*complex. Ifort enables unsafe math
+! optimizations by default and generates the simpler code without a flag.
 module zvode_linalg_mod
   implicit none
   private
