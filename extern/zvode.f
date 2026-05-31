@@ -54,6 +54,8 @@ C       to use functors instead of external procedures
           END SUBROUTINE
         END INTERFACE
 C
+      INCLUDE 'linpack.fi'
+C
       CONTAINS
 C
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
