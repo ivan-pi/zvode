@@ -385,7 +385,7 @@ class ZVODE(OdeSolver):
             if self.n**2 > _INT32_MAX:
                 raise ValueError(
                     f"neq = {self.n} exceeds the maximum of 46340 for dense "
-                    f"Jacobian methods: neq² overflows the 32-bit integer "
+                    f"Jacobian methods: neq**2 overflows the 32-bit integer "
                     f"arithmetic used internally by the Fortran library."
                 )
         elif self.miter in (4, 5):
