@@ -384,11 +384,13 @@ class ZVODE(OdeSolver):
             # worst case: LENWM = 2*N*N  (JSV=1, JCO=1)
             if self.n**2 > _INT32_MAX:
                 raise ValueError(
-                    f"neq = {self.n} is too large for a dense Jacobian solver: "
-                    f"the Fortran library computes neq² in 32-bit integer "
-                    f"arithmetic, which overflows for neq ≥ 46341. "
-                    f"Consider using a banded Jacobian (lband/uband) if the "
-                    f"Jacobian is sparse, or reformulate the problem."
+                    f"neq = {self.n} exceeds the dense Jacobian limit of 46340. "
+                    f"The Fortran library uses 32-bit integer arithmetic internally "
+                    f"and neq² overflows int32 at this size. This limit is easily "
+                    f"reached with method-of-lines discretisations: a 216×216 2-D "
+                    f"grid or a 36×36×36 3-D grid already crosses the threshold. "
+                    f"Use a banded Jacobian (lband/uband) for nearest-neighbour "
+                    f"stencils, or a sparse/matrix-free solver for general sparsity."
                 )
         elif self.miter in (4, 5):
             # worst case: LENWM = (2*ML + MU + 1 + ML)*N = (3*ML + MU + 1)*N
