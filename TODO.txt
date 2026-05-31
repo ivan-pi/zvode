@@ -1,28 +1,44 @@
-- In zvode.f we need, replace rpar and ipar with the ctx argument
+- [DONE] In zvode.f we need, replace rpar and ipar with the ctx argument
+  (done via c_zvode.f90 wrapper — Python/C layer uses ctx void pointer, rpar/ipar
+   never exposed to the user)
 - Replace LINPACK factorization routines with LAPACK or the Hairer routines
   - Both dense and banded need to be considered
 - Provide CMake option to use external BLAS, if not available fallback to vendored procedures
 - Check older SciPy versions for any bug fixes and the original licenses
 - Add option to expose ZEWSET and ZWNORM as callback functions
 - Raise an error if the initial condition is real instead of complex; this solver is only supposed to work with complex
+  (currently silently cast to complex128 — acceptable but a user-visible warning would help)
 - Add a procedural interface which handles the integration internally:
   - Version A stores the automatic step-sizes
   - Version B uses ZVINDY to interpolate the solution at the t_eval points
   - The procedural version should employ thread-locking internally
-- "Borrow" any SciPy complex test paths
+- [DONE] "Borrow" any SciPy complex test paths
+  (test_zvode_ivp.py adapts scipy/integrate/tests/test_banded_ode_solvers.py;
+   40 pytest tests total across the two test files)
 - Ensure implicit none is used and all variables are strictly typed
-- Domain checking of arguments in Python; there is some duplication of responsibilities, as ZVODE does some checks internally too; doing the checks in Python beforehand allows to raise a proper exception
-- (long term) replace common blocks with a derived type encapsulating the integrator state; we should employ tools for this transformation
-- minimalistic docs in .rst format, host on GitHub pages
-- List of references for users
-- Links to related libraries (ODEPACK, SUNDIALS), and availability of Python wrappers
-- Support for Python Array-API interface (cupy?); we need to support execution in the memory spaces of the respective array libraries
-- Add Python typing hints (the .pyi files)
-- Implement testing with pytest.
-- ZVODE already does input checking internally; we should not do redundant checking or only if ZVODE can't do it itself (e.g. properties of numpy arrays).
+  (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
+- [DONE] Domain checking of arguments in Python; there is some duplication of responsibilities,
+  as ZVODE does some checks internally too; doing the checks in Python beforehand
+  allows to raise a proper exception
+  (tolerances validated by _check_tolerances; miter/jac by _determine_miter;
+   int32 overflow guards added for dense and banded workspace sizes;
+   C layer validates array dtype/shape/writability on first call)
+- [DONE] ZVODE already does input checking internally; we should not do redundant
+  checking or only if ZVODE can't do it itself (e.g. properties of numpy arrays).
   Basic type-checking also occurs at the level of ParseTuple, at least for the
   scalar objects (ints and doubles) this should be sufficient in my eyes.
+- (long term) replace common blocks with a derived type encapsulating the
+  integrator state; we should employ tools for this transformation
+- minimalistic docs in .rst format, host on GitHub pages
+- [DONE] List of references for users  (README § References)
+- [DONE] Links to related libraries (ODEPACK, SUNDIALS), and availability of Python wrappers
+  (README § Links covers ODEPACK, scipy, R/deSolve; SUNDIALS not yet linked)
+- Support for Python Array-API interface (cupy?); we need to support execution in
+  the memory spaces of the respective array libraries
+- Add Python typing hints (the .pyi files)
+- [DONE] Implement testing with pytest.
 - zvindy: the Fortran COMMON block dependency means zvindy is only valid
+  immediately after a step on the same ZVODE instance; document this constraint
 - _zvode.c: add thread-safety note — ZVODE uses Fortran COMMON blocks,
   so concurrent calls to c_zvode from multiple threads will race; document
   or add a GIL-hold / mutex around c_zvode (or any API built on top of it).

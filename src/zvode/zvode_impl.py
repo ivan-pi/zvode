@@ -50,7 +50,6 @@ def _wrapped_jac(jac, banded=False):
         pd[:n, :n] = jac(t, y)
 
     def _zvode_banded_jac(t, y, pd, ml, mu):
-        print(f"in _zvode_banded_jac: pd.shape = {pd.shape}, ml = {ml}, mu = {mu}")
         n = y.shape[0]
         pd[:ml + mu + 1, :n] = jac(t, y)
 
