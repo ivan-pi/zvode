@@ -490,11 +490,7 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     }
 
     // Return the (t, istate) tuple
-    PyObject *res;
-    if (!(res = Py_BuildValue("di",t,istate))) {
-        return NULL;
-    }
-    return res;
+    return Py_BuildValue("di",t,istate);
 }
 
 /* ------------------------------------------------------------------ */
