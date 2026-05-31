@@ -1753,7 +1753,7 @@ C
       CALL XERRWD (MSG, 50, 303, 2, 0, 0, 0, 0, ZERO, ZERO)
       RETURN
 C----------------------- End of Subroutine ZVODE -----------------------
-      END
+      END SUBROUTINE
 *DECK ZVHIN
       SUBROUTINE ZVHIN (N, T0, Y0, YDOT, F, TOUT, UROUND,
      1   EWT, ITOL, ATOL, Y, TEMP, H0, NITER, IER)
@@ -1887,7 +1887,7 @@ C Error return for TOUT - T0 too small. --------------------------------
  100  IER = -1
       RETURN
 C----------------------- End of Subroutine ZVHIN -----------------------
-      END
+      END SUBROUTINE
 *DECK ZVINDY
       SUBROUTINE ZVINDY (T, K, YH, LDYH, DKY, IFLAG)
       complex(dp) YH, DKY
@@ -2011,7 +2011,7 @@ C
       IFLAG = -2
       RETURN
 C----------------------- End of Subroutine ZVINDY ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVSTEP
       SUBROUTINE ZVSTEP (Y, YH, LDYH, YH1, EWT, SAVF, VSAV, ACOR,
      1                  WM, IWM, F, JAC, PSOL, VNLS)
@@ -2446,7 +2446,7 @@ C-----------------------------------------------------------------------
  720  JSTART = 1
       RETURN
 C----------------------- End of Subroutine ZVSTEP ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVSET
       SUBROUTINE ZVSET
 C-----------------------------------------------------------------------
@@ -2645,7 +2645,7 @@ C In EL, construct coefficients of (1+x/xi(1))*...*(1+x/xi(j+1)). ------
  300  TQ(4) = CORTES*TQ(2)
       RETURN
 C----------------------- End of Subroutine ZVSET -----------------------
-      END
+      END SUBROUTINE
 *DECK ZVJUST
       SUBROUTINE ZVJUST (YH, LDYH, IORD)
       complex(dp) YH
@@ -2805,7 +2805,7 @@ C Add correction terms to YH array. ------------------------------------
  370  CONTINUE
       RETURN
 C----------------------- End of Subroutine ZVJUST ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVNLSD
       SUBROUTINE ZVNLSD (Y, YH, LDYH, VSAV, SAVF, EWT, ACOR, IWM, WM,
      1                 F, JAC, PDUM, NFLAG)
@@ -3032,7 +3032,7 @@ C Return for successful step. ------------------------------------------
       IF (M .GT. 0) ACNRM = ZVNORM (N, ACOR, EWT)
       RETURN
 C----------------------- End of Subroutine ZVNLSD ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVJAC
       SUBROUTINE ZVJAC (Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM, F, JAC,
      1                 IERPJ)
@@ -3301,7 +3301,7 @@ C Multiply Jacobian by scalar, add identity, and do LU decomposition.
 C End of code block for MITER = 4 or 5. --------------------------------
 C
 C----------------------- End of Subroutine ZVJAC -----------------------
-      END
+      END SUBROUTINE
 *DECK ZACOPY
       SUBROUTINE ZACOPY (NROW, NCOL, A, NROWA, B, NROWB)
       complex(dp) A, B
@@ -3327,7 +3327,7 @@ C
 C
       RETURN
 C----------------------- End of Subroutine ZACOPY ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVSOL
       SUBROUTINE ZVSOL (WM, IWM, X, IERSL)
       complex(dp) WM, X
@@ -3419,7 +3419,7 @@ C
       CALL ZGBSL (WM, MEBAND, N, ML, MU, IWM(31), X, 0)
       RETURN
 C----------------------- End of Subroutine ZVSOL -----------------------
-      END
+      END SUBROUTINE
 *DECK ZVSRCO
       SUBROUTINE ZVSRCO (RSAV, ISAV, JOB)
       DOUBLE PRECISION RSAV
@@ -3481,7 +3481,7 @@ C
 C
       RETURN
 C----------------------- End of Subroutine ZVSRCO ----------------------
-      END
+      END SUBROUTINE
 *DECK ZEWSET
       SUBROUTINE ZEWSET (N, ITOL, RTOL, ATOL, YCUR, EWT)
 C***BEGIN PROLOGUE  ZEWSET
@@ -3526,7 +3526,7 @@ C***FIRST EXECUTABLE STATEMENT  ZEWSET
  45     EWT(I) = RTOL(I)*ABS(YCUR(I)) + ATOL(I)
       RETURN
 C----------------------- END OF SUBROUTINE ZEWSET ----------------------
-      END
+      END SUBROUTINE
 *DECK ZVNORM
       DOUBLE PRECISION FUNCTION ZVNORM (N, V, W)
 C***BEGIN PROLOGUE  ZVNORM
@@ -3559,7 +3559,7 @@ C***FIRST EXECUTABLE STATEMENT  ZVNORM
       ZVNORM = SQRT(SUM/N)
       RETURN
 C----------------------- END OF FUNCTION ZVNORM ------------------------
-      END
+      END FUNCTION
 *DECK ZABSSQ
       DOUBLE PRECISION FUNCTION ZABSSQ(Z)
 C***BEGIN PROLOGUE  ZABSSQ
@@ -3576,10 +3576,10 @@ C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN.
 C***END PROLOGUE  ZABSSQ
       complex(dp) Z
-      ZABSSQ = DREAL(Z)**2 + DIMAG(Z)**2
+      ZABSSQ = REAL(Z)**2 + AIMAG(Z)**2
       RETURN
 C----------------------- END OF FUNCTION ZABSSQ ------------------------
-      END
+      END FUNCTION
 *DECK DZSCAL
       SUBROUTINE DZSCAL(N, DA, ZX, INCX)
 C***BEGIN PROLOGUE  DZSCAL
@@ -3611,7 +3611,7 @@ C Code for increment equal to 1
         ZX(I) = DA*ZX(I)
    30 CONTINUE
       RETURN
-      END
+      END SUBROUTINE
 *DECK DZAXPY
       SUBROUTINE DZAXPY(N, DA, ZX, INCX, ZY, INCY)
 C***BEGIN PROLOGUE  DZAXPY
@@ -3646,7 +3646,7 @@ C Code for both increments equal to 1
         ZY(I) = ZY(I) + DA*ZX(I)
    30 CONTINUE
       RETURN
-      END
+      END SUBROUTINE
 *DECK DUMACH
       DOUBLE PRECISION FUNCTION DUMACH ()
 C***BEGIN PROLOGUE  DUMACH
@@ -3685,13 +3685,13 @@ C***FIRST EXECUTABLE STATEMENT  DUMACH
       DUMACH = U*2.0D0
       RETURN
 C----------------------- End of Function DUMACH ------------------------
-      END
+      END FUNCTION
       SUBROUTINE DUMSUM(A,B,C)
 C     Routine to force normal storing of A + B, for DUMACH.
       DOUBLE PRECISION A, B, C
       C = A + B
       RETURN
-      END
+      END SUBROUTINE
 *DECK XERRWD
       SUBROUTINE XERRWD (MSG, NMES, NERR, LEVEL, NI, I1, I2, NR, R1, R2)
 C***BEGIN PROLOGUE  XERRWD
@@ -3786,7 +3786,7 @@ C
  100  IF (LEVEL .NE. 2) RETURN
       STOP
 C----------------------- End of Subroutine XERRWD ----------------------
-      END
+      END SUBROUTINE
 *DECK XSETF
       SUBROUTINE XSETF (MFLAG)
 C***BEGIN PROLOGUE  XSETF
@@ -3821,7 +3821,7 @@ C***FIRST EXECUTABLE STATEMENT  XSETF
       IF (MFLAG .EQ. 0 .OR. MFLAG .EQ. 1) JUNK = IXSAV (2,MFLAG,.TRUE.)
       RETURN
 C----------------------- End of Subroutine XSETF -----------------------
-      END
+      END SUBROUTINE
 *DECK XSETUN
       SUBROUTINE XSETUN (LUN)
 C***BEGIN PROLOGUE  XSETUN
@@ -3854,7 +3854,7 @@ C***FIRST EXECUTABLE STATEMENT  XSETUN
       IF (LUN .GT. 0) JUNK = IXSAV (1,LUN,.TRUE.)
       RETURN
 C----------------------- End of Subroutine XSETUN ----------------------
-      END
+      END SUBROUTINE
 *DECK IXSAV
       INTEGER FUNCTION IXSAV (IPAR, IVALUE, ISET)
 C***BEGIN PROLOGUE  IXSAV
@@ -3927,7 +3927,7 @@ C
 C
       RETURN
 C----------------------- End of Function IXSAV -------------------------
-      END
+      END FUNCTION
 *DECK IUMACH
       INTEGER FUNCTION IUMACH()
       USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: OUTPUT_UNIT
@@ -3961,6 +3961,6 @@ C***FIRST EXECUTABLE STATEMENT  IUMACH
 C
       RETURN
 C----------------------- End of Function IUMACH ------------------------
-      END
+      END FUNCTION
 
       end module zvode_mod
