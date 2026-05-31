@@ -44,6 +44,26 @@ are **unchanged** from the 2006 LLNL release.
 pip install zvode
 ```
 
+### Building from source
+
+Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
+The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
+**ifx**, and **flang** are also known to work.
+
+A BLAS library is required at link time. CMake locates it via
+`find_package(BLAS)`. The routines called from an external BLAS are
+`ZCOPY`, `ZAXPY`, and `ZSCAL` (standard Level 1 complex BLAS); the
+mixed real/complex helpers `DZSCAL` and `DZAXPY` are vendored inside
+`extern/zvode.f`. On Linux, [OpenBLAS](https://www.openblas.net/) or a
+vendor BLAS (e.g. MKL, BLIS) will all work. On macOS, the system
+Accelerate framework is picked up automatically.
+
+```bash
+# Example: Ubuntu / Debian
+sudo apt-get install gfortran libopenblas-dev
+pip install -v ".[test]"
+```
+
 ## Quick start
 
 **Non-stiff problem** — rotating complex exponential:
