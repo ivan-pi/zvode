@@ -9,11 +9,16 @@ jobs:
   test:
     name: NumPy 2 / Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      FC: ${{ matrix.FC }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.12"]
+        include:
+          - os: macos-latest
+            FC: gfortran-14
 
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +33,6 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y libopenblas-dev
-
-      - name: Select Fortran compiler (macOS)
-        if: runner.os == 'macOS'
-        run: echo "FC=gfortran-14" >> "$GITHUB_ENV"
 
       - name: Install package and test dependencies from source
         run: pip install -v ".[test]" "numpy>=2.0,<3"
