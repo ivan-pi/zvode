@@ -13,11 +13,11 @@ part of ODEPACK and uses a fixed-leading-coefficient Adams or BDF method
 depending on the problem type.
 
 This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
-so it can be passed directly to `scipy.integrate.solve_ivp` via the `method`
+so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
 argument.
 
-> **Warning** — This integrator is not re-entrant. You cannot have two `ode`
-> instances using the `"zvode"` integrator at the same time.
+> **Warning** — This integrator is not thread-safe. You cannot have two threads
+> using the ZVODE integrator simultaneously.
 
 ## Differences from upstream ZVODE
 
@@ -41,7 +41,7 @@ are **unchanged** from the 2006 LLNL release.
 ## Installation
 
 ```bash
-pip install zvode
+pip install .
 ```
 
 ### Building from source
@@ -52,7 +52,7 @@ The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**
 
 A BLAS library is required at link time (located by CMake's
 `find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
-or a vendor BLAS (MKL, BLIS, …) will all work. On macOS, the system
+or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
 Accelerate framework is picked up automatically.
 
 ```bash
@@ -60,6 +60,13 @@ Accelerate framework is picked up automatically.
 sudo apt-get install gfortran libopenblas-dev
 pip install -v ".[test]"
 ```
+
+To control which BLAS library is used, add the option,
+```
+pip install ... \
+  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
+```
+The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
 
 ## Quick start
 
@@ -115,10 +122,11 @@ arguments when constructing `ZVODE` directly.
 
 ## Limitations
 
-- complex floats only
+- complex floats (fp64) only
 - no event-handling/root-finding capabilities
 - not thread-safe (ZVODE uses global Fortran COMMON blocks)
 - no solution back-tracking available
+- only dense or banded Jacobians
 
 ## References
 
