@@ -74,20 +74,20 @@ def _check_tolerances(rtol, atol, n):
 
     # 1. Shape checks (Strict)
     if rtol.ndim > 0 and rtol.shape != (n,):
-        raise ValueError(f"`rtol` must be a scalar or a 1D array of length {n}.")
+        raise ValueError(f"'rtol' must be a scalar or a 1D array of length {n}.")
     if atol.ndim > 0 and atol.shape != (n,):
-        raise ValueError(f"`atol` must be a scalar or a 1D array of length {n}.")
+        raise ValueError(f"'atol' must be a scalar or a 1D array of length {n}.")
 
     # 2. Positivity checks
     if np.any(rtol < 0) or np.any(atol < 0):
-        raise ValueError("`rtol` and `atol` must be positive.")
+        raise ValueError("'rtol' and 'atol' must be positive.")
 
     # 3. Auto-correction for impossibly small rtol (SciPy style)
     EPS = np.finfo(float).eps
     if np.any(rtol < 100 * EPS):
         warnings.warn(
-            f"At least one element of `rtol` is too small. "
-            f"Setting `rtol = np.maximum(rtol, {100 * EPS})`.",
+            f"At least one element of 'rtol' is too small. "
+            f"Setting 'rtol = np.maximum(rtol, {100 * EPS})'.",
             stacklevel=3
         )
         rtol = np.maximum(rtol, 100 * EPS)
@@ -111,11 +111,11 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
 
     if jac is not None and not callable(jac):
-        raise TypeError("`jac` must be callable or None.")
+        raise TypeError("'jac' must be callable or None.")
     if lband is not None and lband < 0:
-        raise ValueError("`lband` must be a non-negative integer.")
+        raise ValueError("'lband' must be a non-negative integer.")
     if uband is not None and uband < 0:
-        raise ValueError("`uband` must be a non-negative integer.")
+        raise ValueError("'uband' must be a non-negative integer.")
 
     is_banded = lband is not None or uband is not None
     lband = lband if lband is not None else 0
@@ -123,10 +123,10 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
 
     if explicit_miter is not None:
         if explicit_miter not in range(6):
-            raise ValueError("`miter` must be an integer between 0 and 5.")
+            raise ValueError("'miter' must be an integer between 0 and 5.")
         if explicit_miter in (1, 4) and not jac:
             raise ValueError(
-                f"`jac` must be provided when `miter` is {explicit_miter}."
+                f"'jac' must be provided when 'miter' is {explicit_miter}."
             )
         return explicit_miter, lband, uband
 
@@ -162,7 +162,7 @@ class ZVODEDenseOutput(DenseOutput):
         End of the step.
     yh : ndarray, shape (n, nq+1), complex128
         Nordsieck history array, column-major copy taken at the end of the
-        step and scaled to step size *h*.
+        step and scaled to step size `h`.
     h : float
         Step size the Nordsieck array is scaled to (``HCUR`` in ZVODE).
     """
@@ -176,7 +176,7 @@ class ZVODEDenseOutput(DenseOutput):
         self.h = h
 
     def _call_impl(self, t):
-        """Evaluate the interpolant at time(s) *t*; returns shape (n,) or (n, m)."""
+        """Evaluate the interpolant at time(s) `t`; returns shape ``(n,)`` or ``(n, m)``."""
 
         scalar = t.ndim == 0
         t = np.atleast_1d(t)
@@ -208,22 +208,22 @@ class ZVODE(OdeSolver):
 
         dy/dt = f(t, y),   y(t0) = y0
 
-    where *y* is a complex vector.  It is based on the EPISODE/EPISODEB
+    where `y` is a complex vector.  It is based on the EPISODE/EPISODEB
     packages and implements Adams (non-stiff) and BDF (stiff) methods with
     orders up to 12 and 5 respectively.
 
     .. note::
 
-        When using ZVODE for a stiff system, *f* must be analytic (i.e., each
+        When using ZVODE for a stiff system, `f` must be analytic (i.e., each
         component f(i) must be an analytic function of each y(j)).  For a
-        complex stiff system where *f* is not analytic, use a real-valued
+        complex stiff system where `f` is not analytic, use a real-valued
         solver on the equivalent real system of doubled dimension.
 
     Parameters
     ----------
     fun : callable
         Right-hand side of the system, ``f(t, y)``.  The output must be
-        array-like with the same shape as *y*.
+        array-like with the same shape as `y`.
     t0 : float
         Initial value of the independent variable.
     y0 : array_like, shape (n,)
@@ -247,9 +247,9 @@ class ZVODE(OdeSolver):
     max_step : float, optional
         Maximum allowed step size.  Default ``np.inf``.
     jac : callable or None, optional
-        Jacobian matrix of *f* with respect to *y*, ``jac(t, y)``.
+        Jacobian matrix of `f` with respect to `y`, ``jac(t, y)``.
         For a full Jacobian, return an ``(n, n)`` array ``J[i, j] = df(i)/dy(j)``.
-        For a banded Jacobian (when *lband* / *uband* are set), return an
+        For a banded Jacobian (when `lband` / `uband` are set), return an
         ``(ml + mu + 1, n)`` array where ``PD[i-j+mu, j] = df(i)/dy(j)``.
         If not supplied, ZVODE approximates the Jacobian by finite differences.
     lband, uband : int or None, optional
@@ -262,7 +262,7 @@ class ZVODE(OdeSolver):
     max_steps : int, optional
         Maximum number of internal steps (currently ignored).
     miter : {0, 1, 2, 3, 4, 5}, optional
-        Iteration method override.  Normally inferred from *jac* and *lband*/*uband*:
+        Iteration method override.  Normally inferred from `jac` and `lband`/`uband`:
 
         * 0 – functional iteration (no Jacobian, non-stiff only)
         * 1 – chord with user-supplied full Jacobian
@@ -376,7 +376,7 @@ class ZVODE(OdeSolver):
 
         # TODO: Jacobian-saving strategy checks
         if jsv not in (1, -1):
-            raise ValueError("`jsv` must be 1 (save Jacobian) or -1 (recompute every step).")
+            raise ValueError("'jsv' must be 1 (save Jacobian) or -1 (recompute every step).")
         self.jsv = jsv
 
         # Method Flag (MF)
