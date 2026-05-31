@@ -433,15 +433,22 @@ def test_max_step():
 
 
 def test_first_step():
-    """first_step is accepted and integration reaches the correct answer."""
+    """first_step limits the initial step: the first accepted step must not exceed h0."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    h0 = 1e-3
 
     sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
                     method=ZVODE, miter=2,
-                    first_step=1e-3,
+                    first_step=h0,
                     rtol=1e-8, atol=1e-10)
 
     assert sol.success
+    # ZVODE uses H0 as the initial attempt; if rejected on error grounds it halves
+    # and retries, so the actual first step satisfies h ≤ h0 but may be smaller.
+    first_h = sol.t[1] - sol.t[0]
+    assert first_h <= h0 + 1e-14, (
+        f"First step {first_h:.3e} exceeds requested first_step {h0:.3e}"
+    )
     assert_allclose(sol.y[0, -1], np.exp(-1.0), rtol=1e-5, atol=1e-8)
 
 
@@ -461,6 +468,8 @@ def test_jsv_negative():
                     rtol=1e-8, atol=1e-10)
 
     assert sol.success
+    # sol.y has shape (n_components, n_timepoints); sol.y[0] is the full
+    # trajectory of the single component across all internal steps.
     assert_allclose(sol.y[0], sol_decay(sol.t, y0[0]), rtol=1e-5, atol=1e-8)
 
 
