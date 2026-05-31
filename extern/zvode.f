@@ -1,6 +1,9 @@
 C NOTE: This version of ZVODE has been modified extensively
 C       to use functors instead of external procedures
       MODULE ZVODE_MOD
+
+        USE ZVODE_LINALG_MOD, only: zcopy, zacopy, dzscal, dzaxpy
+
         IMPLICIT NONE
         PRIVATE
 
@@ -53,9 +56,6 @@ C       to use functors instead of external procedures
              REAL(DP) :: EWT(*)
           END SUBROUTINE
         END INTERFACE
-C
-C BLAS PROCEDURES
-      EXTERNAL :: ZCOPY
 C
       INCLUDE 'linpack.fi'
 C
@@ -3307,32 +3307,6 @@ C End of code block for MITER = 4 or 5. --------------------------------
 C
 C----------------------- End of Subroutine ZVJAC -----------------------
       END SUBROUTINE
-*DECK ZACOPY
-      SUBROUTINE ZACOPY (NROW, NCOL, A, NROWA, B, NROWB)
-      complex(dp) A, B
-      INTEGER NROW, NCOL, NROWA, NROWB
-      DIMENSION A(NROWA,NCOL), B(NROWB,NCOL)
-C-----------------------------------------------------------------------
-C Call sequence input -- NROW, NCOL, A, NROWA, NROWB
-C Call sequence output -- B
-C COMMON block variables accessed -- None
-C
-C Subroutines called by ZACOPY: ZCOPY
-C Function routines called by ZACOPY: None
-C-----------------------------------------------------------------------
-C This routine copies one rectangular array, A, to another, B,
-C where A and B may have different row dimensions, NROWA and NROWB.
-C The data copied consists of NROW rows and NCOL columns.
-C-----------------------------------------------------------------------
-      INTEGER IC
-C
-      DO 20 IC = 1,NCOL
-        CALL ZCOPY (NROW, A(1,IC), 1, B(1,IC), 1)
- 20     CONTINUE
-C
-      RETURN
-C----------------------- End of Subroutine ZACOPY ----------------------
-      END SUBROUTINE
 *DECK ZVSOL
       SUBROUTINE ZVSOL (WM, IWM, X, IERSL)
       complex(dp) WM, X
@@ -3586,73 +3560,6 @@ C***END PROLOGUE  ZABSSQ
 C----------------------- END OF FUNCTION ZABSSQ ------------------------
       END FUNCTION ZABSSQ
       END FUNCTION ZVNORM
-*DECK DZSCAL
-      SUBROUTINE DZSCAL(N, DA, ZX, INCX)
-C***BEGIN PROLOGUE  DZSCAL
-C***SUBSIDIARY
-C***PURPOSE  Scale a double complex vector by a double prec. constant.
-C***TYPE      DOUBLE PRECISION (DZSCAL-Z)
-C***AUTHOR  Hindmarsh, Alan C., (LLNL)
-C***DESCRIPTION
-C  Scales a double complex vector by a double precision constant.
-C  Minor modification of BLAS routine ZSCAL.
-C***REVISION HISTORY  (YYMMDD)
-C   060530  DATE WRITTEN.
-C***END PROLOGUE  DZSCAL
-      complex(dp) ZX(*)
-      DOUBLE PRECISION DA
-      INTEGER I,INCX,IX,N
-C
-      IF( N.LE.0 .OR. INCX.LE.0 )RETURN
-      IF(INCX.EQ.1)GO TO 20
-C Code for increment not equal to 1
-      IX = 1
-      DO 10 I = 1,N
-        ZX(IX) = DA*ZX(IX)
-        IX = IX + INCX
-   10 CONTINUE
-      RETURN
-C Code for increment equal to 1
-   20 DO 30 I = 1,N
-        ZX(I) = DA*ZX(I)
-   30 CONTINUE
-      RETURN
-      END SUBROUTINE
-*DECK DZAXPY
-      SUBROUTINE DZAXPY(N, DA, ZX, INCX, ZY, INCY)
-C***BEGIN PROLOGUE  DZAXPY
-C***PURPOSE  Real constant times a complex vector plus a complex vector.
-C***TYPE      DOUBLE PRECISION (DZAXPY-Z)
-C***AUTHOR  Hindmarsh, Alan C., (LLNL)
-C***DESCRIPTION
-C  Add a D.P. real constant times a complex vector to a complex vector.
-C  Minor modification of BLAS routine ZAXPY.
-C***REVISION HISTORY  (YYMMDD)
-C   060530  DATE WRITTEN.
-C***END PROLOGUE  DZAXPY
-      complex(dp) ZX(*),ZY(*)
-      DOUBLE PRECISION DA
-      INTEGER I,INCX,INCY,IX,IY,N
-      IF(N.LE.0)RETURN
-      IF (ABS(DA) .EQ. 0.0D0) RETURN
-      IF (INCX.EQ.1.AND.INCY.EQ.1)GO TO 20
-C Code for unequal increments or equal increments not equal to 1
-      IX = 1
-      IY = 1
-      IF(INCX.LT.0)IX = (-N+1)*INCX + 1
-      IF(INCY.LT.0)IY = (-N+1)*INCY + 1
-      DO 10 I = 1,N
-        ZY(IY) = ZY(IY) + DA*ZX(IX)
-        IX = IX + INCX
-        IY = IY + INCY
-   10 CONTINUE
-      RETURN
-C Code for both increments equal to 1
-   20 DO 30 I = 1,N
-        ZY(I) = ZY(I) + DA*ZX(I)
-   30 CONTINUE
-      RETURN
-      END SUBROUTINE
 *DECK DUMACH
       DOUBLE PRECISION FUNCTION DUMACH ()
 C***BEGIN PROLOGUE  DUMACH

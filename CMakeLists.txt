@@ -24,8 +24,8 @@ find_package(BLAS REQUIRED)
 python_add_library(_zvode MODULE
     src/_zvode.c
     extern/zvode.f
+    extern/zvode_linalg.f90
     extern/c_zvode.f90
-    extern/lapack.f90
     extern/linpack/zgbfa.f
     extern/linpack/zgbsl.f
     extern/linpack/zgefa.f

@@ -15,6 +15,7 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
 - **`RPAR`/`IPAR` removed** — the original interface passes user context through a real/complex
   array `RPAR` and an integer array `IPAR`. In the functor design, context is carried by the
   class object itself, so these arguments are no longer present.
+- The helper functions ZACOPY, DZSCAL, DZAXPY have been moved to a separate module `ZVODE_LINALG_MOD`.
 
 The internal numerics — the `ZVOD01`/`ZVOD02` Fortran `COMMON` blocks, and the Adams and BDF stepping logic — are unchanged.
 
