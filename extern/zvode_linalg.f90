@@ -95,12 +95,13 @@ contains
   ! SQRT((1/N) * SUM(|DA*ZX(i)|^2 * W(i)^2)).  Saves a full memory pass
   ! compared to a separate DZSCAL/DZAXPY followed by ZVNORM.
   ! Stride-1 only (matches ZVNORM's interface).
-  real(dp) function dzaxpynrm(n, da, zx, zy, w) result(nrm)
+  subroutine dzaxpynrm(n, da, zx, zy, w, nrm)
     integer,     intent(in)    :: n
     real(dp),    intent(in)    :: da
     complex(dp), intent(in)    :: zx(n)
     complex(dp), intent(inout) :: zy(n)
     real(dp),    intent(in)    :: w(n)
+    real(dp),    intent(out)   :: nrm
     real(dp) :: s
     integer  :: i
     if (n <= 0) then
@@ -121,6 +122,6 @@ contains
       end do
       nrm = abs(da) * sqrt(s / n)
     end if
-  end function dzaxpynrm
+  end subroutine dzaxpynrm
 
 end module zvode_linalg_mod
