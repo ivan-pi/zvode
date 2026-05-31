@@ -1,18 +1,24 @@
       INTERFACE
         SUBROUTINE ZGEFA(A, LDA, N, IPVT, INFO)
-          INTEGER LDA, N, IPVT(*), INFO
-          COMPLEX*16 A(LDA,*)
+          INTEGER, INTENT(IN) :: LDA, N
+          COMPLEX*16, INTENT(INOUT) :: A(LDA,*)
+          INTEGER, INTENT(OUT) :: IPVT(*), INFO
         END SUBROUTINE ZGEFA
         SUBROUTINE ZGESL(A, LDA, N, IPVT, B, JOB)
-          INTEGER LDA, N, IPVT(*), JOB
-          COMPLEX*16 A(LDA,*), B(*)
+          INTEGER, INTENT(IN) :: LDA, N
+          COMPLEX*16, INTENT(IN) :: A(LDA,*)
+          INTEGER, INTENT(IN) :: IPVT(*), JOB
+          COMPLEX*16, INTENT(INOUT) :: B(*)
         END SUBROUTINE ZGESL
         SUBROUTINE ZGBFA(ABD, LDA, N, ML, MU, IPVT, INFO)
-          INTEGER LDA, N, ML, MU, IPVT(*), INFO
-          COMPLEX*16 ABD(LDA,*)
+          INTEGER, INTENT(IN) :: LDA, N, ML, MU
+          COMPLEX*16, INTENT(INOUT) :: ABD(LDA,*)
+          INTEGER, INTENT(OUT) :: IPVT(*), INFO
         END SUBROUTINE ZGBFA
         SUBROUTINE ZGBSL(ABD, LDA, N, ML, MU, IPVT, B, JOB)
-          INTEGER LDA, N, ML, MU, IPVT(*), JOB
-          COMPLEX*16 ABD(LDA,*), B(*)
+          INTEGER, INTENT(IN) :: LDA, N, ML, MU
+          COMPLEX*16, INTENT(IN) :: ABD(LDA,*)
+          INTEGER, INTENT(IN) :: IPVT(*), JOB
+          COMPLEX*16, INTENT(INOUT) :: B(*)
         END SUBROUTINE ZGBSL
       END INTERFACE
