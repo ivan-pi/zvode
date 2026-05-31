@@ -1,8 +1,3 @@
-! DZSCAL and DZAXPY use a real(dp) scalar to avoid the 4 multiplies/element
-! of a full complex*complex product. Gfortran requires -ffast-math to exploit
-! this, as it otherwise emits a complex multiply pattern to preserve IEEE 754
-! NaN/Inf propagation semantics for real*complex. Ifort enables unsafe math
-! optimizations by default and generates the simpler code without a flag.
 module zvode_linalg_mod
   implicit none
   private
@@ -46,6 +41,9 @@ contains
 
   ! Scale complex vector ZX by double precision scalar DA.
   ! Variant of ZSCAL with a real scalar: 2 multiplies/element instead of 4.
+  ! Note: gfortran requires -ffast-math to exploit this; without it the compiler
+  ! emits a full complex multiply pattern to preserve IEEE 754 NaN/Inf semantics.
+  ! Ifort applies this optimisation by default due to unsafe math being enabled.
   subroutine dzscal(n, da, zx, incx)
     integer,     intent(in)    :: n, incx
     real(dp),    intent(in)    :: da
@@ -68,6 +66,7 @@ contains
 
   ! Add double precision scalar DA times ZX to ZY.
   ! Variant of ZAXPY with a real scalar: 2 multiplies/element instead of 4.
+  ! Note: same fast-math caveat as dzscal applies here.
   subroutine dzaxpy(n, da, zx, incx, zy, incy)
     integer,     intent(in)    :: n, incx, incy
     real(dp),    intent(in)    :: da
