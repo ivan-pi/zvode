@@ -54,7 +54,7 @@ C       to use functors instead of external procedures
           END SUBROUTINE
         END INTERFACE
 C
-      INCLUDE 'linpack_interfaces.inc'
+      INCLUDE 'linpack.fi'
 C
       CONTAINS
 C
