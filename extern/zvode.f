@@ -3589,22 +3589,11 @@ C   19930818  Added SLATEC-format prologue.  (FNF)
 C   20030707  Added DUMSUM to force normal storage of COMP.  (ACH)
 C***END PROLOGUE  DUMACH
 C
-      DOUBLE PRECISION U, COMP
 C***FIRST EXECUTABLE STATEMENT  DUMACH
-      U = 1.0D0
- 10   U = U*0.5D0
-      CALL DUMSUM(1.0D0, U, COMP)
-      IF (COMP .NE. 1.0D0) GO TO 10
-      DUMACH = U*2.0D0
+      DUMACH = EPSILON(1.0D0)
       RETURN
 C----------------------- End of Function DUMACH ------------------------
       END FUNCTION
-      SUBROUTINE DUMSUM(A,B,C)
-C     Routine to force normal storing of A + B, for DUMACH.
-      DOUBLE PRECISION A, B, C
-      C = A + B
-      RETURN
-      END SUBROUTINE
 *DECK XERRWD
       SUBROUTINE XERRWD (MSG, NMES, NERR, LEVEL, NI, I1, I2, NR, R1, R2)
 C***BEGIN PROLOGUE  XERRWD
