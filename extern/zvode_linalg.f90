@@ -4,7 +4,7 @@ module zvode_linalg_mod
 
   integer, parameter :: dp = kind(1.0d0)
 
-  public :: zcopy, zacopy, dzscal, dzaxpy
+  public :: zcopy, zacopy, dzscal, dzaxpy, dzaxpywnrm2
 
 contains
 
@@ -90,5 +90,39 @@ contains
       end do
     end if
   end subroutine dzaxpy
+
+  ! Fused dzaxpy + weighted L2 norm: computes ZY += DA*ZX and sets NRM to
+  ! SQRT((1/N) * SUM(|DA*ZX(i)|^2 * W(i)^2)).  Saves a full memory pass
+  ! compared to a separate DZSCAL/DZAXPY followed by ZVNORM.
+  ! Note: hardcodes the weighted RMS formula; does not respect a user-supplied
+  ! ZVNORM. Stride-1 only (matches ZVNORM's interface).
+  subroutine dzaxpywnrm2(n, da, zx, zy, w, nrm)
+    integer,     intent(in)    :: n
+    real(dp),    intent(in)    :: da
+    complex(dp), intent(in)    :: zx(n)
+    complex(dp), intent(inout) :: zy(n)
+    real(dp),    intent(in)    :: w(n)
+    real(dp),    intent(out)   :: nrm
+    real(dp) :: s
+    integer  :: i
+    if (n <= 0) then
+      nrm = 0.0d0
+      return
+    end if
+    s = 0.0d0
+    if (da == 1.0d0) then
+      do i = 1, n
+        zy(i) = zy(i) + zx(i)
+        s = s + (real(zx(i))**2 + aimag(zx(i))**2) * w(i)**2
+      end do
+      nrm = sqrt(s / n)
+    else
+      do i = 1, n
+        zy(i) = zy(i) + da * zx(i)
+        s = s + (real(zx(i))**2 + aimag(zx(i))**2) * w(i)**2
+      end do
+      nrm = abs(da) * sqrt(s / n)
+    end if
+  end subroutine dzaxpywnrm2
 
 end module zvode_linalg_mod
