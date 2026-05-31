@@ -87,17 +87,17 @@ arguments when constructing `ZVODE` directly.
 ## References
 
 <a id="1">[1]</a>
-P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
-"VODE: A Variable-Coefficient ODE Solver,"
-*SIAM J. Sci. Stat. Comput.*, 10(5), pp. 1038–1051, 1989.
-https://doi.org/10.1137/0910062
+A. C. Hindmarsh,
+"ODEPACK, A Systematized Collection of ODE Solvers,"
+in *Scientific Computing*, R. S. Stepleman et al. (eds.),
+North-Holland, Amsterdam, 1983 (vol. 1 of IMACS Transactions on Scientific Computation), pp. 55–64.
+https://computing.llnl.gov/projects/odepack
 
 <a id="2">[2]</a>
-A. C. Hindmarsh,
-"ODEPACK, a Systematized Collection of ODE Solvers,"
-in *Scientific Computing*, R. S. Stepleman et al. (eds.),
-North-Holland, Amsterdam, 1983, pp. 55–64.
-https://computing.llnl.gov/projects/odepack
+P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
+"VODE, A Variable-Coefficient ODE Solver,"
+*SIAM J. Sci. Stat. Comput.*, 10 (1989), pp. 1038–1051.
+https://doi.org/10.1137/0910062
 
 <a id="3">[3]</a>
 G. D. Byrne and A. C. Hindmarsh,
@@ -105,11 +105,8 @@ G. D. Byrne and A. C. Hindmarsh,
 *ACM Trans. Math. Soft.*, 1(1), pp. 71–96, 1975.
 https://doi.org/10.1145/355626.355636
 
-<a id="4">[4]</a>
-A. C. Hindmarsh and G. D. Byrne,
-"EPISODE: An Experimental Package for the Integration of Systems of
-Ordinary Differential Equations,"
-Report UCID-30112 Rev. 1, Lawrence Livermore National Laboratory, 1976.
+For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
+[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
 
 ## Links
 
