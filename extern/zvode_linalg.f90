@@ -36,10 +36,7 @@ contains
     integer,     intent(in)    :: nrow, ncol, nrowa, nrowb
     complex(dp), intent(in)    :: a(nrowa, ncol)
     complex(dp), intent(inout) :: b(nrowb, ncol)
-    integer :: ic
-    do ic = 1, ncol
-      call zcopy(nrow, a(1,ic), 1, b(1,ic), 1)
-    end do
+    b(:nrow,:) = a(:nrow,:)
   end subroutine zacopy
 
   ! Scale complex vector ZX by double precision scalar DA.
