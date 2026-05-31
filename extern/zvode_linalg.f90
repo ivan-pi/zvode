@@ -50,6 +50,7 @@ contains
     complex(dp), intent(inout) :: zx(*)
     integer :: i, ix
     if (n <= 0 .or. incx <= 0) return
+    if (da == 1.0d0) return
     if (incx == 1) then
       do i = 1, n
         zx(i) = da * zx(i)
