@@ -238,10 +238,10 @@ class ZVODE(OdeSolver):
     t_bound : float
         Boundary time.  Integration will not proceed past this value; also
         determines the direction of integration.
-    zvode_method : {'BDF', 'Adams'}, optional
-        Integration method.  ``'BDF'`` (default) uses the stiff
-        Backward-Differentiation Formula method (max order 5).  ``'Adams'``
-        uses the non-stiff Adams method (max order 12).
+    lmm : {'BDF', 'Adams'}, optional
+        Linear multistep method.  ``'BDF'`` (default) is recommended for stiff
+        problems (max order 5); ``'Adams'`` is recommended for non-stiff
+        problems (max order 12).
     rtol, atol : float or array_like, optional
         Relative and absolute local error tolerances.  The solver keeps the
         local error roughly below ``rtol * |y(i)| + atol`` for each
@@ -322,7 +322,7 @@ class ZVODE(OdeSolver):
         y0,
         t_bound,
         *,
-        zvode_method="BDF",
+        lmm="BDF",
         rtol=1.0e-3,
         atol=1.0e-6,
         first_step=None,
@@ -354,15 +354,16 @@ class ZVODE(OdeSolver):
         self.itask = 5  # take one step, without passing t_bound, then return
 
         # Select method
-        if zvode_method == "Adams":
+        if lmm == "Adams":
             self.meth = 1
             maxord_allowed = 12
-        elif zvode_method == "BDF":
+        elif lmm == "BDF":
             self.meth = 2
             maxord_allowed = 5
         else:
             raise ValueError(
-                f"Invalid method '{zvode_method}'. Valid options are 'Adams' or 'BDF'."
+                f"Invalid linear multistep method (lmm) '{lmm}'. "
+                "Valid options are 'Adams' or 'BDF'."
             )
 
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
@@ -543,3 +544,32 @@ class ZVODE(OdeSolver):
         yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy()
 
         return ZVODEDenseOutput(self.t_old, self.t, yh, h)
+
+
+class ZVODE_Adams(ZVODE):
+    """ZVODE with the Adams (non-stiff) linear multistep method.
+
+    Recommended for non-stiff problems, typically combined with fixed-point
+    (functional) iteration (``miter=0``, the default when no ``jac`` is given).
+
+    For all parameters and attributes see :class:`ZVODE`.
+    The ``lmm`` argument is fixed to ``'Adams'``.
+    """
+
+    def __init__(self, fun, t0, y0, t_bound, **kwargs):
+        super().__init__(fun, t0, y0, t_bound, lmm="Adams", **kwargs)
+
+
+class ZVODE_BDF(ZVODE):
+    """ZVODE with the BDF (stiff) linear multistep method.
+
+    Recommended for stiff problems, typically combined with Newton iteration
+    using an internally generated Jacobian (``miter=2``, the default when no
+    ``jac`` is given).
+
+    For all parameters and attributes see :class:`ZVODE`.
+    The ``lmm`` argument is fixed to ``'BDF'``.
+    """
+
+    def __init__(self, fun, t0, y0, t_bound, **kwargs):
+        super().__init__(fun, t0, y0, t_bound, lmm="BDF", **kwargs)
