@@ -798,6 +798,347 @@ def test_complex_diagonal_linear_system(lmm, use_jac):
     )
 
 
+# ===========================================================================
+# Robustness tests for complex-analytic ODE coverage
+#
+# Covers five problem classes motivated by the README constraint:
+# "For stiff problems, f must be analytic (each component must be an
+#  analytic function of each state variable)."
+#
+# 1. Complex rotation — norm conservation as an energy-orthogonal check
+# 2. Stiff scalar — BDF correctness + Adams inefficiency (Prothero-Robinson)
+# 3. Nonlinear analytic scalar — state-dependent Jacobian via solve_ivp
+# 4. Schrödinger two-level system — unitarity and Rabi oscillations
+# 5. Coupled stiff two-component — off-diagonal Jacobian needed, ratio ~450
+# 6. Tight-binding chain (N=100) — large banded system, unitary evolution
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 1. Complex rotation: norm conservation
+# ---------------------------------------------------------------------------
+
+
+def test_complex_rotation_norm_conservation():
+    """
+    dy/dt = i*omega*y,  y(0) = 1+0.5j,  omega = 3.7
+    Exact: y(t) = y0*exp(i*omega*t),  |y(t)| = |y0| for all t.
+
+    Norm conservation is independent of phase accuracy: a solver that
+    accumulates amplitude error passes value checks only accidentally,
+    but always fails the norm test.
+    """
+    omega = 3.7
+    y0 = np.array([1.0 + 0.5j], dtype=np.complex128)
+    t_span = (0.0, 4 * np.pi / omega)  # two full turns
+    t_eval = np.linspace(*t_span, 201)
+
+    def fun(t, y):
+        return 1j * omega * y
+
+    sol = solve_ivp(
+        fun, t_span, y0, method=ZVODE, lmm="Adams",
+        t_eval=t_eval, rtol=1e-10, atol=1e-12,
+    )
+    assert sol.success, f"Complex rotation: {sol.message}"
+
+    expected = y0[0] * np.exp(1j * omega * t_eval)
+    assert_allclose(sol.y[0], expected, rtol=1e-8, atol=1e-10,
+                    err_msg="Complex rotation: pointwise error")
+
+    norms = np.abs(sol.y[0])
+    assert_allclose(norms, abs(y0[0]), rtol=1e-8, atol=1e-10,
+                    err_msg="Complex rotation: |y(t)| drifts — amplitude error")
+
+
+# ---------------------------------------------------------------------------
+# 2. Stiff scalar: BDF correctness and BDF-vs-Adams contrast
+#
+# Prothero-Robinson problem (complex version):
+#   dy/dt = lam*(y - exp(it)) + i*exp(it),  lam = -(1000+10j),  y(0)=1
+#   Exact: y(t) = exp(it)
+#
+# Re(lam) = -1000 forces stiffness; the solution follows the slow exp(it)
+# oscillation.  BDF is A-stable and tracks the solution with O(10^1) steps;
+# Adams must stay within its stability boundary h < ~6/|lam| ≈ 6e-3, giving
+# O(10^3) steps over t ∈ [0,10] — roughly a 100x difference in nfev.
+# ---------------------------------------------------------------------------
+
+_PR_LAM = -(1000.0 + 10j)
+
+
+def _fun_pr(t, y):
+    g = np.exp(1j * t)
+    return np.array([_PR_LAM * (y[0] - g) + 1j * g])
+
+
+def _jac_pr(t, y):
+    return np.array([[_PR_LAM]])
+
+
+def _pr_exact(t):
+    return np.exp(1j * np.asarray(t))
+
+
+def test_stiff_prothero_robinson_bdf():
+    """BDF solves the stiff Prothero-Robinson problem correctly over t=[0,10]."""
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 10.0)
+
+    sol = solve_ivp(
+        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
+        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+    )
+
+    assert sol.success, f"BDF failed on Prothero-Robinson: {sol.message}"
+    assert_allclose(sol.y[0], _pr_exact(sol.t), rtol=1e-5, atol=1e-8,
+                    err_msg="Prothero-Robinson: BDF solution mismatch")
+
+
+def test_stiff_prothero_robinson_bdf_vs_adams():
+    """
+    Adams must use far more RHS calls than BDF on the stiff
+    Prothero-Robinson problem, or fail outright — both are valid.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 10.0)
+
+    sol_bdf = solve_ivp(
+        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
+        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+    )
+    assert sol_bdf.success
+
+    sol_adams = solve_ivp(
+        _fun_pr, t_span, y0, method=ZVODE, lmm="Adams",
+        rtol=1e-8, atol=1e-10,
+    )
+
+    if sol_adams.success:
+        assert sol_adams.nfev > 5 * sol_bdf.nfev, (
+            f"Adams (nfev={sol_adams.nfev}) should need >5x more "
+            f"RHS calls than BDF (nfev={sol_bdf.nfev}) for lam={_PR_LAM}"
+        )
+    # Adams failing is also acceptable: it demonstrates stiffness.
+
+
+# ---------------------------------------------------------------------------
+# 3. Nonlinear analytic scalar via solve_ivp
+# ---------------------------------------------------------------------------
+
+
+def test_nonlinear_analytic_ivp():
+    """
+    dy/dt = 1j*y**2,  y(0) = 1+0j
+    Exact: y(t) = 1/(1 - 1j*t)
+
+    The Jacobian J = 2j*y is state-dependent; the solver must update it
+    during the integration.  Exercises the nonlinear path for both methods.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 0.5)
+
+    def fun(t, y):
+        return np.array([1j * y[0] ** 2])
+
+    def jac(t, y):
+        return np.array([[2j * y[0]]])
+
+    exact_final = 1.0 / (1.0 - 1j * t_span[1])
+
+    for lmm in ("Adams", "BDF"):
+        sol = solve_ivp(
+            fun, t_span, y0, method=ZVODE, lmm=lmm,
+            jac=jac, rtol=1e-9, atol=1e-11,
+        )
+        assert sol.success, f"Nonlinear analytic ({lmm}): {sol.message}"
+        assert_allclose(
+            sol.y[0, -1], exact_final,
+            rtol=1e-6, atol=1e-9,
+            err_msg=f"Nonlinear analytic: {lmm} mismatch",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 4. Schrödinger equation / Rabi oscillations
+# ---------------------------------------------------------------------------
+
+
+def test_schrodinger_rabi_oscillations():
+    """
+    Two-level quantum system (Rabi oscillations):
+
+        dψ/dt = -i H ψ,   H = σ_x = [[0,1],[1,0]]
+
+    ψ(0) = [1, 0]  →  ψ(t) = [cos(t), -i sin(t)]
+
+    Two independent correctness checks:
+    1. Pointwise: ψ(t) matches the closed-form Rabi solution.
+    2. Unitarity: ‖ψ(t)‖² = 1 at every output point.
+
+    This is the canonical use case for ZVODE: complex analytic RHS,
+    Hamiltonian (energy-conserving) structure, and a constant Jacobian
+    that is naturally reused across many steps (jsv=1).
+    """
+    H = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.complex128)
+    J_const = -1j * H
+
+    def fun(t, psi):
+        return -1j * H @ psi
+
+    def jac(t, psi):
+        return J_const
+
+    psi0 = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 4 * np.pi)  # two full Rabi cycles
+    t_eval = np.linspace(*t_span, 201)
+
+    sol = solve_ivp(
+        fun, t_span, psi0, method=ZVODE, lmm="BDF",
+        jac=jac, dense_output=True, rtol=1e-10, atol=1e-12,
+    )
+    assert sol.success, f"Rabi oscillations: {sol.message}"
+
+    psi = sol.sol(t_eval)
+
+    assert_allclose(psi[0], np.cos(t_eval),
+                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₁ = cos(t) mismatch")
+    assert_allclose(psi[1], -1j * np.sin(t_eval),
+                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₂ = -i·sin(t) mismatch")
+
+    norms_sq = np.abs(psi[0]) ** 2 + np.abs(psi[1]) ** 2
+    assert_allclose(norms_sq, 1.0, rtol=1e-7, atol=1e-9,
+                    err_msg="Rabi: unitarity violated — ‖ψ(t)‖² ≠ 1")
+
+
+# ---------------------------------------------------------------------------
+# 5. Coupled stiff two-component system
+# ---------------------------------------------------------------------------
+
+
+def test_coupled_stiff_two_component():
+    """
+    Upper-triangular complex system with stiffness ratio ~450:
+
+        dy₁/dt = -(1000+1j) y₁ + y₂
+        dy₂/dt =            -(1+2j) y₂
+
+    λ₁ = -(1000+1j), λ₂ = -(1+2j), |λ₁/λ₂| ≈ 447.
+
+    The off-diagonal coupling is essential: a diagonal Jacobian approximation
+    misses the y₂ → y₁ term, so this problem exercises the full dense
+    Jacobian code path.  Exact solution from variation of constants.
+    """
+    lam1 = -(1000.0 + 1j)
+    lam2 = -(1.0 + 2j)
+    A = np.array([[lam1, 1.0], [0.0, lam2]], dtype=np.complex128)
+
+    def fun(t, y):
+        return A @ y
+
+    def jac(t, y):
+        return A
+
+    y0 = np.array([1.0 + 1j, 1.0 + 0j], dtype=np.complex128)
+
+    def exact(t):
+        y2 = y0[1] * np.exp(lam2 * t)
+        y1 = (
+            y0[0] * np.exp(lam1 * t)
+            + y0[1] / (lam2 - lam1) * (np.exp(lam2 * t) - np.exp(lam1 * t))
+        )
+        return np.array([y1, y2])
+
+    # Check at a spread of times: early (fast transient active) and late
+    t_check = np.array([1e-3, 5e-3, 0.01, 0.1, 1.0, 5.0])
+
+    sol = solve_ivp(
+        fun, (0.0, 5.0), y0, method=ZVODE, lmm="BDF",
+        jac=jac, t_eval=t_check, rtol=1e-8, atol=1e-10,
+    )
+    assert sol.success, f"Coupled stiff system: {sol.message}"
+
+    for k, t in enumerate(t_check):
+        assert_allclose(
+            sol.y[:, k], exact(t),
+            rtol=1e-5, atol=1e-8,
+            err_msg=f"Coupled stiff system: mismatch at t={t}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 6. Large banded system: 1D tight-binding chain (N=100)
+#
+# Physical context: electron/photon hopping in a 1D lattice (condensed-
+# matter physics, coupled-waveguide photonics, NMR spin-chain dynamics).
+# Hamiltonian: H_{n,n±1} = κ, H_{n,n} = 0  →  tridiagonal, lband=uband=1.
+# After discretisation on N sites the TDSE da/dt = -iHa has N complex
+# unknowns.  For N=100–10 000 this is a natural use case for ZVODE.
+# ---------------------------------------------------------------------------
+
+
+def test_tight_binding_chain():
+    """
+    1D tight-binding chain (N=100 sites, hopping κ=1):
+
+        da_n/dt = -i κ (a_{n-1} + a_{n+1}),   n = 0 … N-1
+
+    Initial state: single-site excitation a_0(0) = 1, a_n(0) = 0 for n>0.
+
+    Tests:
+    - Banded Jacobian path (miter=4, lband=uband=1)
+    - Unitary evolution: Σ|a_n(t)|² = 1 at all output times
+    - Final-state accuracy vs. scipy.linalg.expm reference
+    """
+    from scipy.linalg import expm
+
+    N = 100
+    kappa = 1.0
+
+    H = (
+        np.diag(np.full(N - 1, kappa), k=1)
+        + np.diag(np.full(N - 1, kappa), k=-1)
+    ).astype(np.complex128)
+
+    def fun(t, a):
+        return -1j * H @ a
+
+    def jac_banded(t, a):
+        # lband=1, uband=1: pd[i-j+mu, j] = J[i,j] = (-iH)[i,j]
+        # pd[0, j] = J[j-1, j] = -i*kappa  (superdiagonal, j=1..N-1)
+        # pd[1, j] = J[j,   j] = 0          (diagonal)
+        # pd[2, j] = J[j+1, j] = -i*kappa  (subdiagonal, j=0..N-2)
+        pd = np.zeros((3, N), dtype=np.complex128)
+        pd[0, 1:] = -1j * kappa
+        pd[2, : N - 1] = -1j * kappa
+        return pd
+
+    a0 = np.zeros(N, dtype=np.complex128)
+    a0[0] = 1.0
+
+    t_end = 1.0
+    t_span = (0.0, t_end)
+    t_eval = np.linspace(0.0, t_end, 11)
+
+    a_ref = expm(-1j * H * t_end) @ a0
+
+    sol = solve_ivp(
+        fun, t_span, a0, method=ZVODE, lmm="BDF",
+        jac=jac_banded, lband=1, uband=1,
+        t_eval=t_eval, rtol=1e-8, atol=1e-10,
+    )
+    assert sol.success, f"Tight-binding chain: {sol.message}"
+
+    # Unitarity at every output point
+    total_prob = np.sum(np.abs(sol.y) ** 2, axis=0)
+    assert_allclose(total_prob, 1.0, rtol=1e-5, atol=1e-8,
+                    err_msg="Tight-binding chain: Σ|a_n|² ≠ 1 (norm not conserved)")
+
+    # Accuracy at final time (reference via matrix exponential)
+    assert_allclose(sol.y[:, -1], a_ref, rtol=1e-5, atol=1e-8,
+                    err_msg="Tight-binding chain: final-state mismatch vs expm")
+
+
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
