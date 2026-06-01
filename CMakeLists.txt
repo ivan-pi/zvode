@@ -16,32 +16,53 @@ find_package(Python REQUIRED
     NumPy
 )
 
-find_package(BLAS REQUIRED)
+set(ZVODE_LINALG_BACKEND "LAPACK" CACHE STRING
+  "Linear algebra backend for LU factorization and triangular solves")
+set_property(CACHE ZVODE_LINALG_BACKEND PROPERTY STRINGS LAPACK LINPACK)
+
+if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
+  find_package(LAPACK REQUIRED)
+  message(STATUS "ZVODE linalg backend: LAPACK (${LAPACK_LIBRARIES})")
+elseif(ZVODE_LINALG_BACKEND STREQUAL "LINPACK")
+  find_package(BLAS REQUIRED)
+  message(STATUS "ZVODE linalg backend: LINPACK (BLAS: ${BLAS_LIBRARIES})")
+else()
+  message(FATAL_ERROR
+    "Unknown ZVODE_LINALG_BACKEND \"${ZVODE_LINALG_BACKEND}\". "
+    "Valid choices are LAPACK or LINPACK.")
+endif()
 
 # Build the C extension. Compiling the Fortran straight into the module
 # target lets CMake pull in the Fortran runtime (libgfortran) automatically
 # at link time, which is the most foolproof option for a mixed C/Fortran module.
 python_add_library(_zvode MODULE
     src/_zvode.c
-    extern/zvode.f
+    extern/zvode.F
     extern/zvode_linalg.f90
     extern/c_zvode.f90
-    extern/linpack/zgbfa.f
-    extern/linpack/zgbsl.f
-    extern/linpack/zgefa.f
-    extern/linpack/zgesl.f
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
-# In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
-# (BLAS no-op), however m+1 > lda which trips gfortran's bound checker.
-# See my chat with Claude for a full description of the problem
-#   https://claude.ai/code/session_01P6jXN7Mrzxv28HirHe8UhG
-# Originally surfaced in the banded test_oscillator_miter
-set_source_files_properties(
-  extern/linpack/zgbfa.f
-  PROPERTIES
-    COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
+if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
+  target_link_libraries(_zvode PRIVATE LAPACK::LAPACK)
+else()
+  target_sources(_zvode PRIVATE
+    extern/linpack/zgbfa.f
+    extern/linpack/zgbsl.f
+    extern/linpack/zgefa.f
+    extern/linpack/zgesl.f)
+  target_compile_definitions(_zvode PRIVATE ZVODE_USE_LINPACK)
+  target_link_libraries(_zvode PRIVATE BLAS::BLAS)
+  # In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
+  # (BLAS no-op), however m+1 > lda which trips gfortran's bound checker.
+  # See my chat with Claude for a full description of the problem
+  #   https://claude.ai/code/session_01P6jXN7Mrzxv28HirHe8UhG
+  # Originally surfaced in the banded test_oscillator_miter
+  set_source_files_properties(
+    extern/linpack/zgbfa.f
+    PROPERTIES
+      COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
+endif()
 
 target_include_directories(
   _zvode
@@ -49,7 +70,7 @@ target_include_directories(
 
 target_link_libraries(
   _zvode
-  PRIVATE Python::NumPy BLAS::BLAS)
+  PRIVATE Python::NumPy)
 
 # Install the compiled module INTO the package directory, so it imports
 # as `zvode._zvode`.
