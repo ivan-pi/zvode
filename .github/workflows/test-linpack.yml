@@ -1,0 +1,32 @@
+name: Test LINPACK backend
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  test-linpack:
+    name: LINPACK / ubuntu-latest / Python 3.12
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Fortran compiler and BLAS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gfortran libopenblas-dev
+
+      - name: Install package and test dependencies from source
+        run: |
+          pip install -v ".[test]" \
+            --config-settings="cmake.args=-DZVODE_LINALG_BACKEND=LINPACK"
+
+      - name: Run tests
+        run: python -m pytest test/ -v
