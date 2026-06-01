@@ -16,7 +16,8 @@ This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.o
 so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
 argument.
 
-> **Warning** — This integrator is not thread-safe. You cannot have two threads
+> [!WARNING]
+> This integrator is not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
 ## Fortran source
@@ -108,7 +109,9 @@ solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
 | `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
 | `first_step` | float | auto | Initial step size. |
 | `max_step` | float | `np.inf` | Maximum step size. |
+| `min_step` | float | 0 | Minimum step-size. |
 | `jsv` | `1` or `-1` | `1` | `1` saves and reuses the Jacobian; `-1` recomputes every step. |
+| `miter` | int | None | Iteration method; normally inferred from  `jac` and `lband`/`uband`. |
 
 > **Note** — For stiff problems, `f` must be analytic (each component must be
 > an analytic function of each state variable). For stiff systems where `f` is
@@ -152,9 +155,10 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 
 | Resource | URL |
 |---|---|
-| Official ODEPACK page — Lawrence Livermore National Laboratory | <https://computing.llnl.gov/projects/odepack> |
-| Source on Netlib | <https://netlib.org/ode/zvode.f> |
-| Sandia Netlib mirror | <https://netlib.sandia.gov/ode/zvode.f> |
+| ODEPACK | <https://computing.llnl.gov/projects/odepack> |
+| Netlib mirror | <https://netlib.org/ode/zvode.f> |
+| Netlib mirror (Sandia) | <https://netlib.sandia.gov/ode/zvode.f> |
+| SUNDIALS | <https://computing.llnl.gov/projects/sundials> |
 
 ### Python / R ecosystem
 

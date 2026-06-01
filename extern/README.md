@@ -25,4 +25,4 @@ The LINPACK routines (`zgefa.f`, `zgesl.f`, `zgbfa.f`, `zgbsl.f`) are taken from
 [Netlib LINPACK distribution](https://netlib.org/linpack/).
 The following change has been applied to each file:
 
-- **Assumed-size array argument declarations** — dummy array arguments that were declaredwith an explicit length (e.g. `DIMENSION A(LDA,1)`) have been updated to use the standard assumed-size notation (`DIMENSION A(LDA,*)`). This silences warnings from strict Fortran compilers about incorrect array bound declarations.
+- **Assumed-size array argument declarations** — dummy array arguments that were declared with an explicit length (e.g. `DIMENSION A(LDA,1)`) have been updated to use the standard assumed-size notation (`DIMENSION A(LDA,*)`). This silences warnings from strict Fortran compilers about incorrect array bound declarations.

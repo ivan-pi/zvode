@@ -384,7 +384,6 @@ class ZVODE(OdeSolver):
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
-        # TODO: Jacobian-saving strategy checks
         if jsv not in (1, -1):
             raise ValueError(
                 "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
@@ -489,8 +488,8 @@ class ZVODE(OdeSolver):
             if max_order > max_allowed:
                 warnings.warn(
                     f"'max_order' ({max_order}) exceeds the maximum allowed order "
-                    f"({max_allowed}) for the selected method. The solver will"
-                    f"automaticall reduce it.",
+                    f"({max_allowed}) for the selected method. The solver will "
+                    f"automatically reduce it.",
                     stacklevel=2,
                 )
 

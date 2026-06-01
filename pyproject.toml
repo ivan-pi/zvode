@@ -25,6 +25,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Fortran",
+    "Programming Language :: C",
 ]
 dependencies = [
     "numpy>=1.23",
@@ -35,7 +36,6 @@ dependencies = [
 test = ["pytest"]
 
 [project.urls]
-Homepage = "https://github.com/ivan-pi/zvode"
 Repository = "https://github.com/ivan-pi/zvode"
 Issues = "https://github.com/ivan-pi/zvode/issues"
 
@@ -54,7 +54,6 @@ sdist.exclude = [
     ".github/**",
     ".gitignore",
     "docs/**",
-    "orig/**",
     "TODO.txt",
     "notes.txt",
     "test/*.f",
