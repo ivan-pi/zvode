@@ -33,11 +33,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest>=9"]
 
 [project.urls]
 Repository = "https://github.com/ivan-pi/zvode"
 Issues = "https://github.com/ivan-pi/zvode/issues"
+
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["test"]
+addopts = ["-ra", "--strict-markers"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
