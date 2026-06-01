@@ -252,6 +252,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       miter=None,
                       jsv=1,
                       in_place=False,
+                      adaptive=False,
                       ret_stats=False):
     """Integrate a complex-valued ODE initial value problem.
 
@@ -291,9 +292,19 @@ def solve_complex_ivp(fun, tspan, y0, *,
               def my_rhs(neq, t, y, dy, ctx): ...
 
     tspan : array_like
-        Integration times.  Two elements ``[t0, tf]`` → adaptive output
-        (every accepted step is returned).  Three or more elements
-        ``[t0, t1, …, tf]`` → solution returned only at those knots.
+        Integration times.
+
+        * Two elements ``[t0, tf]`` and ``adaptive=False`` (default) →
+          endpoint-only mode: ZVODE steps freely to ``tf`` and returns the
+          single final state.  ``t`` is a scalar and ``y`` is a 1-D array.
+        * Two elements ``[t0, tf]`` and ``adaptive=True`` → every accepted
+          step is collected and returned.
+        * Three or more elements ``[t0, t1, …, tf]`` → solution returned
+          only at those knots (``adaptive`` is ignored).
+    adaptive : bool, optional
+        When ``tspan`` has exactly two elements, set ``True`` to collect every
+        accepted internal step instead of returning only the endpoint.
+        Default ``False``.
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     method : {'BDF', 'Adams'}, optional
@@ -328,10 +339,13 @@ def solve_complex_ivp(fun, tspan, y0, *,
 
     Returns
     -------
-    t : ndarray, shape (m,)
-        Output times.
-    y : ndarray, shape (n, m), complex128, Fortran order
-        Solution columns; ``y[:, k]`` is the state at ``t[k]``.
+    t : float or ndarray, shape (m,)
+        Output time(s).  A scalar float in endpoint-only mode
+        (``len(tspan) == 2`` and ``adaptive=False``); a 1-D array otherwise.
+    y : ndarray, shape (n,) or (n, m), complex128
+        Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
+        Fortran-order array with ``y[:, k]`` the state at ``t[k]``
+        otherwise.
     stats : dict, only when ``ret_stats=True``
         ``{'nsteps', 'nfev', 'njev', 'nlu'}``.
 
@@ -449,12 +463,24 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # ------------------------------------------------------------------
     # 6.  Integrate
     # ------------------------------------------------------------------
-    if len(tspan) == 2:
+    if len(tspan) == 2 and not adaptive:
+        # Endpoint-only: let ZVODE step freely to t_bound via a single
+        # ITASK=1 call.  No intermediate storage; returns scalar t and
+        # 1-D y for a clean MATLAB-style interface.
+        t_out, y_out, istate = _zvode_knots(
+            _fun, _jac, y0, tspan,
+            itol, rtol, atol, mf, iopt,
+            zwork, rwork, iwork)
+        t_out = float(t_out[-1])
+        y_out = y_out[:, -1]
+    elif len(tspan) == 2:
+        # Adaptive: collect every accepted step.
         t_out, y_out, istate = _zvode_adaptive(
             _fun, _jac, y0, tspan[0], tspan[1],
             itol, rtol, atol, mf, iopt,
             zwork, rwork, iwork)
     else:
+        # Knots: output at each element of tspan.
         t_out, y_out, istate = _zvode_knots(
             _fun, _jac, y0, tspan,
             itol, rtol, atol, mf, iopt,
