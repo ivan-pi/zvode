@@ -272,7 +272,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       first_step=None,
                       min_step=0.0,
                       max_step=np.inf,
-                      max_steps=2**31 - 1,
+                      max_steps=np.iinfo(np.int32).max,
                       max_order=None,
                       miter=None,
                       jsv=1,
@@ -374,8 +374,8 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Step-size controls.
     max_steps : int, optional
         Maximum number of internal steps ZVODE may take between two
-        consecutive output points.  Default ``2**31 - 1`` (effectively
-        unlimited).  Lower this when function evaluations are expensive and
+        consecutive output points.  Default ``np.iinfo(np.int32).max``
+        (effectively unlimited).  Lower this when function evaluations are expensive and
         you want to cap the computational work; the solver will return with
         ISTATE=-1 if the budget is exhausted before reaching the next output
         point, at which stage relaxing the tolerances is the usual remedy.
