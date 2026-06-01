@@ -101,13 +101,16 @@ CONFIGS = [
 # ---------------------------------------------------------------------------
 # Tolerance sweep
 # ---------------------------------------------------------------------------
-tols    = np.logspace(-2, -10, 17)
+tols    = np.logspace(-10, -2, 17)
 N_REPEAT = 10   # timing repeats; minimum is reported
 
 results = {}
 for label, method, jac, _c, _m, _ls in CONFIGS:
     wall_ms = np.empty(len(tols))
     errors  = np.empty(len(tols))
+    nfev    = np.empty(len(tols), dtype=int)
+    njev    = np.empty(len(tols), dtype=int)
+    nlu     = np.empty(len(tols), dtype=int)
     for i, tol in enumerate(tols):
         kw = dict(rtol=tol, atol=tol, jac=jac, dense_output=False)
         sol = solve_ivp(bloch_rhs, t_span, u0.copy(), method=method, **kw)  # warmup
@@ -117,35 +120,36 @@ for label, method, jac, _c, _m, _ls in CONFIGS:
         )
         wall_ms[i] = min(ts) * 1e3
         errors[i]  = np.linalg.norm(sol.y[:, -1] - u_ref)
-        print(f"  {label:20s}  tol={tol:.0e}  t={wall_ms[i]:8.2f} ms  err={errors[i]:.2e}")
-    results[label] = (wall_ms, errors)
+        nfev[i], njev[i], nlu[i] = sol.nfev, sol.njev, sol.nlu
+        print(f"  {label:20s}  tol={tol:.0e}  t={wall_ms[i]:8.2f} ms  err={errors[i]:.2e}"
+              f"  nfev={nfev[i]}  njev={njev[i]}  nlu={nlu[i]}")
+    results[label] = dict(wall_ms=wall_ms, errors=errors, nfev=nfev, njev=njev, nlu=nlu)
 
 # ---------------------------------------------------------------------------
 # Speedup summary
 # ---------------------------------------------------------------------------
 print()
-for label_jac, label_nojac in [
-    ("ZVODE-BDF + jac", "ZVODE-BDF"),
-    ("SciPy BDF + jac", "SciPy BDF"),
-    ("SciPy BDF",       "ZVODE-BDF"),
+for label_num, label_den in [
+    ("ZVODE-BDF",     "ZVODE-BDF + jac"),
+    ("SciPy BDF",     "SciPy BDF + jac"),
+    ("SciPy BDF",     "ZVODE-BDF"),
     ("SciPy BDF + jac", "ZVODE-BDF + jac"),
 ]:
-    ratio = results[label_nojac][0] / results[label_jac][0]
-    print(f"  {label_nojac:20s} / {label_jac:20s}: "
+    ratio = results[label_num]["wall_ms"] / results[label_den]["wall_ms"]
+    print(f"  {label_num:20s} / {label_den:20s}: "
           f"median={np.median(ratio):.2f}×  range=[{ratio.min():.2f}, {ratio.max():.2f}]×")
 
 # ---------------------------------------------------------------------------
-# Figure 1: time vs tolerance
+# Figure 1: work-precision (time vs tolerance and time vs error)
 # ---------------------------------------------------------------------------
 fig1, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 for label, method, jac, color, marker, ls in CONFIGS:
-    wall_ms, errors = results[label]
-    axes[0].loglog(tols,   wall_ms, ls, marker=marker, label=label, color=color, lw=1.5)
-    axes[1].loglog(errors, wall_ms, ls, marker=marker, label=label, color=color, lw=1.5)
+    r = results[label]
+    axes[0].loglog(tols,         r["wall_ms"], ls, marker=marker, label=label, color=color, lw=1.5)
+    axes[1].loglog(r["errors"],  r["wall_ms"], ls, marker=marker, label=label, color=color, lw=1.5)
 
 ax = axes[0]
-ax.invert_xaxis()
 ax.set_xlabel("Tolerance  (rtol = atol)")
 ax.set_ylabel("Wall-clock time  (ms)")
 ax.set_title("Time vs tolerance")
@@ -167,4 +171,37 @@ fig1.suptitle(
 plt.tight_layout()
 fig1.savefig("docs/bloch_work_precision.png", dpi=150, bbox_inches="tight")
 print("\nSaved docs/bloch_work_precision.png")
+
+# ---------------------------------------------------------------------------
+# Figure 2: evaluation counts vs tolerance (analytic Jacobian only)
+# ---------------------------------------------------------------------------
+JAC_CONFIGS = [(l, c, m) for l, _meth, jac, c, m, _ls in CONFIGS if jac is not None]
+
+fig2, axes2 = plt.subplots(1, 3, figsize=(14, 4.5))
+
+stat_info = [
+    ("nfev", "RHS evaluations"),
+    ("njev", "Jacobian evaluations"),
+    ("nlu",  "LU decompositions"),
+]
+
+for ax, (key, ylabel) in zip(axes2, stat_info):
+    for label, color, marker in JAC_CONFIGS:
+        ax.loglog(tols, results[label][key], "-", marker=marker,
+                  label=label, color=color, lw=1.5)
+    ax.set_xlabel("Tolerance  (rtol = atol)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(ylabel)
+    ax.legend(fontsize=9)
+    ax.grid(True, which="both", alpha=0.3)
+
+fig2.suptitle(
+    r"Bloch equations  ($\Omega=100$, $\Delta=0$, $\Gamma=1$),  $t \in [0, 7]$"
+    "\nEvaluation counts — analytic Jacobian case",
+    fontsize=11,
+)
+plt.tight_layout()
+fig2.savefig("docs/bloch_eval_counts.png", dpi=150, bbox_inches="tight")
+print("Saved docs/bloch_eval_counts.png")
+
 plt.show()
