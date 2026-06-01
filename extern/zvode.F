@@ -2,7 +2,8 @@ C NOTE: This version of ZVODE has been modified extensively
 C       to use functors instead of external procedures
       MODULE ZVODE_MOD
 
-        USE ZVODE_LINALG_MOD, only: zcopy, zacopy, dzscal, dzaxpy
+        USE ZVODE_LINALG_MOD, only: zcopy, zacopy, dzscal, dzaxpy,
+     1    zgbtrf, zgbtrs, zgetrf, zgetrs
 
         IMPLICIT NONE
         PRIVATE
@@ -10,8 +11,14 @@ C       to use functors instead of external procedures
         PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
         PUBLIC :: XSETF, XSETUN, ZVSRCO
         PUBLIC :: XERRWD
+        PUBLIC :: use_linpack
 
         INTEGER, PARAMETER :: DP = KIND(1.0D0)
+#ifdef ZVODE_USE_LINPACK
+        LOGICAL, PARAMETER :: use_linpack = .TRUE.
+#else
+        LOGICAL, PARAMETER :: use_linpack = .FALSE.
+#endif
 
         TYPE, ABSTRACT :: ZVODE_FUN
           INTEGER :: NEQ
@@ -57,7 +64,9 @@ C       to use functors instead of external procedures
           END SUBROUTINE
         END INTERFACE
 C
+#ifdef ZVODE_USE_LINPACK
       INCLUDE 'linpack.fi'
+#endif
 C
       CONTAINS
 C
@@ -3205,7 +3214,11 @@ C Multiply Jacobian by scalar, add identity, and do LU decomposition. --
         WM(J) = WM(J) + ONE
  250    J = J + NP1
       NLU = NLU + 1
+#ifdef ZVODE_USE_LINPACK
       CALL ZGEFA (WM, N, N, IWM(31), IER)
+#else
+      CALL ZGETRF (N, N, WM, N, IWM(31), IER)
+#endif
       IF (IER .NE. 0) IERPJ = 1
       RETURN
       ENDIF
@@ -3300,7 +3313,11 @@ C Multiply Jacobian by scalar, add identity, and do LU decomposition.
         WM(II) = WM(II) + ONE
  580    II = II + MEBAND
       NLU = NLU + 1
+#ifdef ZVODE_USE_LINPACK
       CALL ZGBFA (WM, MEBAND, N, ML, MU, IWM(31), IER)
+#else
+      CALL ZGBTRF (N, N, ML, MU, WM, MEBAND, IWM(31), IER)
+#endif
       IF (IER .NE. 0) IERPJ = 1
       RETURN
 C End of code block for MITER = 4 or 5. --------------------------------
@@ -3354,7 +3371,7 @@ C Type declarations for local variables --------------------------------
 C
       complex(dp) DI
       DOUBLE PRECISION ONE, PHRL1, R, ZERO
-      INTEGER I, MEBAND, ML, MU
+      INTEGER I, MEBAND, ML, MU, INFO
 C-----------------------------------------------------------------------
 C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this integrator.
@@ -3374,7 +3391,11 @@ C
 C
       IERSL = 0
       GO TO (100, 100, 300, 400, 400), MITER
+#ifdef ZVODE_USE_LINPACK
  100  CALL ZGESL (WM, N, N, IWM(31), X, 0)
+#else
+ 100  CALL ZGETRS ('N', N, 1, WM, N, IWM(31), X, N, INFO)
+#endif
       RETURN
 C
  300  PHRL1 = HRL1
@@ -3395,7 +3416,12 @@ C
  400  ML = IWM(1)
       MU = IWM(2)
       MEBAND = 2*ML + MU + 1
+#ifdef ZVODE_USE_LINPACK
       CALL ZGBSL (WM, MEBAND, N, ML, MU, IWM(31), X, 0)
+#else
+      CALL ZGBTRS ('N', N, ML, MU, 1, WM, MEBAND, IWM(31), X, N,
+     1    INFO)
+#endif
       RETURN
 C----------------------- End of Subroutine ZVSOL -----------------------
       END SUBROUTINE
