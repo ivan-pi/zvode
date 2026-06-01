@@ -336,6 +336,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
         ``refine=N`` inserts ``N - 1`` additional points inside each step by
         calling ZVINDY to interpolate from the Nordsieck history array,
         analogous to the ``Refine`` option in MATLAB's ODE suite.
+        This increases output density for smoother plots but does not improve
+        the accuracy of the integration.  Ignored when ``save_steps=False``
+        or when ``tspan`` contains more than two elements.
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     method : {'BDF', 'Adams'}, optional
