@@ -1,5 +1,6 @@
 """
-Work-precision diagram for the Bloch equations: ZVODE-BDF vs SciPy BDF.
+Work-precision diagram for the Bloch equations: ZVODE-BDF vs SciPy BDF,
+with and without a user-supplied analytic Jacobian.
 
 The Bloch equations model a two-level open quantum system (Rabi oscillations
 with spontaneous emission).  With rapid Rabi oscillations (Ω=100) and slow
@@ -12,6 +13,14 @@ loop in Fortran, calling back to Python only for RHS evaluations.  SciPy BDF
 implements those same operations in Python.  The difference shows up most
 clearly at loose tolerances, where the step count is small and per-step
 overhead is the dominant cost.
+
+Jacobian notes
+--------------
+f₀, f₁, f₂ are analytic in u.  f₃ = conj(f₂) is anti-analytic, so the
+Jacobian row J[3,:] is obtained as conj(J[2,:]) — the same result that
+ZVODE's finite-difference scheme (real perturbations) produces naturally.
+The column J[:,3] is zero for f₀, f₁, f₂; J[3,3] = 0 because f₃ does not
+depend on u₃.
 
 Reference:
   https://discourse.julialang.org/t/how-can-i-solve-complex-valued-odes/110581
@@ -47,90 +56,115 @@ def bloch_rhs(t, u):
     return du
 
 
+def bloch_jac(t, u):
+    J = np.zeros((4, 4), dtype=np.complex128)
+    # df0/duj
+    J[0, 1] =  Gamma
+    J[0, 2] =  1j * Omega
+    J[0, 3] = -1j * Omega
+    # df1/duj
+    J[1, 1] = -Gamma
+    J[1, 2] = -1j * Omega
+    J[1, 3] =  1j * Omega
+    # df2/duj  (analytic)
+    J[2, 0] =  1j * Omega
+    J[2, 1] = -1j * Omega
+    J[2, 2] = -(gamma + 1j * Delta)
+    # df3/duj = conj(df2/duj)  (real-perturbation finite-diff sense)
+    J[3, 0] = -1j * Omega
+    J[3, 1] =  1j * Omega
+    J[3, 2] = -(gamma - 1j * Delta)
+    # J[3, 3] = 0: f3 does not depend on u3
+    return J
+
+
 # ---------------------------------------------------------------------------
-# Reference solution (tight tolerance)
+# Reference solution (tight tolerance, analytic Jacobian)
 # ---------------------------------------------------------------------------
 ref = solve_ivp(
     bloch_rhs, t_span, u0.copy(),
-    method=ZVODE_BDF, rtol=1e-13, atol=1e-13, dense_output=False,
+    method=ZVODE_BDF, jac=bloch_jac, rtol=1e-13, atol=1e-13, dense_output=False,
 )
 assert ref.success, f"Reference solve failed: {ref.message}"
 u_ref = ref.y[:, -1]
 
 # ---------------------------------------------------------------------------
-# Tolerance sweep
+# Solver configurations: (label, method, jac, color, marker, linestyle)
 # ---------------------------------------------------------------------------
-tols = np.logspace(-2, -10, 17)
-N_REPEAT = 15   # timing repeats; minimum is reported
-
-solvers = [
-    ("ZVODE-BDF", ZVODE_BDF,  "tab:blue",   "o"),
-    ("SciPy BDF", "BDF",      "tab:orange", "s"),
+CONFIGS = [
+    ("ZVODE-BDF",           ZVODE_BDF, None,       "tab:blue",   "o", "--"),
+    ("ZVODE-BDF + jac",     ZVODE_BDF, bloch_jac,  "tab:blue",   "o", "-"),
+    ("SciPy BDF",           "BDF",     None,       "tab:orange", "s", "--"),
+    ("SciPy BDF + jac",     "BDF",     bloch_jac,  "tab:orange", "s", "-"),
 ]
 
+# ---------------------------------------------------------------------------
+# Tolerance sweep
+# ---------------------------------------------------------------------------
+tols    = np.logspace(-2, -10, 17)
+N_REPEAT = 10   # timing repeats; minimum is reported
+
 results = {}
-for label, method, _color, _marker in solvers:
+for label, method, jac, _c, _m, _ls in CONFIGS:
     wall_ms = np.empty(len(tols))
     errors  = np.empty(len(tols))
     for i, tol in enumerate(tols):
-        kw = dict(rtol=tol, atol=tol, dense_output=False)
-        # warmup run (avoids import / JIT artefacts)
-        sol = solve_ivp(bloch_rhs, t_span, u0.copy(), method=method, **kw)
-        # timed runs
-        ts = timeit.repeat(
+        kw = dict(rtol=tol, atol=tol, jac=jac, dense_output=False)
+        sol = solve_ivp(bloch_rhs, t_span, u0.copy(), method=method, **kw)  # warmup
+        ts  = timeit.repeat(
             lambda: solve_ivp(bloch_rhs, t_span, u0.copy(), method=method, **kw),
             number=1, repeat=N_REPEAT,
         )
         wall_ms[i] = min(ts) * 1e3
         errors[i]  = np.linalg.norm(sol.y[:, -1] - u_ref)
-        print(f"  {label:10s}  tol={tol:.0e}  t={wall_ms[i]:.2f} ms  err={errors[i]:.2e}")
+        print(f"  {label:20s}  tol={tol:.0e}  t={wall_ms[i]:8.2f} ms  err={errors[i]:.2e}")
     results[label] = (wall_ms, errors)
 
 # ---------------------------------------------------------------------------
 # Speedup summary
 # ---------------------------------------------------------------------------
-z_times = results["ZVODE-BDF"][0]
-b_times = results["SciPy BDF"][0]
-speedup  = b_times / z_times
-print(f"\nSpeedup (SciPy BDF / ZVODE-BDF): min={speedup.min():.1f}×  "
-      f"max={speedup.max():.1f}×  median={np.median(speedup):.1f}×")
+print()
+for label_jac, label_nojac in [
+    ("ZVODE-BDF + jac", "ZVODE-BDF"),
+    ("SciPy BDF + jac", "SciPy BDF"),
+    ("SciPy BDF",       "ZVODE-BDF"),
+    ("SciPy BDF + jac", "ZVODE-BDF + jac"),
+]:
+    ratio = results[label_nojac][0] / results[label_jac][0]
+    print(f"  {label_nojac:20s} / {label_jac:20s}: "
+          f"median={np.median(ratio):.2f}×  range=[{ratio.min():.2f}, {ratio.max():.2f}]×")
 
 # ---------------------------------------------------------------------------
-# Plotting
+# Figure 1: time vs tolerance
 # ---------------------------------------------------------------------------
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+fig1, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-for label, method, color, marker in solvers:
+for label, method, jac, color, marker, ls in CONFIGS:
     wall_ms, errors = results[label]
-    fmt = f"{marker}-"
-    axes[0].loglog(tols,   wall_ms, fmt, label=label, color=color, lw=1.5)
-    axes[1].loglog(errors, wall_ms, fmt, label=label, color=color, lw=1.5)
+    axes[0].loglog(tols,   wall_ms, ls, marker=marker, label=label, color=color, lw=1.5)
+    axes[1].loglog(errors, wall_ms, ls, marker=marker, label=label, color=color, lw=1.5)
 
-# --- Left panel: time vs tolerance ---
 ax = axes[0]
 ax.invert_xaxis()
 ax.set_xlabel("Tolerance  (rtol = atol)")
 ax.set_ylabel("Wall-clock time  (ms)")
 ax.set_title("Time vs tolerance")
-ax.legend()
+ax.legend(fontsize=9)
 ax.grid(True, which="both", alpha=0.3)
 
-# --- Right panel: classic work-precision ---
 ax = axes[1]
 ax.set_xlabel(r"$\|u(7) - u_\mathrm{ref}\|_2$")
 ax.set_ylabel("Wall-clock time  (ms)")
 ax.set_title("Work-precision  (time vs error)")
-ax.legend()
+ax.legend(fontsize=9)
 ax.grid(True, which="both", alpha=0.3)
 
-fig.suptitle(
+fig1.suptitle(
     r"Bloch equations  ($\Omega=100$, $\Delta=0$, $\Gamma=1$),  $t \in [0, 7]$"
-    "\nZVODE-BDF vs SciPy BDF — 4-component complex ODE, latency-bound regime",
+    "\nZVODE-BDF vs SciPy BDF — with (—) and without (- -) analytic Jacobian",
     fontsize=11,
 )
 plt.tight_layout()
-
-out_path = "docs/bloch_work_precision.png"
-plt.savefig(out_path, dpi=150, bbox_inches="tight")
-print(f"\nSaved {out_path}")
+fig1.savefig("docs/bloch_work_precision.png", dpi=150, bbox_inches="tight")
+print("\nSaved docs/bloch_work_precision.png")
 plt.show()
