@@ -40,6 +40,7 @@ from zvode import ZVODE
 # Example 1: complex exponential decay  (docs/demo.py)
 # ---------------------------------------------------------------------------
 
+
 def fun_decay(t, y):
     return -y
 
@@ -64,6 +65,7 @@ def sol_decay(t, y0):
 # ---------------------------------------------------------------------------
 # Example 2: complex oscillator  (docs/example.py)
 # ---------------------------------------------------------------------------
+
 
 def fun_oscillator(t, y):
     w, z = y[0], y[1]
@@ -104,20 +106,22 @@ def sol_oscillator(t):
 # Decay problem: miter 1 and 2 (dense / no explicit Jacobian)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("miter,jac", [
-    (1, jac_decay_dense),
-    (2, None),
-])
+
+@pytest.mark.parametrize(
+    "miter,jac",
+    [
+        (1, jac_decay_dense),
+        (2, None),
+    ],
+)
 def test_decay_dense_miters(miter, jac):
     """Complex decay solved with dense miter options 1 and 2."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
 
-    sol = solve_ivp(fun_decay, t_span, y0,
-                    method=ZVODE,
-                    jac=jac,
-                    miter=miter,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay, t_span, y0, method=ZVODE, jac=jac, miter=miter, rtol=1e-8, atol=1e-10
+    )
 
     assert sol.success, f"miter={miter}: {sol.message}"
     assert sol.status == 0
@@ -128,29 +132,44 @@ def test_decay_dense_miters(miter, jac):
     assert sol.y.dtype == np.complex128
 
     expected = sol_decay(sol.t, y0[0])
-    assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
-                    err_msg=f"miter={miter}: solution mismatch")
+    assert_allclose(
+        sol.y[0],
+        expected,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg=f"miter={miter}: solution mismatch",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Decay problem: miter 4 and 5 (banded Jacobian, ml=0 mu=0)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("miter,jac", [
-    (4, jac_decay_banded),
-    (5, None),
-])
+
+@pytest.mark.parametrize(
+    "miter,jac",
+    [
+        (4, jac_decay_banded),
+        (5, None),
+    ],
+)
 def test_decay_banded_miters(miter, jac):
     """Complex decay with banded miter options 4 (user Jacobian) and 5 (internal FD)."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
 
-    sol = solve_ivp(fun_decay, t_span, y0,
-                    method=ZVODE,
-                    jac=jac,
-                    miter=miter,
-                    lband=0, uband=0,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        t_span,
+        y0,
+        method=ZVODE,
+        jac=jac,
+        miter=miter,
+        lband=0,
+        uband=0,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success, f"miter={miter}: {sol.message}"
     assert sol.status == 0
@@ -159,13 +178,19 @@ def test_decay_banded_miters(miter, jac):
     assert sol.y.dtype == np.complex128
 
     expected = sol_decay(sol.t, y0[0])
-    assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
-                    err_msg=f"miter={miter}: solution mismatch")
+    assert_allclose(
+        sol.y[0],
+        expected,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg=f"miter={miter}: solution mismatch",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Decay problem: miter 3 (diagonal Jacobian approximation)
 # ---------------------------------------------------------------------------
+
 
 def test_decay_diagonal_miter():
     """Complex decay solved with the diagonal Jacobian approximation (miter=3).
@@ -178,10 +203,7 @@ def test_decay_diagonal_miter():
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
 
-    sol = solve_ivp(fun_decay, t_span, y0,
-                    method=ZVODE,
-                    miter=3,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(fun_decay, t_span, y0, method=ZVODE, miter=3, rtol=1e-8, atol=1e-10)
 
     assert sol.success, f"miter=3: {sol.message}"
     assert sol.status == 0
@@ -192,32 +214,42 @@ def test_decay_diagonal_miter():
     assert sol.y.dtype == np.complex128
 
     expected = sol_decay(sol.t, y0[0])
-    assert_allclose(sol.y[0], expected, rtol=1e-5, atol=1e-8,
-                    err_msg="miter=3: solution mismatch")
+    assert_allclose(
+        sol.y[0], expected, rtol=1e-5, atol=1e-8, err_msg="miter=3: solution mismatch"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Oscillator problem: miter 1, 2, 4, 5
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("miter,jac,extra_kwargs", [
-    (1, jac_oscillator_dense, {}),
-    (2, None, {}),
-    pytest.param(4, jac_oscillator_banded, {'lband': 0, 'uband': 1}),
-    pytest.param(5, None, {'lband': 0, 'uband': 1}),
-])
+
+@pytest.mark.parametrize(
+    "miter,jac,extra_kwargs",
+    [
+        (1, jac_oscillator_dense, {}),
+        (2, None, {}),
+        pytest.param(4, jac_oscillator_banded, {"lband": 0, "uband": 1}),
+        pytest.param(5, None, {"lband": 0, "uband": 1}),
+    ],
+)
 def test_oscillator_miter(miter, jac, extra_kwargs):
     """Complex oscillator trajectory checked at solver-selected output points."""
     t0 = 0.0
     t_end = 2 * np.pi
     y0 = np.array([1.0 / 2.1, 1.0], dtype=np.complex128)
 
-    sol = solve_ivp(fun_oscillator, (t0, t_end), y0,
-                    method=ZVODE,
-                    jac=jac,
-                    miter=miter,
-                    rtol=1e-9, atol=1e-9,
-                    **extra_kwargs)
+    sol = solve_ivp(
+        fun_oscillator,
+        (t0, t_end),
+        y0,
+        method=ZVODE,
+        jac=jac,
+        miter=miter,
+        rtol=1e-9,
+        atol=1e-9,
+        **extra_kwargs,
+    )
 
     assert sol.success, f"miter={miter}: {sol.message}"
     assert sol.status == 0
@@ -229,23 +261,34 @@ def test_oscillator_miter(miter, jac, extra_kwargs):
 
     for i, t in enumerate(sol.t):
         expected = sol_oscillator(t)
-        assert_allclose(sol.y[:, i], expected, rtol=1e-5, atol=1e-7,
-                        err_msg=f"miter={miter}: solution mismatch at t={t:.4f}")
+        assert_allclose(
+            sol.y[:, i],
+            expected,
+            rtol=1e-5,
+            atol=1e-7,
+            err_msg=f"miter={miter}: solution mismatch at t={t:.4f}",
+        )
 
 
 # ---------------------------------------------------------------------------
 # Solver counters
 # ---------------------------------------------------------------------------
 
+
 def test_solver_counters_with_jacobian():
     """With a user Jacobian (miter=1), njev should be positive."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
 
-    sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                    method=ZVODE,
-                    jac=jac_decay_dense,
-                    miter=1,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        jac=jac_decay_dense,
+        miter=1,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success
     assert sol.nfev > 0
@@ -257,10 +300,9 @@ def test_solver_counters_without_jacobian():
     """Without a Jacobian (miter=2), nfev should be positive and njev may be 0."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
 
-    sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                    method=ZVODE,
-                    miter=2,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=2, rtol=1e-8, atol=1e-10
+    )
 
     assert sol.success
     assert sol.nfev > 0
@@ -270,26 +312,37 @@ def test_solver_counters_without_jacobian():
 # Dense output
 # ---------------------------------------------------------------------------
 
+
 def test_dense_output_decay():
     """sol(t) must match the analytic decay solution at a fine predetermined grid."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_span = (0.0, 2.0)
     t_eval = np.linspace(t_span[0], t_span[1], 50)
 
-    sol = solve_ivp(fun_decay, t_span, y0,
-                    method=ZVODE,
-                    miter=2,
-                    dense_output=True,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        t_span,
+        y0,
+        method=ZVODE,
+        miter=2,
+        dense_output=True,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success
     assert sol.sol is not None
 
-    y_interp = sol.sol(t_eval)          # shape (1, 50)
-    expected = sol_decay(t_eval, y0[0]) # shape (50,)
+    y_interp = sol.sol(t_eval)  # shape (1, 50)
+    expected = sol_decay(t_eval, y0[0])  # shape (50,)
     assert y_interp.shape == (1, len(t_eval))
-    assert_allclose(y_interp[0], expected, rtol=1e-5, atol=1e-8,
-                    err_msg="Dense output mismatch for decay problem")
+    assert_allclose(
+        y_interp[0],
+        expected,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Dense output mismatch for decay problem",
+    )
 
 
 def test_dense_output_oscillator():
@@ -299,22 +352,32 @@ def test_dense_output_oscillator():
     y0 = np.array([1.0 / 2.1, 1.0], dtype=np.complex128)
     t_eval = np.linspace(t0, t_end, 80)
 
-    sol = solve_ivp(fun_oscillator, (t0, t_end), y0,
-                    method=ZVODE,
-                    miter=2,
-                    dense_output=True,
-                    rtol=1e-9, atol=1e-9)
+    sol = solve_ivp(
+        fun_oscillator,
+        (t0, t_end),
+        y0,
+        method=ZVODE,
+        miter=2,
+        dense_output=True,
+        rtol=1e-9,
+        atol=1e-9,
+    )
 
     assert sol.success
     assert sol.sol is not None
 
-    y_interp = sol.sol(t_eval)   # shape (2, 80)
+    y_interp = sol.sol(t_eval)  # shape (2, 80)
     assert y_interp.shape == (2, len(t_eval))
 
     for i, t in enumerate(t_eval):
         expected = sol_oscillator(t)
-        assert_allclose(y_interp[:, i], expected, rtol=1e-5, atol=1e-7,
-                        err_msg=f"Dense output mismatch for oscillator at t={t:.4f}")
+        assert_allclose(
+            y_interp[:, i],
+            expected,
+            rtol=1e-5,
+            atol=1e-7,
+            err_msg=f"Dense output mismatch for oscillator at t={t:.4f}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -323,14 +386,18 @@ def test_dense_output_oscillator():
 # ---------------------------------------------------------------------------
 
 # 5x5 real matrix with lband=2, uband=1
-_A_REAL = np.array([[-0.6,  0.1,  0.0,  0.0,  0.0],
-                    [ 0.2, -0.5,  0.9,  0.0,  0.0],
-                    [ 0.1,  0.1, -0.4,  0.1,  0.0],
-                    [ 0.0,  0.3, -0.1, -0.9, -0.3],
-                    [ 0.0,  0.0,  0.1,  0.1, -0.7]])
+_A_REAL = np.array(
+    [
+        [-0.6, 0.1, 0.0, 0.0, 0.0],
+        [0.2, -0.5, 0.9, 0.0, 0.0],
+        [0.1, 0.1, -0.4, 0.1, 0.0],
+        [0.0, 0.3, -0.1, -0.9, -0.3],
+        [0.0, 0.0, 0.1, 0.1, -0.7],
+    ]
+)
 
-_A_COMPLEX      = _A_REAL - 0.5j * _A_REAL        # banded: lband=2, uband=1
-_A_COMPLEX_DIAG = np.diag(np.diag(_A_COMPLEX))    # diagonal: lband=0, uband=0
+_A_COMPLEX = _A_REAL - 0.5j * _A_REAL  # banded: lband=2, uband=1
+_A_COMPLEX_DIAG = np.diag(np.diag(_A_COMPLEX))  # diagonal: lband=0, uband=0
 
 
 def _linear_exact(a, y0, t_end):
@@ -354,6 +421,7 @@ def _to_zvode_banded(a, ml, mu):
 # t_bound respected (adapted from test_tbound_respected_small_interval)
 # ---------------------------------------------------------------------------
 
+
 def test_tbound_respected():
     """f(t, y) must never be called with t beyond t_bound."""
     t_end = 0.5
@@ -374,13 +442,14 @@ def test_tbound_respected():
 # Backward integration
 # ---------------------------------------------------------------------------
 
+
 def test_backward_integration():
     """ZVODE correctly integrates backward from t=2 to t=0."""
     y_at_t2 = np.array([(0.5 + 1j) * np.exp(-2.0)], dtype=np.complex128)
 
-    sol = solve_ivp(fun_decay, (2.0, 0.0), y_at_t2,
-                    method=ZVODE, miter=2,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay, (2.0, 0.0), y_at_t2, method=ZVODE, miter=2, rtol=1e-8, atol=1e-10
+    )
 
     assert sol.success, f"Backward integration failed: {sol.message}"
     assert sol.t[-1] == 0.0
@@ -391,20 +460,29 @@ def test_backward_integration():
 # Adams (non-stiff) method
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("miter,jac", [
-    (0, None),           # Adams + functional iteration (no Jacobian)
-    (1, jac_decay_dense),# Adams + user-supplied dense Jacobian
-])
+
+@pytest.mark.parametrize(
+    "miter,jac",
+    [
+        (0, None),  # Adams + functional iteration (no Jacobian)
+        (1, jac_decay_dense),  # Adams + user-supplied dense Jacobian
+    ],
+)
 def test_adams_method(miter, jac):
     """Adams method solves the complex decay problem correctly."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
 
-    sol = solve_ivp(fun_decay, (0.0, 2.0), y0,
-                    method=ZVODE,
-                    zvode_method='Adams',
-                    jac=jac,
-                    miter=miter,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        (0.0, 2.0),
+        y0,
+        method=ZVODE,
+        zvode_method="Adams",
+        jac=jac,
+        miter=miter,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success, f"Adams miter={miter} failed: {sol.message}"
     assert_allclose(sol.y[0], sol_decay(sol.t, y0[0]), rtol=1e-5, atol=1e-8)
@@ -414,14 +492,15 @@ def test_adams_method(miter, jac):
 # Per-component (array) absolute tolerances
 # ---------------------------------------------------------------------------
 
+
 def test_array_atol():
     """Per-component atol array (ITOL=2) is accepted and yields correct results."""
     y0 = np.array([1.0 + 0j, 0.5 + 0.5j], dtype=np.complex128)
     atol_arr = np.array([1e-9, 1e-10])
 
-    sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                    method=ZVODE, miter=2,
-                    rtol=1e-7, atol=atol_arr)
+    sol = solve_ivp(
+        fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=2, rtol=1e-7, atol=atol_arr
+    )
 
     assert sol.success
     for i in range(2):
@@ -432,15 +511,22 @@ def test_array_atol():
 # t_eval: output at user-specified times
 # ---------------------------------------------------------------------------
 
+
 def test_t_eval():
     """solve_ivp with t_eval delivers results at exactly the requested times."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
     t_eval = np.linspace(0.0, 2.0, 11)
 
-    sol = solve_ivp(fun_decay, (0.0, 2.0), y0,
-                    method=ZVODE, miter=2,
-                    t_eval=t_eval,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        (0.0, 2.0),
+        y0,
+        method=ZVODE,
+        miter=2,
+        t_eval=t_eval,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success
     assert_allclose(sol.t, t_eval)
@@ -451,18 +537,25 @@ def test_t_eval():
 # max_step and first_step
 # ---------------------------------------------------------------------------
 
+
 def test_max_step():
     """max_step caps internal step sizes; the solution remains correct."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
 
-    sol_free = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                         method=ZVODE, miter=2,
-                         rtol=1e-8, atol=1e-10)
+    sol_free = solve_ivp(
+        fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=2, rtol=1e-8, atol=1e-10
+    )
 
-    sol_capped = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                           method=ZVODE, miter=2,
-                           max_step=0.05,
-                           rtol=1e-8, atol=1e-10)
+    sol_capped = solve_ivp(
+        fun_decay,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        miter=2,
+        max_step=0.05,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol_capped.success
     assert sol_capped.nfev >= sol_free.nfev
@@ -474,10 +567,16 @@ def test_first_step():
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
     h0 = 1e-3
 
-    sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                    method=ZVODE, miter=2,
-                    first_step=h0,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        miter=2,
+        first_step=h0,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success
     # ZVODE uses H0 as the initial attempt; if rejected on error grounds it halves
@@ -493,16 +592,22 @@ def test_first_step():
 # jsv=-1: recompute Jacobian every step
 # ---------------------------------------------------------------------------
 
+
 def test_jsv_negative():
     """jsv=-1 forces Jacobian recomputation each step; result is still correct."""
     y0 = np.array([0.5 + 1j], dtype=np.complex128)
 
-    sol = solve_ivp(fun_decay, (0.0, 1.0), y0,
-                    method=ZVODE,
-                    jac=jac_decay_dense,
-                    miter=1,
-                    jsv=-1,
-                    rtol=1e-8, atol=1e-10)
+    sol = solve_ivp(
+        fun_decay,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        jac=jac_decay_dense,
+        miter=1,
+        jsv=-1,
+        rtol=1e-8,
+        atol=1e-10,
+    )
 
     assert sol.success
     # sol.y has shape (n_components, n_timepoints); sol.y[0] is the full
@@ -514,12 +619,12 @@ def test_jsv_negative():
 # Input validation
 # ---------------------------------------------------------------------------
 
+
 def test_invalid_zvode_method():
     """An unknown zvode_method raises ValueError."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="Invalid method"):
-        solve_ivp(fun_decay, (0.0, 1.0), y0,
-                  method=ZVODE, zvode_method='Euler')
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, zvode_method="Euler")
 
 
 def test_miter1_without_jac_raises():
@@ -557,7 +662,13 @@ def test_dense_jac_int32_overflow_guard():
 
     # miter=1: user-supplied dense Jacobian
     with pytest.raises(ValueError, match="neq"):
-        ZVODE(_rhs, 0.0, y0, 1.0, jac=lambda t, y: np.zeros((neq, neq), dtype=np.complex128))
+        ZVODE(
+            _rhs,
+            0.0,
+            y0,
+            1.0,
+            jac=lambda t, y: np.zeros((neq, neq), dtype=np.complex128),
+        )
 
 
 def test_banded_jac_int32_overflow_guard():
@@ -583,12 +694,18 @@ def test_banded_jac_int32_overflow_guard():
 # against the analytical solution via eigendecomposition.
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.filterwarnings("ignore:Bandwidth")
-@pytest.mark.parametrize("zvode_method,use_jac,banded", list(itertools.product(
-    ['BDF', 'Adams'],
-    [False, True],
-    [False, True],
-)))
+@pytest.mark.parametrize(
+    "zvode_method,use_jac,banded",
+    list(
+        itertools.product(
+            ["BDF", "Adams"],
+            [False, True],
+            [False, True],
+        )
+    ),
+)
 def test_complex_banded_linear_system(zvode_method, use_jac, banded):
     """dy/dt = A*y, A complex with lband=2 uband=1; checked against eigendecomposition."""
     a = _A_COMPLEX
@@ -601,34 +718,49 @@ def test_complex_banded_linear_system(zvode_method, use_jac, banded):
 
     if use_jac and banded:
         _pd = _to_zvode_banded(a, ml, mu)
+
         def jac(t, y):
             return _pd.copy()
-        kwargs = {'jac': jac, 'miter': 4, 'lband': ml, 'uband': mu}
+
+        kwargs = {"jac": jac, "miter": 4, "lband": ml, "uband": mu}
     elif use_jac:
+
         def jac(t, y):
             return a.copy()
-        kwargs = {'jac': jac, 'miter': 1}
-    elif banded:
-        kwargs = {'miter': 5, 'lband': ml, 'uband': mu}
-    else:
-        kwargs = {'miter': 2}
 
-    sol = solve_ivp(fun, (0.0, 1.0), y0,
-                    method=ZVODE,
-                    zvode_method=zvode_method,
-                    rtol=1e-9, atol=1e-10,
-                    **kwargs)
+        kwargs = {"jac": jac, "miter": 1}
+    elif banded:
+        kwargs = {"miter": 5, "lband": ml, "uband": mu}
+    else:
+        kwargs = {"miter": 2}
+
+    sol = solve_ivp(
+        fun,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        zvode_method=zvode_method,
+        rtol=1e-9,
+        atol=1e-10,
+        **kwargs,
+    )
 
     label = f"zvode_method={zvode_method}, use_jac={use_jac}, banded={banded}"
     assert sol.success, f"{label}: {sol.message}"
-    assert_allclose(sol.y[:, -1], _linear_exact(a, y0, 1.0),
-                    rtol=1e-5, atol=1e-7, err_msg=label)
+    assert_allclose(
+        sol.y[:, -1], _linear_exact(a, y0, 1.0), rtol=1e-5, atol=1e-7, err_msg=label
+    )
 
 
-@pytest.mark.parametrize("zvode_method,use_jac", list(itertools.product(
-    ['BDF', 'Adams'],
-    [False, True],
-)))
+@pytest.mark.parametrize(
+    "zvode_method,use_jac",
+    list(
+        itertools.product(
+            ["BDF", "Adams"],
+            [False, True],
+        )
+    ),
+)
 def test_complex_diagonal_linear_system(zvode_method, use_jac):
     """dy/dt = A*y, A complex diagonal (lband=0 uband=0); checked against eigendecomposition."""
     a = _A_COMPLEX_DIAG
@@ -640,25 +772,33 @@ def test_complex_diagonal_linear_system(zvode_method, use_jac):
 
     if use_jac:
         _pd = _to_zvode_banded(a, 0, 0)
+
         def jac(t, y):
             return _pd.copy()
-        kwargs = {'jac': jac, 'miter': 4, 'lband': 0, 'uband': 0}
-    else:
-        kwargs = {'miter': 5, 'lband': 0, 'uband': 0}
 
-    sol = solve_ivp(fun, (0.0, 1.0), y0,
-                    method=ZVODE,
-                    zvode_method=zvode_method,
-                    rtol=1e-9, atol=1e-10,
-                    **kwargs)
+        kwargs = {"jac": jac, "miter": 4, "lband": 0, "uband": 0}
+    else:
+        kwargs = {"miter": 5, "lband": 0, "uband": 0}
+
+    sol = solve_ivp(
+        fun,
+        (0.0, 1.0),
+        y0,
+        method=ZVODE,
+        zvode_method=zvode_method,
+        rtol=1e-9,
+        atol=1e-10,
+        **kwargs,
+    )
 
     label = f"zvode_method={zvode_method}, use_jac={use_jac}"
     assert sol.success, f"{label}: {sol.message}"
-    assert_allclose(sol.y[:, -1], _linear_exact(a, y0, 1.0),
-                    rtol=1e-5, atol=1e-7, err_msg=label)
+    assert_allclose(
+        sol.y[:, -1], _linear_exact(a, y0, 1.0), rtol=1e-5, atol=1e-7, err_msg=label
+    )
 
 
 # ---------------------------------------------------------------------------
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

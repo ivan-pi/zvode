@@ -1,10 +1,12 @@
-
 import warnings
 import numpy as np
 
 from scipy.integrate import OdeSolver, DenseOutput
-from scipy.integrate._ivp.common import (warn_extraneous, validate_max_step,
-                                         validate_first_step)
+from scipy.integrate._ivp.common import (
+    warn_extraneous,
+    validate_max_step,
+    validate_first_step,
+)
 
 from . import _zvode
 
@@ -18,12 +20,15 @@ MESSAGES = {
     -6: "Error weight became zero during problem integration.",
 }
 
+
 def _wrapped_fun(fun):
     """Adapt a SciPy-style ``f(t, y)`` to the in-place ZVODE signature."""
+
     def _zvode_fun(t, y, dy):
         dy[:] = fun(t, y)
 
     return _zvode_fun
+
 
 def _wrapped_jac(jac, banded=False):
     """Adapt a SciPy-style ``jac(t, y)`` to the in-place ZVODE Jacobian signature.
@@ -51,9 +56,10 @@ def _wrapped_jac(jac, banded=False):
 
     def _zvode_banded_jac(t, y, pd, ml, mu):
         n = y.shape[0]
-        pd[:ml + mu + 1, :n] = jac(t, y)
+        pd[: ml + mu + 1, :n] = jac(t, y)
 
     return _zvode_banded_jac if banded else _zvode_jac
+
 
 def _check_tolerances(rtol, atol, n):
     """Validate rtol/atol, warn if too small, and return the ZVODE ITOL flag.
@@ -88,7 +94,7 @@ def _check_tolerances(rtol, atol, n):
         warnings.warn(
             f"At least one element of 'rtol' is too small. "
             f"Setting 'rtol = np.maximum(rtol, {100 * EPS})'.",
-            stacklevel=3
+            stacklevel=3,
         )
         rtol = np.maximum(rtol, 100 * EPS)
 
@@ -182,7 +188,7 @@ class ZVODEDenseOutput(DenseOutput):
         t = np.atleast_1d(t)
 
         # normalised position, shape (m,)
-        s = (t - self.t)/self.h
+        s = (t - self.t) / self.h
 
         # Horner's method along the Nordsieck columns; for plain interpolation
         # all falling-factorial weights are 1, so the recurrence simplifies to:
@@ -195,10 +201,11 @@ class ZVODEDenseOutput(DenseOutput):
         dky = np.empty((n, len(t)), dtype=self.yh.dtype)
         dky[:] = self.yh[:, self.nq, np.newaxis]  # seed: broadcast (n,1) -> (n,m)
         for j in range(self.nq - 1, -1, -1):
-            dky *= s                              # dky = s * dky  (broadcasts m)
-            dky += self.yh[:, j, np.newaxis]      # dky = yh[:,j] + s * dky
+            dky *= s  # dky = s * dky  (broadcasts m)
+            dky += self.yh[:, j, np.newaxis]  # dky = yh[:,j] + s * dky
 
         return dky[:, 0] if scalar else dky
+
 
 class ZVODE(OdeSolver):
     """Solver for complex-valued ODEs using ZVODE (Variable-coefficient, fixed-leading-coefficient).
@@ -308,23 +315,30 @@ class ZVODE(OdeSolver):
        (1989).
     """
 
-    def __init__(self, fun, t0, y0, t_bound, *,
-                 zvode_method='BDF',
-                 rtol=1.0e-3, atol=1.0e-6,
-                 first_step=None,
-                 min_step=0.0,
-                 max_step=np.inf,
-                 jac=None,
-                 lband=None, uband=None,
-                 max_order=None,
-                 miter=None,
-                 jsv=1,
-                 **extraneous):
+    def __init__(
+        self,
+        fun,
+        t0,
+        y0,
+        t_bound,
+        *,
+        zvode_method="BDF",
+        rtol=1.0e-3,
+        atol=1.0e-6,
+        first_step=None,
+        min_step=0.0,
+        max_step=np.inf,
+        jac=None,
+        lband=None,
+        uband=None,
+        max_order=None,
+        miter=None,
+        jsv=1,
+        **extraneous,
+    ):
 
         warn_extraneous(extraneous)
-        super().__init__(fun, t0, y0, t_bound,
-                         vectorized=False,
-                         support_complex=True)
+        super().__init__(fun, t0, y0, t_bound, vectorized=False, support_complex=True)
 
         self.tout = self.t_bound
         if np.isrealobj(y0):
@@ -333,17 +347,17 @@ class ZVODE(OdeSolver):
                 "Pass a complex array to suppress this warning.",
                 stacklevel=2,
             )
-        self._ytmp = np.array(y0, dtype=np.complex128, order='C', copy=True)
+        self._ytmp = np.array(y0, dtype=np.complex128, order="C", copy=True)
         self.y = self._ytmp.copy()
 
         self.istate = 1  # start integration
-        self.itask = 5   # take one step, without passing t_bound, then return
+        self.itask = 5  # take one step, without passing t_bound, then return
 
         # Select method
-        if zvode_method == 'Adams':
+        if zvode_method == "Adams":
             self.meth = 1
             maxord_allowed = 12
-        elif zvode_method == 'BDF':
+        elif zvode_method == "BDF":
             self.meth = 2
             maxord_allowed = 5
         else:
@@ -351,13 +365,11 @@ class ZVODE(OdeSolver):
                 f"Invalid method '{zvode_method}'. Valid options are 'Adams' or 'BDF'."
             )
 
-
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
         self.wrap_fun = _wrapped_fun(fun)
 
-        self.miter, self.ml, self.mu = \
-            _determine_miter(jac, lband, uband, miter)
+        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, miter)
 
         if self.miter in (4, 5):
             bandwidth = self.ml + self.mu + 1
@@ -373,7 +385,9 @@ class ZVODE(OdeSolver):
 
         # TODO: Jacobian-saving strategy checks
         if jsv not in (1, -1):
-            raise ValueError("'jsv' must be 1 (save Jacobian) or -1 (recompute every step).")
+            raise ValueError(
+                "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
+            )
         self.jsv = jsv
 
         # Method Flag (MF)
@@ -402,7 +416,7 @@ class ZVODE(OdeSolver):
                 )
         elif self.miter in (4, 5):
             # worst case: LENWM = (2*ML + MU + 1 + ML)*N = (3*ML + MU + 1)*N
-            _lenwm_max = (3*self.ml + self.mu + 1) * self.n
+            _lenwm_max = (3 * self.ml + self.mu + 1) * self.n
             if _lenwm_max > _INT32_MAX:
                 raise ValueError(
                     f"Banded workspace size ({_lenwm_max:,}) overflows the "
@@ -411,20 +425,20 @@ class ZVODE(OdeSolver):
 
         if self.miter == 0:
             lwm = 0
-        elif self.miter in (1,2):
+        elif self.miter in (1, 2):
             if self.mf > 0:
-                lwm = 2*self.n**2
+                lwm = 2 * self.n**2
             elif self.mf < 0:
                 lwm = self.n**2
             else:
                 lwm = None
         elif self.miter == 3:
             lwm = self.n
-        elif self.miter in (4,5):
+        elif self.miter in (4, 5):
             if self.mf > 0:
-                lwm = (3*self.ml + 2*self.mu + 2)*self.n
+                lwm = (3 * self.ml + 2 * self.mu + 2) * self.n
             elif self.mf < 0:
-                lwm = (2*self.ml + self.mu + 1)*self.n
+                lwm = (2 * self.ml + self.mu + 1) * self.n
             else:
                 lwm = None
         else:
@@ -439,7 +453,7 @@ class ZVODE(OdeSolver):
         lrw = 20 + self.n
         self.rwork = np.zeros(lrw, dtype=np.float64)
 
-        liw = 30 if self.miter in (0,3) else 30 + self.n
+        liw = 30 if self.miter in (0, 3) else 30 + self.n
         self.iwork = np.zeros(liw, dtype=np.int32)
 
         if self.miter in (4, 5):
@@ -476,13 +490,11 @@ class ZVODE(OdeSolver):
                     f"'max_order' ({max_order}) exceeds the maximum allowed order "
                     f"({max_allowed}) for the selected method. The solver will"
                     f"automaticall reduce it.",
-                    stacklevel=2
+                    stacklevel=2,
                 )
 
             # Load the potentially "wrong" value; capping happens inside Fortran
             self.iwork[4] = max_order
-
-
 
     def _step_impl(self):
         """Advance one step; return (success, message)"""
@@ -502,7 +514,8 @@ class ZVODE(OdeSolver):
             self.rwork,
             self.iwork,
             self.wrap_jac,
-            self.mf)
+            self.mf,
+        )
 
         self.istate = istate
         self.t = t
@@ -523,10 +536,10 @@ class ZVODE(OdeSolver):
     def _dense_output_impl(self):
         """Capture the current Nordsieck array and return a dense interpolant."""
 
-        nq = int(self.iwork[14])   # IWORK(15) = NQCUR
+        nq = int(self.iwork[14])  # IWORK(15) = NQCUR
         h = float(self.rwork[10])  # RWORK(11) = HU: step size last used
 
         # YH occupies zwork[0 : n*(nq+1)] in Fortran column-major order.
-        yh = self.zwork[:self.n * (nq + 1)].reshape((self.n, nq+1),order='F').copy()
+        yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy()
 
         return ZVODEDenseOutput(self.t_old, self.t, yh, h)

@@ -49,6 +49,7 @@ from zvode.zvode_impl import ZVODEDenseOutput
 
 print("Hello from test_zvode.py")
 
+
 def _make_workspaces(neq, mf):
     """Allocate ZVODE work arrays for the given NEQ and MF.
 
@@ -81,27 +82,55 @@ def _make_workspaces(neq, mf):
     return zwork, rwork, iwork
 
 
-def _call_zvode(fun, y, t, tout, zwork, rwork, iwork, *,
-                mf=10, itol=1, rtol=1e-7, atol=1e-9,
-                itask=1, istate=1, iopt=0, jac=None):
+def _call_zvode(
+    fun,
+    y,
+    t,
+    tout,
+    zwork,
+    rwork,
+    iwork,
+    *,
+    mf=10,
+    itol=1,
+    rtol=1e-7,
+    atol=1e-9,
+    itask=1,
+    istate=1,
+    iopt=0,
+    jac=None,
+):
     """Thin wrapper that converts scalar tolerances to 1-element arrays."""
     rtol_arr = np.array([rtol], dtype=np.float64)
     atol_arr = np.array([atol], dtype=np.float64)
     return _zvode.zvode(
-        fun, y, t, tout,
-        itol, rtol_arr, atol_arr,
-        itask, istate, iopt,
-        zwork, rwork, iwork,
-        jac, mf)
+        fun,
+        y,
+        t,
+        tout,
+        itol,
+        rtol_arr,
+        atol_arr,
+        itask,
+        istate,
+        iopt,
+        zwork,
+        rwork,
+        iwork,
+        jac,
+        mf,
+    )
 
 
 def _array_range(arr):
     base = arr.ctypes.data
     return f"[{hex(base)}, {hex(base + arr.nbytes)})"
 
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_zvode_scalar_real_decay():
     """
@@ -117,9 +146,9 @@ def test_zvode_scalar_real_decay():
     def fun(t, y, dy):
         dy[0] = -y[0]
 
-    y     = np.array([1.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 1.0
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 1.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
     iopt = 0
 
@@ -140,14 +169,25 @@ def test_zvode_scalar_real_decay():
     istate = 1
 
     t_new, istate_new = _zvode.zvode(
-        fun, y, t, tout,
-        itol, rtol_arr, atol_arr,
-        itask, istate, iopt,
-        zwork, rwork, iwork,
-        None, mf)
+        fun,
+        y,
+        t,
+        tout,
+        itol,
+        rtol_arr,
+        atol_arr,
+        itask,
+        istate,
+        iopt,
+        zwork,
+        rwork,
+        iwork,
+        None,
+        mf,
+    )
 
-    assert istate_new == 2,  f"ZVODE failed with istate = {istate_new}"
-    assert t_new     == tout, "ZVODE did not reach TOUT"
+    assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
+    assert t_new == tout, "ZVODE did not reach TOUT"
 
     assert_allclose(y[0].real, np.exp(-tout), rtol=1e-6, atol=1e-8)
     assert abs(y[0].imag) < 1e-12, "Imaginary part should remain zero"
@@ -166,16 +206,16 @@ def test_zvode_complex_rotation():
     def fun(t, y, dy):
         dy[0] = 1j * y[0]
 
-    y     = np.array([1.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = np.pi / 2.0
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = np.pi / 2.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
     t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork, mf=mf)
 
     assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
 
-    expected = np.exp(1j * tout)           # = 0 + 1j (exactly at pi/2)
+    expected = np.exp(1j * tout)  # = 0 + 1j (exactly at pi/2)
     assert_allclose(y[0], expected, rtol=1e-5, atol=1e-8)
 
 
@@ -193,29 +233,30 @@ def test_zvode_multistep_continuation():
     def fun(t, y, dy):
         dy[0] = 1j * y[0]
 
-    y      = np.array([1.0 + 0j], dtype=np.complex128)
-    t      = 0.0
-    rtol   = np.array([1e-7], dtype=np.float64)
-    atol   = np.array([1e-9], dtype=np.float64)
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    rtol = np.array([1e-7], dtype=np.float64)
+    atol = np.array([1e-9], dtype=np.float64)
     istate = 1
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
-    checkpoints = [np.pi/2, np.pi, 3*np.pi/2, 2*np.pi]
+    checkpoints = [np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi]
 
     for tout in checkpoints:
         t, istate = _zvode.zvode(
-            fun, y, t, tout,
-            1, rtol, atol,
-            1, istate, 0,
-            zwork, rwork, iwork,
-            None, mf)
+            fun, y, t, tout, 1, rtol, atol, 1, istate, 0, zwork, rwork, iwork, None, mf
+        )
 
-        assert istate == 2, \
-            f"ZVODE failed at tout={tout:.4f} with istate={istate}"
+        assert istate == 2, f"ZVODE failed at tout={tout:.4f} with istate={istate}"
 
         expected = np.exp(1j * tout)
-        assert_allclose(y[0], expected, rtol=1e-5, atol=1e-8,
-                        err_msg=f"Solution mismatch at tout = {tout:.4f}")
+        assert_allclose(
+            y[0],
+            expected,
+            rtol=1e-5,
+            atol=1e-8,
+            err_msg=f"Solution mismatch at tout = {tout:.4f}",
+        )
 
 
 def test_zvode_two_component_system():
@@ -234,17 +275,18 @@ def test_zvode_two_component_system():
         dy[0] = -0.1 * y[0]
         dy[1] = -2.0 * y[1]
 
-    y     = np.array([1.0+0j, 1.0+0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 5.0
+    y = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 5.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
-    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
-                                    mf=mf, rtol=1e-6, atol=1e-8)
+    t_new, istate_new = _call_zvode(
+        fun, y, t, tout, zwork, rwork, iwork, mf=mf, rtol=1e-6, atol=1e-8
+    )
 
     assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
 
-    expected = np.array([np.exp(-0.1*tout), np.exp(-2.0*tout)]) + 0j
+    expected = np.array([np.exp(-0.1 * tout), np.exp(-2.0 * tout)]) + 0j
     assert_allclose(y, expected, rtol=1e-4)
 
 
@@ -261,13 +303,14 @@ def test_zvode_bdf_method():
     def fun(t, y, dy):
         dy[0] = -y[0]
 
-    y     = np.array([1.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 5.0
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 5.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
-    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
-                                    mf=mf, rtol=1e-6, atol=1e-8)
+    t_new, istate_new = _call_zvode(
+        fun, y, t, tout, zwork, rwork, iwork, mf=mf, rtol=1e-6, atol=1e-8
+    )
 
     assert istate_new == 2, f"BDF ZVODE failed with istate = {istate_new}"
     assert_allclose(y[0].real, np.exp(-tout), rtol=1e-4)
@@ -290,24 +333,24 @@ def test_zvode_optional_output_populated():
     def fun(t, y, dy):
         dy[0] = -y[0]
 
-    y     = np.array([1.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 2.0
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 2.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
     t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork, mf=mf)
 
     assert istate_new == 2
 
-    hu   = rwork[10]   # last step size used
-    tcur = rwork[12]   # current internal time
-    nst  = iwork[10]   # number of steps
-    nfe  = iwork[11]   # number of f evaluations
+    hu = rwork[10]  # last step size used
+    tcur = rwork[12]  # current internal time
+    nst = iwork[10]  # number of steps
+    nfe = iwork[11]  # number of f evaluations
 
-    assert hu   > 0,    f"HU should be positive, got {hu}"
+    assert hu > 0, f"HU should be positive, got {hu}"
     assert tcur >= tout, f"TCUR ({tcur}) should be >= TOUT ({tout})"
-    assert nst  > 0,    f"NST should be positive, got {nst}"
-    assert nfe  > 0,    f"NFE should be positive, got {nfe}"
+    assert nst > 0, f"NST should be positive, got {nst}"
+    assert nfe > 0, f"NFE should be positive, got {nfe}"
 
 
 def test_zvode_wrong_array_type():
@@ -321,26 +364,51 @@ def test_zvode_wrong_array_type():
     def fun(t, y, dy):
         dy[0] = -y[0]
 
-    rtol  = np.array([1e-6], dtype=np.float64)
-    atol  = np.array([1e-8], dtype=np.float64)
+    rtol = np.array([1e-6], dtype=np.float64)
+    atol = np.array([1e-8], dtype=np.float64)
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
     # y is a list instead of a numpy array
     with pytest.raises(TypeError):
         _zvode.zvode(
-            fun, [1.0 + 0j], 0.0, 1.0,
-            1, rtol, atol, 1, 1, 0,
-            zwork, rwork, iwork,
-            None, mf)
+            fun,
+            [1.0 + 0j],
+            0.0,
+            1.0,
+            1,
+            rtol,
+            atol,
+            1,
+            1,
+            0,
+            zwork,
+            rwork,
+            iwork,
+            None,
+            mf,
+        )
 
     # zwork is a list instead of a numpy array
     y = np.array([1.0 + 0j], dtype=np.complex128)
     with pytest.raises(TypeError):
         _zvode.zvode(
-            fun, y, 0.0, 1.0,
-            1, rtol, atol, 1, 1, 0,
-            list(zwork), rwork, iwork,
-            None, mf)
+            fun,
+            y,
+            0.0,
+            1.0,
+            1,
+            rtol,
+            atol,
+            1,
+            1,
+            0,
+            list(zwork),
+            rwork,
+            iwork,
+            None,
+            mf,
+        )
+
 
 def test_zvode_bdf_user_jacobian():
     """
@@ -367,13 +435,14 @@ def test_zvode_bdf_user_jacobian():
         J[1, 0] = -1j
         J[1, 1] = -2.0 + 0j
 
-    y     = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 1.0
+    y = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 1.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
-    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
-                                    mf=mf, jac=jac, rtol=1e-8, atol=1e-10)
+    t_new, istate_new = _call_zvode(
+        fun, y, t, tout, zwork, rwork, iwork, mf=mf, jac=jac, rtol=1e-8, atol=1e-10
+    )
 
     assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
 
@@ -398,18 +467,19 @@ def test_zvode_adams_user_jacobian():
     mf = 11
 
     def fun(t, y, dy):
-        dy[0] = 1j * y[0]**2
+        dy[0] = 1j * y[0] ** 2
 
     def jac(t, y, J):
         J[0, 0] = 2j * y[0]
 
-    y     = np.array([1.0 + 0j], dtype=np.complex128)
-    t     = 0.0
-    tout  = 0.5  # Kept small to avoid approaching the singularity
+    y = np.array([1.0 + 0j], dtype=np.complex128)
+    t = 0.0
+    tout = 0.5  # Kept small to avoid approaching the singularity
     zwork, rwork, iwork = _make_workspaces(neq, mf)
 
-    t_new, istate_new = _call_zvode(fun, y, t, tout, zwork, rwork, iwork,
-                                    mf=mf, jac=jac, rtol=1e-8, atol=1e-10)
+    t_new, istate_new = _call_zvode(
+        fun, y, t, tout, zwork, rwork, iwork, mf=mf, jac=jac, rtol=1e-8, atol=1e-10
+    )
 
     assert istate_new == 2, f"ZVODE failed with istate = {istate_new}"
 
@@ -419,9 +489,11 @@ def test_zvode_adams_user_jacobian():
     nje = iwork[12]
     assert nje > 0, f"User Jacobian was not evaluated (NJE = {nje})"
 
+
 # ---------------------------------------------------------------------------
 # zvindy tests
 # ---------------------------------------------------------------------------
+
 
 def _nordsieck_from_poly(polys, tn, h, nq):
     """
@@ -442,7 +514,7 @@ def _nordsieck_from_poly(polys, tn, h, nq):
     yh : complex128 ndarray, shape (n, nq+1), F-contiguous
     """
     n = len(polys)
-    yh = np.zeros((n, nq + 1), dtype=np.complex128, order='F')
+    yh = np.zeros((n, nq + 1), dtype=np.complex128, order="F")
     factorial = 1
     for j in range(nq + 1):
         if j > 0:
@@ -462,44 +534,46 @@ def test_zvindy_cubic_interpolation():
     and K=3 (third derivative) at an interior point.
     """
     # Two independent cubic polynomials (real coefficients, complex arrays)
-    p0 = np.poly1d([1.0,  -2.0,  3.0, -4.0])   # t^3 - 2t^2 + 3t - 4
-    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])   # -3t^3 + t + 2
+    p0 = np.poly1d([1.0, -2.0, 3.0, -4.0])  # t^3 - 2t^2 + 3t - 4
+    p1 = np.poly1d([-3.0, 0.0, 1.0, 2.0])  # -3t^3 + t + 2
 
     polys = [p0, p1]
-    n  = len(polys)
+    n = len(polys)
     nq = 3
 
-    tn = 4.0   # right end of the interpolation interval
-    h  = 2.0   # step size; hu = h so valid range is [tn-h, tn] = [2, 4]
+    tn = 4.0  # right end of the interpolation interval
+    h = 2.0  # step size; hu = h so valid range is [tn-h, tn] = [2, 4]
     hu = h
-    t  = 3.0   # interior interpolation point
+    t = 3.0  # interior interpolation point
 
-    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
     dky = np.zeros(n, dtype=np.complex128)
 
     # K=0: interpolated value should match the polynomial
     _zvode.zvindy(t, 0, yh, h, tn, hu, dky)
     expected = np.array([p(t) for p in polys], dtype=np.complex128)
-    assert_allclose(dky, expected, rtol=1e-13,
-                    err_msg="K=0 value mismatch for cubic")
+    assert_allclose(dky, expected, rtol=1e-13, err_msg="K=0 value mismatch for cubic")
 
     # K=1: first derivative
     _zvode.zvindy(t, 1, yh, h, tn, hu, dky)
     expected = np.array([p.deriv(1)(t) for p in polys], dtype=np.complex128)
-    assert_allclose(dky, expected, rtol=1e-12,
-                    err_msg="K=1 derivative mismatch for cubic")
+    assert_allclose(
+        dky, expected, rtol=1e-12, err_msg="K=1 derivative mismatch for cubic"
+    )
 
     # K=2: second derivative
     _zvode.zvindy(t, 2, yh, h, tn, hu, dky)
     expected = np.array([p.deriv(2)(t) for p in polys], dtype=np.complex128)
-    assert_allclose(dky, expected, rtol=1e-12,
-                    err_msg="K=2 derivative mismatch for cubic")
+    assert_allclose(
+        dky, expected, rtol=1e-12, err_msg="K=2 derivative mismatch for cubic"
+    )
 
     # K=3: third derivative (constant for a cubic)
     _zvode.zvindy(t, 3, yh, h, tn, hu, dky)
     expected = np.array([p.deriv(3)(t) for p in polys], dtype=np.complex128)
-    assert_allclose(dky, expected, rtol=1e-11,
-                    err_msg="K=3 derivative mismatch for cubic")
+    assert_allclose(
+        dky, expected, rtol=1e-11, err_msg="K=3 derivative mismatch for cubic"
+    )
 
 
 def test_zvindy_quintic_interpolation():
@@ -510,26 +584,27 @@ def test_zvindy_quintic_interpolation():
     path.  Tests K=0 through K=5.
     """
     # Complex quintic polynomials: coefficients [a5, a4, ..., a0]
-    p0 = np.poly1d([(1+2j), -3j, (2-1j), 0.5, -1.0, (3+0j)])
-    p1 = np.poly1d([(-2+1j), 1.0, 0j, (1-3j), 2j, (-1+2j)])
+    p0 = np.poly1d([(1 + 2j), -3j, (2 - 1j), 0.5, -1.0, (3 + 0j)])
+    p1 = np.poly1d([(-2 + 1j), 1.0, 0j, (1 - 3j), 2j, (-1 + 2j)])
 
     polys = [p0, p1]
-    n  = len(polys)
+    n = len(polys)
     nq = 5
 
     tn = 1.0
-    h  = 0.5   # valid interpolation range: [0.5, 1.0]
+    h = 0.5  # valid interpolation range: [0.5, 1.0]
     hu = h
-    t  = 0.75
+    t = 0.75
 
-    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
     dky = np.zeros(n, dtype=np.complex128)
 
     for k in range(nq + 1):
         _zvode.zvindy(t, k, yh, h, tn, hu, dky)
         expected = np.array([p.deriv(k)(t) for p in polys], dtype=np.complex128)
-        assert_allclose(dky, expected, rtol=1e-10,
-                        err_msg=f"K={k} mismatch for complex quintic")
+        assert_allclose(
+            dky, expected, rtol=1e-10, err_msg=f"K={k} mismatch for complex quintic"
+        )
 
 
 def test_zvindy_at_endpoints():
@@ -538,21 +613,22 @@ def test_zvindy_at_endpoints():
     """
     p0 = np.poly1d([2.0, -1.0, 0.5, 1.0])
     polys = [p0]
-    n  = 1
+    n = 1
     nq = 3
 
     tn = 3.0
-    h  = 1.5
+    h = 1.5
     hu = h
 
-    yh  = _nordsieck_from_poly(polys, tn, h, nq)
+    yh = _nordsieck_from_poly(polys, tn, h, nq)
     dky = np.zeros(n, dtype=np.complex128)
 
     for t_eval in [tn, tn - hu]:
         _zvode.zvindy(t_eval, 0, yh, h, tn, hu, dky)
         expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
-        assert_allclose(dky, expected, rtol=1e-13,
-                        err_msg=f"K=0 mismatch at t={t_eval}")
+        assert_allclose(
+            dky, expected, rtol=1e-13, err_msg=f"K=0 mismatch at t={t_eval}"
+        )
 
 
 def test_zvindy_out_of_range_raises():
@@ -562,14 +638,14 @@ def test_zvindy_out_of_range_raises():
     p0 = np.poly1d([1.0, 0.0, 0.0, 0.0])
     nq = 3
     tn = 2.0
-    h  = 1.0
+    h = 1.0
     hu = h
 
-    yh  = _nordsieck_from_poly([p0], tn, h, nq)
+    yh = _nordsieck_from_poly([p0], tn, h, nq)
     dky = np.zeros(1, dtype=np.complex128)
 
     with pytest.raises(ValueError):
-        _zvode.zvindy(tn + 0.1, 0, yh, h, tn, hu, dky)   # t > tn
+        _zvode.zvindy(tn + 0.1, 0, yh, h, tn, hu, dky)  # t > tn
 
     with pytest.raises(ValueError):
         _zvode.zvindy(tn - hu - 0.1, 0, yh, h, tn, hu, dky)  # t < tn-hu
@@ -582,12 +658,13 @@ def test_zvindy_out_of_range_raises():
 # ZVODEDenseOutput tests
 # ---------------------------------------------------------------------------
 
+
 def test_dense_output_cubic_scalar():
     """
     ZVODEDenseOutput must reproduce a cubic polynomial exactly at a scalar t.
     """
-    p0 = np.poly1d([1.0, -2.0,  3.0, -4.0])
-    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])
+    p0 = np.poly1d([1.0, -2.0, 3.0, -4.0])
+    p1 = np.poly1d([-3.0, 0.0, 1.0, 2.0])
     polys = [p0, p1]
 
     tn, h = 4.0, 2.0
@@ -601,8 +678,9 @@ def test_dense_output_cubic_scalar():
     result = interp(t_eval)
     expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
     assert result.shape == (len(polys),)
-    assert_allclose(result, expected, rtol=1e-13,
-                    err_msg="Cubic scalar evaluation mismatch")
+    assert_allclose(
+        result, expected, rtol=1e-13, err_msg="Cubic scalar evaluation mismatch"
+    )
 
 
 def test_dense_output_cubic_array():
@@ -610,8 +688,8 @@ def test_dense_output_cubic_array():
     ZVODEDenseOutput must return shape (n, m) and be exact for each point
     when called with an array of m interpolation times.
     """
-    p0 = np.poly1d([1.0, -2.0,  3.0, -4.0])
-    p1 = np.poly1d([-3.0,  0.0,  1.0,  2.0])
+    p0 = np.poly1d([1.0, -2.0, 3.0, -4.0])
+    p1 = np.poly1d([-3.0, 0.0, 1.0, 2.0])
     polys = [p0, p1]
 
     tn, h = 4.0, 2.0
@@ -627,16 +705,20 @@ def test_dense_output_cubic_array():
 
     for k, t in enumerate(t_eval):
         expected = np.array([p(t) for p in polys], dtype=np.complex128)
-        assert_allclose(result[:, k], expected, rtol=1e-13,
-                        err_msg=f"Cubic array evaluation mismatch at t={t}")
+        assert_allclose(
+            result[:, k],
+            expected,
+            rtol=1e-13,
+            err_msg=f"Cubic array evaluation mismatch at t={t}",
+        )
 
 
 def test_dense_output_quintic_complex():
     """
     ZVODEDenseOutput is exact for a complex quintic polynomial (nq=5).
     """
-    p0 = np.poly1d([(1+2j), -3j, (2-1j), 0.5, -1.0, (3+0j)])
-    p1 = np.poly1d([(-2+1j), 1.0, 0j, (1-3j), 2j, (-1+2j)])
+    p0 = np.poly1d([(1 + 2j), -3j, (2 - 1j), 0.5, -1.0, (3 + 0j)])
+    p1 = np.poly1d([(-2 + 1j), 1.0, 0j, (1 - 3j), 2j, (-1 + 2j)])
     polys = [p0, p1]
 
     tn, h = 1.0, 0.5
@@ -651,8 +733,12 @@ def test_dense_output_quintic_complex():
 
     for k, t in enumerate(t_eval):
         expected = np.array([p(t) for p in polys], dtype=np.complex128)
-        assert_allclose(result[:, k], expected, rtol=1e-10,
-                        err_msg=f"Quintic complex evaluation mismatch at t={t}")
+        assert_allclose(
+            result[:, k],
+            expected,
+            rtol=1e-10,
+            err_msg=f"Quintic complex evaluation mismatch at t={t}",
+        )
 
 
 def test_dense_output_endpoints():
@@ -672,13 +758,14 @@ def test_dense_output_endpoints():
     for t_eval in [t_old, tn]:
         result = interp(t_eval)
         expected = np.array([p(t_eval) for p in polys], dtype=np.complex128)
-        assert_allclose(result, expected, rtol=1e-13,
-                        err_msg=f"Endpoint mismatch at t={t_eval}")
+        assert_allclose(
+            result, expected, rtol=1e-13, err_msg=f"Endpoint mismatch at t={t_eval}"
+        )
 
 
 # ---------------------------------------------------------------------------
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_zvode_scalar_real_decay()
     test_zvode_complex_rotation()
     test_zvode_multistep_continuation()
