@@ -362,7 +362,8 @@ class ZVODE(OdeSolver):
             maxord_allowed = 5
         else:
             raise ValueError(
-                f"Invalid lmm '{lmm}'. Valid options are 'Adams' or 'BDF'."
+                f"Invalid linear multistep method (lmm) '{lmm}'. "
+                "Valid options are 'Adams' or 'BDF'."
             )
 
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)

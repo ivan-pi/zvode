@@ -623,7 +623,7 @@ def test_jsv_negative():
 def test_invalid_lmm():
     """An unknown lmm raises ValueError."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
-    with pytest.raises(ValueError, match="Invalid method"):
+    with pytest.raises(ValueError, match="Invalid linear multistep method"):
         solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, lmm="Euler")
 
 

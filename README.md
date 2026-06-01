@@ -100,7 +100,7 @@ solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed in `ZVODE_BDF` and `ZVODE_Adams`. |
+| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed by the `ZVODE_BDF` and `ZVODE_Adams` subclasses. |
 | `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
 | `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
 | `jac` | callable or None | `None` | Jacobian `jac(t, y)`. For a full Jacobian return an `(n, n)` array; for a banded Jacobian return an `(lband + uband + 1, n)` array. Estimated by finite differences if not provided. |
