@@ -78,7 +78,7 @@ def _cfunc_address(fun):
 # ---------------------------------------------------------------------------
 
 def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
-                    first_step, min_step, max_step, max_order,
+                    first_step, min_step, max_step, max_order, max_steps,
                     t_bound):
     """Allocate and initialise ZVODE's three workspace arrays.
 
@@ -129,6 +129,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
         rwork[6] = float(min_step)
     if max_order is not None:
         iwork[4] = int(max_order)
+    iwork[5] = int(max_steps)           # MXSTEP: max internal steps per output point
 
     return zwork, rwork, iwork
 
@@ -271,6 +272,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       first_step=None,
                       min_step=0.0,
                       max_step=np.inf,
+                      max_steps=2**31 - 1,
                       max_order=None,
                       miter=None,
                       jsv=1,
@@ -370,6 +372,13 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Lower / upper half-bandwidths of a banded Jacobian.
     first_step, min_step, max_step : float, optional
         Step-size controls.
+    max_steps : int, optional
+        Maximum number of internal steps ZVODE may take between two
+        consecutive output points.  Default ``2**31 - 1`` (effectively
+        unlimited).  Lower this when function evaluations are expensive and
+        you want to cap the computational work; the solver will return with
+        ISTATE=-1 if the budget is exhausted before reaching the next output
+        point, at which stage relaxing the tolerances is the usual remedy.
     max_order : int or None, optional
         Maximum integration order (capped at the method limit if exceeded).
     miter : {0, 1, 2, 3, 4, 5} or None, optional
@@ -463,7 +472,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     iopt = 1  # optional inputs present (rwork / iwork slots populated below)
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
-        first_step, min_step, max_step, max_order,
+        first_step, min_step, max_step, max_order, max_steps,
         t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------

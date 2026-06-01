@@ -9,9 +9,14 @@
 - [DONE] Raise an error if the initial condition is real instead of complex; this solver is only supposed to work with complex
   (UserWarning raised when np.isrealobj(y0); cast to complex128 still proceeds)
 - Add a procedural interface which handles the integration internally:
-  - Version A stores the automatic step-sizes
-  - Version B uses ZVINDY to interpolate the solution at the t_eval points
-  - The procedural version should employ thread-locking internally
+  - Version A stores the automatic step-sizes          [DONE: save_steps=True]
+  - Version B uses ZVINDY to interpolate the solution at the t_eval points [DONE: refine=N]
+  - The procedural version should employ thread-locking internally          [DONE: ZVODE_LOCK]
+  - Consider tcrit support (ITASK=4): lets users specify intermediate times
+    the solver must not overshoot, e.g. at discontinuities in a forcing
+    function.  Related to allow_overshoot but distinct — tcrit is a set of
+    critical times, not a global on/off switch.  Needs design and testing
+    before 1.0.
 - [DONE] "Borrow" any SciPy complex test paths
   (test_zvode_ivp.py adapts scipy/integrate/tests/test_banded_ode_solvers.py;
    40 pytest tests total across the two test files)
