@@ -78,7 +78,7 @@ def _cfunc_address(fun):
 # ---------------------------------------------------------------------------
 
 def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
-                    first_step, min_step, max_step, max_order, max_steps,
+                    first_step, min_step, max_step, max_order, max_num_steps,
                     t_bound):
     """Allocate and initialise ZVODE's three workspace arrays.
 
@@ -129,7 +129,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
         rwork[6] = float(min_step)
     if max_order is not None:
         iwork[4] = int(max_order)
-    iwork[5] = int(max_steps)           # MXSTEP: max internal steps per output point
+    iwork[5] = int(max_num_steps)           # MXSTEP: max internal steps per output point
 
     return zwork, rwork, iwork
 
@@ -272,7 +272,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       first_step=None,
                       min_step=0.0,
                       max_step=np.inf,
-                      max_steps=np.iinfo(np.int32).max,
+                      max_num_steps=np.iinfo(np.int32).max,
                       max_order=None,
                       miter=None,
                       jsv=1,
@@ -372,7 +372,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Lower / upper half-bandwidths of a banded Jacobian.
     first_step, min_step, max_step : float, optional
         Step-size controls.
-    max_steps : int, optional
+    max_num_steps : int, optional
         Maximum number of internal steps ZVODE may take between two
         consecutive output points.  Default ``np.iinfo(np.int32).max``
         (effectively unlimited).  Lower this when function evaluations are expensive and
@@ -472,7 +472,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     iopt = 1  # optional inputs present (rwork / iwork slots populated below)
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
-        first_step, min_step, max_step, max_order, max_steps,
+        first_step, min_step, max_step, max_order, max_num_steps,
         t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------
