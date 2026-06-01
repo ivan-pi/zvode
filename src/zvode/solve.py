@@ -140,11 +140,12 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                     itol, rtol, atol, mf, iopt,
                     zwork, rwork, iwork,
-                    refine=1):
-    """Drive ZVODE in single-step mode (ITASK=5), collecting every accepted step.
+                    refine=1, allow_overshoot=False):
+    """Drive ZVODE in single-step mode, collecting every accepted step.
 
-    TCRIT = rwork[0] must equal t_bound before entry so ZVODE does not
-    overshoot the final time.
+    Uses ITASK=5 by default (step must not overshoot TCRIT = rwork[0] = t_bound).
+    When allow_overshoot=True, uses ITASK=2 instead (tout is ignored; ZVODE
+    may step past t_bound).
 
     When refine > 1, inserts (refine - 1) evenly-spaced interpolated points
     inside each accepted step using ZVINDY before appending the step endpoint.
@@ -155,7 +156,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
     ys : ndarray, shape (n, m), complex128, Fortran order
     istate : int   (2 = success, negative = solver error)
     """
-    ITASK = 5   # one step; must not overshoot TCRIT = rwork[0]
+    ITASK = 2 if allow_overshoot else 5
     istate = 1  # initial call
 
     n = len(y0)
@@ -276,6 +277,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       in_place=False,
                       save_steps=True,
                       refine=1,
+                      allow_overshoot=False,
                       ret_stats=False):
     """Integrate a complex-valued ODE initial value problem.
 
@@ -339,6 +341,15 @@ def solve_complex_ivp(fun, tspan, y0, *,
         This increases output density for smoother plots but does not improve
         the accuracy of the integration.  Ignored when ``save_steps=False``
         or when ``tspan`` contains more than two elements.
+    allow_overshoot : bool, optional
+        When ``save_steps=True``, controls whether ZVODE may step past
+        ``tspan[1]``.  ``False`` (default) uses ITASK=5, which prevents
+        overshooting the final time (``TCRIT = tspan[1]`` is enforced
+        internally).  ``True`` uses ITASK=2, which ignores ``tout``
+        entirely and lets ZVODE choose its step size freely — this can
+        occasionally be more efficient but the last output point may lie
+        beyond ``tspan[1]``.  Ignored when ``save_steps=False`` or when
+        ``tspan`` contains more than two elements.
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     method : {'BDF', 'Adams'}, optional
@@ -509,7 +520,8 @@ def solve_complex_ivp(fun, tspan, y0, *,
             _fun, _jac, y0, tspan[0], tspan[1],
             itol, rtol, atol, mf, iopt,
             zwork, rwork, iwork,
-            refine=refine)
+            refine=refine,
+            allow_overshoot=allow_overshoot)
     elif len(tspan) == 2:
         # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
         # and 1-D y — no intermediate storage.
