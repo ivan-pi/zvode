@@ -1,7 +1,7 @@
 - [DONE] In zvode.f we need, replace rpar and ipar with the ctx argument
   (done via c_zvode.f90 wrapper — Python/C layer uses ctx void pointer, rpar/ipar
    never exposed to the user)
-- Replace LINPACK factorization routines with LAPACK or the Hairer routines
+- [DONE] Replace LINPACK factorization routines with LAPACK or the Hairer routines
   - Both dense and banded need to be considered
 - Provide CMake option to use external BLAS, if not available fallback to vendored procedures
 - Check older SciPy versions for any bug fixes and the original licenses
