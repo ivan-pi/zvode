@@ -16,21 +16,18 @@ find_package(Python REQUIRED
     NumPy
 )
 
-find_package(BLAS REQUIRED)
-find_package(LAPACK)
+set(ZVODE_LINALG_BACKEND "LAPACK" CACHE STRING
+  "Linear algebra backend for LU factorization and triangular solves")
+set_property(CACHE ZVODE_LINALG_BACKEND PROPERTY STRINGS LAPACK LINPACK)
 
-option(ZVODE_USE_LINPACK_FALLBACK
-  "Fall back to the bundled LINPACK routines when LAPACK is not found" OFF)
-
-if(NOT LAPACK_FOUND)
-  if(ZVODE_USE_LINPACK_FALLBACK)
-    message(STATUS "LAPACK not found -- using bundled LINPACK fallback")
-  else()
-    message(FATAL_ERROR
-      "LAPACK not found. Install a LAPACK library (e.g. OpenBLAS, MKL, "
-      "Netlib LAPACK) or configure with -DZVODE_USE_LINPACK_FALLBACK=ON "
-      "to use the bundled LINPACK routines instead.")
-  endif()
+if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
+  find_package(LAPACK REQUIRED)
+elseif(ZVODE_LINALG_BACKEND STREQUAL "LINPACK")
+  find_package(BLAS REQUIRED)
+else()
+  message(FATAL_ERROR
+    "Unknown ZVODE_LINALG_BACKEND \"${ZVODE_LINALG_BACKEND}\". "
+    "Valid choices are LAPACK or LINPACK.")
 endif()
 
 # Build the C extension. Compiling the Fortran straight into the module
@@ -44,16 +41,16 @@ python_add_library(_zvode MODULE
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
-if(LAPACK_FOUND)
+if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
   target_link_libraries(_zvode PRIVATE LAPACK::LAPACK)
 else()
-  # LINPACK fallback path (ZVODE_USE_LINPACK_FALLBACK=ON, no LAPACK available)
   target_sources(_zvode PRIVATE
     extern/linpack/zgbfa.f
     extern/linpack/zgbsl.f
     extern/linpack/zgefa.f
     extern/linpack/zgesl.f)
   target_compile_definitions(_zvode PRIVATE ZVODE_USE_LINPACK)
+  target_link_libraries(_zvode PRIVATE BLAS::BLAS)
   # In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
   # (BLAS no-op), however m+1 > lda which trips gfortran's bound checker.
   # See my chat with Claude for a full description of the problem
@@ -71,7 +68,7 @@ target_include_directories(
 
 target_link_libraries(
   _zvode
-  PRIVATE Python::NumPy BLAS::BLAS)
+  PRIVATE Python::NumPy)
 
 # Install the compiled module INTO the package directory, so it imports
 # as `zvode._zvode`.
