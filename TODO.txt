@@ -45,6 +45,7 @@
    instances share the same process-global COMMON blocks, so a single
    process-wide Lock is required — one instance per thread is not sufficient)
 - mention the ZVODE rewrite in C and point to the (older) scipy ode integrator that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html#scipy.integrate.ode)
+- when NEQ is reset during integration; we must also modify the NEQ component of fun and jac
 
 
 Developer notes:
