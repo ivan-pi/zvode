@@ -17,11 +17,20 @@ find_package(Python REQUIRED
 )
 
 find_package(BLAS REQUIRED)
+find_package(LAPACK)
 
-option(ZVODE_USE_LINPACK "Use the older LINPACK library instead of LAPACK" OFF)
+option(ZVODE_USE_LINPACK_FALLBACK
+  "Fall back to the bundled LINPACK routines when LAPACK is not found" OFF)
 
-if(NOT ZVODE_USE_LINPACK)
-  find_package(LAPACK REQUIRED)
+if(NOT LAPACK_FOUND)
+  if(ZVODE_USE_LINPACK_FALLBACK)
+    message(STATUS "LAPACK not found -- using bundled LINPACK fallback")
+  else()
+    message(FATAL_ERROR
+      "LAPACK not found. Install a LAPACK library (e.g. OpenBLAS, MKL, "
+      "Netlib LAPACK) or configure with -DZVODE_USE_LINPACK_FALLBACK=ON "
+      "to use the bundled LINPACK routines instead.")
+  endif()
 endif()
 
 # Build the C extension. Compiling the Fortran straight into the module
@@ -35,7 +44,10 @@ python_add_library(_zvode MODULE
   WITH_SOABI
     ${SKBUILD_SABI_VERSION})
 
-if(ZVODE_USE_LINPACK)
+if(LAPACK_FOUND)
+  target_link_libraries(_zvode PRIVATE LAPACK::LAPACK)
+else()
+  # LINPACK fallback path (ZVODE_USE_LINPACK_FALLBACK=ON, no LAPACK available)
   target_sources(_zvode PRIVATE
     extern/linpack/zgbfa.f
     extern/linpack/zgbsl.f
@@ -51,8 +63,6 @@ if(ZVODE_USE_LINPACK)
     extern/linpack/zgbfa.f
     PROPERTIES
       COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
-else()
-  target_link_libraries(_zvode PRIVATE LAPACK::LAPACK)
 endif()
 
 target_include_directories(
