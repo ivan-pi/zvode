@@ -139,11 +139,15 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 
 def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                     itol, rtol, atol, mf, iopt,
-                    zwork, rwork, iwork):
+                    zwork, rwork, iwork,
+                    refine=1):
     """Drive ZVODE in single-step mode (ITASK=5), collecting every accepted step.
 
     TCRIT = rwork[0] must equal t_bound before entry so ZVODE does not
     overshoot the final time.
+
+    When refine > 1, inserts (refine - 1) evenly-spaced interpolated points
+    inside each accepted step using ZVINDY before appending the step endpoint.
 
     Returns
     -------
@@ -154,6 +158,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
     ITASK = 5   # one step; must not overshoot TCRIT = rwork[0]
     istate = 1  # initial call
 
+    n = len(y0)
     t = float(t0)
     ytmp = y0.copy()
 
@@ -168,6 +173,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
     # Python interpreter.
     with ZVODE_LOCK:
         while t < t_bound:
+            t_old = t
             t, istate = _zvode.zvode(
                 fun, ytmp,
                 t, t_bound,
@@ -175,6 +181,22 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                 ITASK, istate, iopt,
                 zwork, rwork, iwork,
                 jac, mf)
+
+            if refine > 1:
+                # After the step the Nordsieck array in zwork[0:n*(nq+1)]
+                # is valid for interpolation over [t_old, t].  ZVINDY is
+                # called with the Nordsieck array before the next zvode call
+                # overwrites zwork.
+                nq  = int(iwork[14])         # NQCUR: current order
+                hu  = float(rwork[10])       # HU: step size just used
+                tn  = t                       # TCUR: end of the current step
+                yh  = zwork[:n * (nq + 1)].reshape((n, nq + 1), order='F')
+                dky = np.empty(n, dtype=np.complex128)
+                for i in range(1, refine):
+                    t_i = t_old + i * (t - t_old) / refine
+                    _zvode.zvindy(t_i, 0, yh, hu, tn, hu, dky)
+                    ts.append(t_i)
+                    ys.append(dky.copy())
 
             ts.append(t)
             ys.append(ytmp.copy())
@@ -252,7 +274,8 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       miter=None,
                       jsv=1,
                       in_place=False,
-                      adaptive=False,
+                      save_steps=True,
+                      refine=1,
                       ret_stats=False):
     """Integrate a complex-valued ODE initial value problem.
 
@@ -294,17 +317,25 @@ def solve_complex_ivp(fun, tspan, y0, *,
     tspan : array_like
         Integration times.
 
-        * Two elements ``[t0, tf]`` and ``adaptive=False`` (default) →
+        * Two elements ``[t0, tf]`` and ``save_steps=True`` (default) →
+          every accepted internal step is collected and returned.
+        * Two elements ``[t0, tf]`` and ``save_steps=False`` →
           endpoint-only mode: ZVODE steps freely to ``tf`` and returns the
           single final state.  ``t`` is a scalar and ``y`` is a 1-D array.
-        * Two elements ``[t0, tf]`` and ``adaptive=True`` → every accepted
-          step is collected and returned.
         * Three or more elements ``[t0, t1, …, tf]`` → solution returned
-          only at those knots (``adaptive`` is ignored).
-    adaptive : bool, optional
-        When ``tspan`` has exactly two elements, set ``True`` to collect every
-        accepted internal step instead of returning only the endpoint.
-        Default ``False``.
+          only at those knots (``save_steps`` is ignored).
+    save_steps : bool, optional
+        When ``tspan`` has exactly two elements, controls whether every
+        accepted internal step is stored.  ``True`` (default) collects all
+        steps; ``False`` returns only the endpoint.  Note: ZVODE always uses
+        adaptive time-stepping regardless of this flag — it only governs what
+        output is captured.
+    refine : int, optional
+        Number of output points per accepted step when ``save_steps=True``.
+        ``refine=1`` (default) records only the step endpoints.
+        ``refine=N`` inserts ``N - 1`` additional points inside each step by
+        calling ZVINDY to interpolate from the Nordsieck history array,
+        analogous to the ``Refine`` option in MATLAB's ODE suite.
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     method : {'BDF', 'Adams'}, optional
@@ -341,7 +372,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     -------
     t : float or ndarray, shape (m,)
         Output time(s).  A scalar float in endpoint-only mode
-        (``len(tspan) == 2`` and ``adaptive=False``); a 1-D array otherwise.
+        (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array otherwise.
     y : ndarray, shape (n,) or (n, m), complex128
         Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
         Fortran-order array with ``y[:, k]`` the state at ``t[k]``
@@ -461,24 +492,30 @@ def solve_complex_ivp(fun, tspan, y0, *,
         _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
 
     # ------------------------------------------------------------------
-    # 6.  Integrate
+    # 6.  Validate refine
     # ------------------------------------------------------------------
-    if len(tspan) == 2 and not adaptive:
-        # Endpoint-only: let ZVODE step freely to t_bound via a single
-        # ITASK=1 call.  No intermediate storage; returns scalar t and
-        # 1-D y for a clean MATLAB-style interface.
+    if not isinstance(refine, int) or refine < 1:
+        raise ValueError("`refine` must be a positive integer.")
+
+    # ------------------------------------------------------------------
+    # 7.  Integrate
+    # ------------------------------------------------------------------
+    if len(tspan) == 2 and save_steps:
+        # Collect every accepted step (optionally with ZVINDY interpolation).
+        t_out, y_out, istate = _zvode_adaptive(
+            _fun, _jac, y0, tspan[0], tspan[1],
+            itol, rtol, atol, mf, iopt,
+            zwork, rwork, iwork,
+            refine=refine)
+    elif len(tspan) == 2:
+        # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
+        # and 1-D y — no intermediate storage.
         t_out, y_out, istate = _zvode_knots(
             _fun, _jac, y0, tspan,
             itol, rtol, atol, mf, iopt,
             zwork, rwork, iwork)
         t_out = float(t_out[-1])
         y_out = y_out[:, -1]
-    elif len(tspan) == 2:
-        # Adaptive: collect every accepted step.
-        t_out, y_out, istate = _zvode_adaptive(
-            _fun, _jac, y0, tspan[0], tspan[1],
-            itol, rtol, atol, mf, iopt,
-            zwork, rwork, iwork)
     else:
         # Knots: output at each element of tspan.
         t_out, y_out, istate = _zvode_knots(
@@ -487,7 +524,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
             zwork, rwork, iwork)
 
     # ------------------------------------------------------------------
-    # 7.  Error reporting
+    # 8.  Error reporting
     # ------------------------------------------------------------------
     if istate < 0:
         warnings.warn(
