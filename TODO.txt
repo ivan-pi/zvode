@@ -26,11 +26,12 @@ Release plan
    process-wide Lock is required — one instance per thread is not sufficient)
 
 
-## [NEXT] 0.2.0 — Procedural interface
+## [NEXT] 0.2.0 — Procedural interface (Python / C layer)
 
 The goal of this release is to provide a standalone `zvode()` function that
 drives the entire integration loop in compiled code, avoiding repeated
 round-trips through the Python interpreter on every accepted step.
+Most work lives in the Python and C glue layers.
 
 - Add a procedural `zvode()` function:
   - Version A: driver stores the automatically chosen step times
@@ -39,13 +40,15 @@ round-trips through the Python interpreter on every accepted step.
   numba @cfunc, ctypes, or Cython), no Python frames are entered during integration
 - Document the ZVINDY COMMON block constraint: ZVINDY is only valid immediately
   after a step on the same ZVODE instance; make this explicit in the API
-- Check older SciPy versions for any bug fixes not yet incorporated, and verify
-  original licenses are properly attributed
+- Add SUNDIALS link to README Links table (currently missing)
 - Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
   that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html)
 
 
-## 0.3.0 — Argument validation and optional callbacks
+## 0.3.0 — Fortran, build system, and developer sugar
+
+Work in this release is concentrated on the Fortran layer, the CMake build
+system, and developer-facing conveniences such as type stubs and validation.
 
 - Domain checking of arguments in Python; there is some duplication of
   responsibilities, as ZVODE does some checks internally too; doing the checks
@@ -61,6 +64,8 @@ round-trips through the Python interpreter on every accepted step.
 - Ensure implicit none is used and all variables are strictly typed
   (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
 - Add Python typing hints (the .pyi files)
+- Check older SciPy versions for any bug fixes not yet incorporated, and verify
+  original licenses are properly attributed
 - Note on NEQ reset: when NEQ is reset during integration (ISTATE = 3), we must
   also modify the NEQ component of fun and jac class instances; not relevant to
   the SciPy interface as neq can't change during integration — document this
@@ -77,9 +82,11 @@ integration runs in compiled code without GIL round-trips.
   - Compiled-callback path verified (numba @cfunc, ctypes, or Cython)
   - ZVINDY interpolation path stable and documented
 - Minimalistic documentation in .rst format, hosted on GitHub Pages
-- Support for Python Array-API interface (cupy?) noted as a known gap or
-  stub, with a clear message if a non-NumPy array is passed
-- 64-bit integer version (LP64 vs ILP64) assessed; decision documented
+  - Sphinx build configured, GitHub Actions workflow to deploy on each release
+  - API reference, user guide, and at least one worked example
+- Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
+  and macOS wheels to PyPI on each release tag
+- Maintain a CHANGELOG (keep-a-changelog format)
 
 
 ## Post-1.0 — Future work (no API breaks expected)
