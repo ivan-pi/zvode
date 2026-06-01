@@ -1,0 +1,62 @@
+name: Build source distribution
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - name: Check sdist metadata
+        run: pipx run twine check dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  verify:
+    name: Verify sdist is self-contained
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist/
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y gfortran libopenblas-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract sdist
+        run: tar -xf dist/*.tar.gz
+
+      # Building a wheel from the extracted sdist (not the repo) is the real
+      # completeness test: if any source file is missing, the build fails here.
+      - name: Build wheel from sdist
+        run: |
+          pip wheel zvode-*/  \
+            --config-settings cmake.define.BLA_VENDOR=OpenBLAS \
+            --no-deps \
+            -w wheelhouse/ \
+            -v
+
+      - name: Install wheel and pytest
+        run: pip install wheelhouse/*.whl pytest
+
+      # Run tests from the sdist tree so we're sure the test files are present.
+      - name: Run tests
+        run: python -m pytest zvode-*/test/ -v
