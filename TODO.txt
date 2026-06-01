@@ -43,6 +43,7 @@ Most work lives in the Python and C glue layers.
 - Add SUNDIALS link to README Links table (currently missing)
 - Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
   that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html)
+- Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
 
 
 ## 0.3.0 — Fortran, build system, and developer sugar
@@ -71,22 +72,39 @@ system, and developer-facing conveniences such as type stubs and validation.
   the SciPy interface as neq can't change during integration — document this
 
 
+## 0.4.0 — Performance: C-layer time-stepping and API hardening
+
+The procedural interface from 0.2.0 still calls back into Python once per
+accepted step.  This release pushes the integration loop itself down into the
+C extension, so that when the callbacks are compiled the entire run — stepping,
+error control, output collection — executes without touching the Python
+interpreter.
+
+- Lower the time-stepping loop from Python into the C extension layer:
+  - C driver calls c_zvode in a loop, collecting output into pre-allocated
+    buffers, and only returns to Python when the endpoint is reached or an
+    error occurs
+  - When RHS / Jacobian are pure C function pointers (ctypes, cfunc), no GIL
+    acquisition is needed during the loop
+- API hardening: review and stabilise the procedural interface signatures,
+  return types, and error reporting ahead of the 1.0.0 API freeze
+- Benchmarks: add a small benchmark suite to quantify the overhead reduction
+  relative to 0.2.0 and to the OdeSolver interface
+
+
 ## 1.0.0 — Stable release with online documentation
 
 The 1.0.0 milestone signals API stability. The fast procedural interface
-introduced in 0.2.0 must be complete and handle the case where the RHS and
-Jacobian are fully compiled (no Python callbacks), so that the entire
-integration runs in compiled code without GIL round-trips.
+completed in 0.4.0 must handle the case where the RHS and Jacobian are fully
+compiled (no Python callbacks), so that the entire integration runs in
+compiled code without GIL round-trips.
 
-- Fast procedural interface complete and stable:
-  - Compiled-callback path verified (numba @cfunc, ctypes, or Cython)
-  - ZVINDY interpolation path stable and documented
+- Procedural interface declared stable (no breaking changes after this point)
 - Minimalistic documentation in .rst format, hosted on GitHub Pages
   - Sphinx build configured, GitHub Actions workflow to deploy on each release
   - API reference, user guide, and at least one worked example
 - Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
   and macOS wheels to PyPI on each release tag
-- Maintain a CHANGELOG (keep-a-changelog format)
 
 
 ## Post-1.0 — Future work (no API breaks expected)
