@@ -42,7 +42,6 @@ import pytest
 from zvode import _zvode
 from zvode.zvode_impl import ZVODEDenseOutput
 
-import ctypes
 
 # ---------------------------------------------------------------------------
 # Helpers
