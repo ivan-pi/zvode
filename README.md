@@ -40,23 +40,19 @@ A BLAS library is required at link time (located by CMake's
 or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
 Accelerate framework is picked up automatically.
 
-The simplest way to get the compiler and BLAS without needing admin access is
-via conda:
-
 ```bash
-conda install -c conda-forge gfortran openblas
+# Example: Ubuntu / Debian
+sudo apt update
+sudo apt install gfortran libopenblas-dev
 pip install -v ".[test]"
 ```
 
-On a Debian/Ubuntu system with admin access:
-
 ```bash
-apt-get install gfortran libopenblas-dev
+# Example: macOS (Homebrew)
+brew update
+brew install gfortran
 pip install -v ".[test]"
 ```
-
-On HPC systems the compilers and BLAS are typically available as environment
-modules (`module load gcc openblas` or similar).
 
 To control which BLAS library is used, add the option,
 ```
