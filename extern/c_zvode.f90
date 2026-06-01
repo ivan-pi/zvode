@@ -127,7 +127,8 @@ contains
     ! Discussion above and comments in driver explain all variables.
     !-----------------------------------------------------------------------
     function c_zvindy(n, t, yh, ldyh, k, dky, step) result(iflag) bind(c)
-        use zvode_mod, only: dzscal, xerrwd
+        use zvode_mod, only: xerrwd
+        use zvode_linalg_mod, only: dzscal
         implicit none
         integer, parameter :: dp = kind(1.0d0)
 

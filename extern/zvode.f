@@ -9,7 +9,7 @@ C       to use functors instead of external procedures
 
         PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
         PUBLIC :: XSETF, XSETUN, ZVSRCO
-        PUBLIC :: DZSCAL, XERRWD
+        PUBLIC :: XERRWD
 
         INTEGER, PARAMETER :: DP = KIND(1.0D0)
 
@@ -3526,15 +3526,17 @@ C***ROUTINES CALLED  ZABSSQ
 C***REVISION HISTORY  (YYMMDD)
 C   060502  DATE WRITTEN, modified from DVNORM of 930809.
 C***END PROLOGUE  ZVNORM
-      COMPLEX(DP) V
-      DOUBLE PRECISION W,   SUM
-      INTEGER N,   I
-      DIMENSION V(N), W(N)
+      INTEGER, INTENT(IN) :: N
+      COMPLEX(DP), INTENT(IN) :: V(N)
+      DOUBLE PRECISION, INTENT(IN) :: W(N)
+      INTEGER :: I
+      DOUBLE PRECISION :: SUM
 C
 C***FIRST EXECUTABLE STATEMENT  ZVNORM
       SUM = 0.0D0
-      DO 10 I = 1,N
- 10     SUM = SUM + ZABSSQ(V(I)) * W(I)**2
+      DO I = 1,N
+        SUM = SUM + ZABSSQ(V(I)) * W(I)**2
+      END DO
       ZVNORM = SQRT(SUM/N)
       RETURN
       CONTAINS
