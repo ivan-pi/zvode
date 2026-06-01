@@ -477,7 +477,7 @@ def test_adams_method(miter, jac):
         (0.0, 2.0),
         y0,
         method=ZVODE,
-        zvode_method="Adams",
+        lmm="Adams",
         jac=jac,
         miter=miter,
         rtol=1e-8,
@@ -620,11 +620,11 @@ def test_jsv_negative():
 # ---------------------------------------------------------------------------
 
 
-def test_invalid_zvode_method():
-    """An unknown zvode_method raises ValueError."""
+def test_invalid_lmm():
+    """An unknown lmm raises ValueError."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="Invalid method"):
-        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, zvode_method="Euler")
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, lmm="Euler")
 
 
 def test_miter1_without_jac_raises():
@@ -697,7 +697,7 @@ def test_banded_jac_int32_overflow_guard():
 
 @pytest.mark.filterwarnings("ignore:Bandwidth")
 @pytest.mark.parametrize(
-    "zvode_method,use_jac,banded",
+    "lmm,use_jac,banded",
     list(
         itertools.product(
             ["BDF", "Adams"],
@@ -706,7 +706,7 @@ def test_banded_jac_int32_overflow_guard():
         )
     ),
 )
-def test_complex_banded_linear_system(zvode_method, use_jac, banded):
+def test_complex_banded_linear_system(lmm, use_jac, banded):
     """dy/dt = A*y, A complex with lband=2 uband=1; checked against eigendecomposition."""
     a = _A_COMPLEX
     ml, mu = 2, 1
@@ -739,13 +739,13 @@ def test_complex_banded_linear_system(zvode_method, use_jac, banded):
         (0.0, 1.0),
         y0,
         method=ZVODE,
-        zvode_method=zvode_method,
+        lmm=lmm,
         rtol=1e-9,
         atol=1e-10,
         **kwargs,
     )
 
-    label = f"zvode_method={zvode_method}, use_jac={use_jac}, banded={banded}"
+    label = f"lmm={lmm}, use_jac={use_jac}, banded={banded}"
     assert sol.success, f"{label}: {sol.message}"
     assert_allclose(
         sol.y[:, -1], _linear_exact(a, y0, 1.0), rtol=1e-5, atol=1e-7, err_msg=label
@@ -753,7 +753,7 @@ def test_complex_banded_linear_system(zvode_method, use_jac, banded):
 
 
 @pytest.mark.parametrize(
-    "zvode_method,use_jac",
+    "lmm,use_jac",
     list(
         itertools.product(
             ["BDF", "Adams"],
@@ -761,7 +761,7 @@ def test_complex_banded_linear_system(zvode_method, use_jac, banded):
         )
     ),
 )
-def test_complex_diagonal_linear_system(zvode_method, use_jac):
+def test_complex_diagonal_linear_system(lmm, use_jac):
     """dy/dt = A*y, A complex diagonal (lband=0 uband=0); checked against eigendecomposition."""
     a = _A_COMPLEX_DIAG
     n = a.shape[0]
@@ -785,13 +785,13 @@ def test_complex_diagonal_linear_system(zvode_method, use_jac):
         (0.0, 1.0),
         y0,
         method=ZVODE,
-        zvode_method=zvode_method,
+        lmm=lmm,
         rtol=1e-9,
         atol=1e-10,
         **kwargs,
     )
 
-    label = f"zvode_method={zvode_method}, use_jac={use_jac}"
+    label = f"lmm={lmm}, use_jac={use_jac}"
     assert sol.success, f"{label}: {sol.message}"
     assert_allclose(
         sol.y[:, -1], _linear_exact(a, y0, 1.0), rtol=1e-5, atol=1e-7, err_msg=label

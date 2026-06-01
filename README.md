@@ -40,11 +40,23 @@ A BLAS library is required at link time (located by CMake's
 or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
 Accelerate framework is picked up automatically.
 
+The simplest way to get the compiler and BLAS without needing admin access is
+via conda:
+
 ```bash
-# Example: Ubuntu / Debian
-sudo apt-get install gfortran libopenblas-dev
+conda install -c conda-forge gfortran openblas
 pip install -v ".[test]"
 ```
+
+On a Debian/Ubuntu system with admin access:
+
+```bash
+apt-get install gfortran libopenblas-dev
+pip install -v ".[test]"
+```
+
+On HPC systems the compilers and BLAS are typically available as environment
+modules (`module load gcc openblas` or similar).
 
 To control which BLAS library is used, add the option,
 ```
@@ -60,38 +72,39 @@ The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help
 ```python
 import numpy as np
 from scipy.integrate import solve_ivp
-from zvode import ZVODE
+from zvode import ZVODE_Adams
 
 sol = solve_ivp(
     fun=lambda t, y: -1j * y,
     t_span=(0.0, 10.0),
     y0=[1.0 + 0.0j],
-    method=ZVODE,
-    method_options=dict(zvode_method='Adams'),
+    method=ZVODE_Adams,
 )
 ```
 
 **Stiff problem** — with a user-supplied Jacobian:
 
 ```python
+from zvode import ZVODE_BDF
+
 sol = solve_ivp(
     fun=lambda t, y: -1j * y,
     t_span=(0.0, 10.0),
     y0=np.array([1.0 + 0.0j]),
-    method=ZVODE,
+    method=ZVODE_BDF,
     jac=lambda t, y: np.array([[-1j]]),
-    method_options=dict(zvode_method='BDF'),
 )
 ```
 
 ## Solver options
 
-Pass these via `method_options=dict(...)` in `solve_ivp`, or as keyword
-arguments when constructing `ZVODE` directly.
+Pass these as keyword arguments to `solve_ivp` (they are forwarded to the
+solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
+`ZVODE_Adams`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `zvode_method` | `'BDF'` or `'Adams'` | `'BDF'` | Integration method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
+| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed in `ZVODE_BDF` and `ZVODE_Adams`. |
 | `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
 | `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
 | `jac` | callable or None | `None` | Jacobian `jac(t, y)`. For a full Jacobian return an `(n, n)` array; for a banded Jacobian return an `(lband + uband + 1, n)` array. Estimated by finite differences if not provided. |
