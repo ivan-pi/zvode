@@ -19,6 +19,32 @@ from .zvode_impl import (
 ZVODE_LOCK = Lock()
 
 
+class ZVODEStats:
+    """A bunch-like object holding ZVODE integration statistics.
+
+    Attributes
+    ----------
+    nsteps : int   Total number of steps taken.
+    nfev   : int   Number of right-hand side evaluations.
+    njev   : int   Number of Jacobian evaluations.
+    nlu    : int   Number of LU decompositions.
+    """
+
+    def __init__(self, *stats):
+        self.__dict__.update(dict(zip(
+            ('nsteps', 'nfev', 'njev', 'nlu'), *stats)
+        ))
+
+    def __repr__(self):
+        return (f"ZVODEStats(nsteps={self.nsteps}, nfev={self.nfev}, "
+                f"njev={self.njev}, nlu={self.nlu})")
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    # TODO: add other bunch-like methods
+
+
 # ---------------------------------------------------------------------------
 # C function-pointer detection
 # ---------------------------------------------------------------------------
@@ -438,11 +464,8 @@ def solve_complex_ivp(fun, tspan, y0, *,
         )
 
     if ret_stats:
-        return t_out, y_out, {
-            "nsteps": int(iwork[10]),
-            "nfev":   int(iwork[11]),
-            "njev":   int(iwork[12]),
-            "nlu":    int(iwork[19]),
-        }
+        return t_out, y_out, ZVODEStats(
+            (int(iwork[10]), int(iwork[11]), int(iwork[12]), int(iwork[19]))
+        )
 
     return t_out, y_out
