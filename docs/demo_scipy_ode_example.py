@@ -20,17 +20,17 @@ from scipy.integrate import ode, solve_ivp
 from zvode import ZVODE
 
 
-def f(t, y, arg1):
+def f(t, y, alpha):
     w, z = y
-    return [1j * arg1 * w + z, -arg1 * z ** 2]
+    return [1j * alpha * w + z, -alpha * z ** 2]
 
 
-def jac(t, y, arg1):
+def jac(t, y, alpha):
     w, z = y
-    return [[1j * arg1, 1], [0, -arg1 * 2 * z]]
+    return [[1j * alpha, 1], [0, -alpha * 2 * z]]
 
 
-arg1 = 2.0
+alpha = 2.0
 y0 = np.array([1.0j, 2.0], dtype=np.complex128)
 t0, t1 = 0.0, 10.0
 
@@ -40,8 +40,8 @@ r = (
     ode(f, jac)
     .set_integrator("zvode", method="bdf", with_jacobian=True, rtol=1e-8, atol=1e-10)
     .set_initial_value(y0, t0)
-    .set_f_params(arg1)
-    .set_jac_params(arg1)
+    .set_f_params(alpha)
+    .set_jac_params(alpha)
 )
 
 print("scipy.integrate.ode  (step-by-step, reproducing the SciPy docs example):")
@@ -73,7 +73,7 @@ sol = solve_ivp(
     (t0, t1),
     y0,
     method=ZVODE,
-    args=(arg1,),
+    args=(alpha,),
     jac=jac,
     miter=1,
     t_eval=t_eval,
