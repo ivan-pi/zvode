@@ -557,28 +557,17 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # ------------------------------------------------------------------
     if istate < 0:
         _msg = MESSAGES.get(istate, 'Unknown error.')
-        if len(tspan) == 2 and save_steps:
-            # Adaptive mode: every row returned is a valid accepted step, so
-            # partial output is still useful.  Warn rather than raise.
-            warnings.warn(
-                f"solve_complex_ivp: integration stopped early at t={t_out[-1]}. "
-                f"ZVODE ISTATE={istate}: {_msg}  "
-                f"Returning {t_out.size} step(s).",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        else:
-            # Knots / endpoint: the user asked for output at specific times and
-            # did not get it.  Raise rather than silently return partial data.
-            _where = (
-                f"after {len(t_out)} of {len(tspan)} requested output point(s)"
-                if len(tspan) > 2
-                else f"before reaching t={tspan[-1]}"
-            )
-            raise RuntimeError(
-                f"solve_complex_ivp: integration failed {_where}. "
-                f"ZVODE ISTATE={istate}: {_msg}"
-            )
+        _where = (
+            f"at t={t_out[-1]}, before reaching t={tspan[-1]}"
+            if len(tspan) == 2 and save_steps
+            else f"after {len(t_out)} of {len(tspan)} requested output point(s)"
+            if len(tspan) > 2
+            else f"before reaching t={tspan[-1]}"
+        )
+        raise RuntimeError(
+            f"solve_complex_ivp: integration failed {_where}. "
+            f"ZVODE ISTATE={istate}: {_msg}"
+        )
 
     if ret_stats:
         return t_out, y_out, ZVODEStats(
