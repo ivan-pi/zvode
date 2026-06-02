@@ -100,28 +100,33 @@ print(f"  Max absolute error vs expm: {err_mat:.2e}")
 
 # ---- Plot --------------------------------------------------------------
 
-fig, axes = plt.subplots(2, 3, figsize=(14, 8))
-
-# Top row: one subplot per component of the vector IVP
+# Figure 1: vector IVP — all 3 components together
+fig1, ax1 = plt.subplots(figsize=(8, 5))
+colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 for k in range(3):
-    axes[0, k].plot(t_eval, sol_vec.y[k].real, label="real")
-    axes[0, k].plot(t_eval, sol_vec.y[k].imag, "--", label="imag")
-    axes[0, k].set_title(f"Vector IVP — $y_{k}$")
-    axes[0, k].set_xlabel("$t$")
-    axes[0, k].legend()
-    axes[0, k].grid(True, alpha=0.4)
+    c = colors[k]
+    ax1.plot(t_eval, sol_vec.y[k].real, color=c, label=f"$y_{k}$ re")
+    ax1.plot(t_eval, sol_vec.y[k].imag, "--", color=c, label=f"$y_{k}$ im")
+ax1.set_title(r"Vector IVP — $y' = Ay$, $y_0 = [10, 20, 30]^T$")
+ax1.set_xlabel("$t$")
+ax1.legend(ncol=3)
+ax1.grid(True, alpha=0.4)
+fig1.tight_layout()
 
-# Bottom row: one subplot per row of Y (grouping the three columns together)
+# Figure 2: matrix IVP — all 9 components together
+fig2, ax2 = plt.subplots(figsize=(10, 6))
 y_mat = sol_mat.y.reshape(3, 3, -1)  # shape (row, col, n_t)
+color_idx = 0
 for row in range(3):
     for col in range(3):
-        axes[1, row].plot(t_eval, y_mat[row, col].real, label=f"$Y_{{{row},{col}}}$.re")
-        axes[1, row].plot(t_eval, y_mat[row, col].imag, "--", label=f"$Y_{{{row},{col}}}$.im")
-    axes[1, row].set_title(f"Matrix IVP — row {row}")
-    axes[1, row].set_xlabel("$t$")
-    axes[1, row].legend(fontsize=7)
-    axes[1, row].grid(True, alpha=0.4)
+        c = colors[color_idx % len(colors)]
+        ax2.plot(t_eval, y_mat[row, col].real, color=c, label=f"$Y_{{{row},{col}}}$ re")
+        ax2.plot(t_eval, y_mat[row, col].imag, "--", color=c, label=f"$Y_{{{row},{col}}}$ im")
+        color_idx += 1
+ax2.set_title(r"Matrix IVP — $Y' = AY$, $Y_0 = [[2,3,4],[5,6,7],[9,34,78]]$")
+ax2.set_xlabel("$t$")
+ax2.legend(ncol=3, fontsize=8)
+ax2.grid(True, alpha=0.4)
+fig2.tight_layout()
 
-plt.suptitle(r"$y' = Ay$ with complex $3\times3$ matrix $A$")
-plt.tight_layout()
 plt.show()
