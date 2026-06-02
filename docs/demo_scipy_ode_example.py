@@ -1,15 +1,15 @@
 """
-Demo: SciPy ode docs example solved with ZVODE.
+Demo: 2-ODE complex system from the SciPy ode docs, solved with ZVODE.
 
-Problem from the bottom of:
+    dw/dt = iα·w + z,   dz/dt = -α·z²
+    w(0) = i,   z(0) = 2,   t ∈ [0, 10],   α = 2
+
+Problem taken from the bottom of:
   https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html
 
-    d/dt [w, z] = [iα·w + z, -α·z²],   α = 2
-    w(0) = i,  z(0) = 2,  t ∈ [0, 10]
-
-The script first reproduces the step-by-step integration loop shown in the
-SciPy docs using scipy.integrate.ode, then solves the same problem with the
-ZVODE wrapper via solve_ivp, and shows that the two match.
+The script reproduces the step-by-step integration loop shown in the SciPy
+docs using scipy.integrate.ode, then solves the same problem with the ZVODE
+wrapper via solve_ivp, and cross-checks the two results via dense output.
 """
 
 import numpy as np
