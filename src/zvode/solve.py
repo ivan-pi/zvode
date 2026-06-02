@@ -267,24 +267,24 @@ def _zvode_knots(fun, jac, y0, tspan,
 # ---------------------------------------------------------------------------
 
 def solve_complex_ivp(fun, tspan, y0, *,
-                      method="BDF",
                       rtol=1.0e-3,
                       atol=1.0e-6,
                       jac=None,
+                      method="BDF",
                       lband=None,
                       uband=None,
+                      in_place=False,
+                      ret_stats=False,
+                      save_steps=True,
+                      refine=1,
+                      allow_overshoot=False,
                       first_step=None,
                       min_step=0.0,
                       max_step=np.inf,
                       max_num_steps=1_000_000,
                       max_order=None,
                       miter=None,
-                      save_jac=True,
-                      in_place=False,
-                      save_steps=True,
-                      refine=1,
-                      allow_overshoot=False,
-                      ret_stats=False):
+                      save_jac=True):
     """Integrate a complex-valued ODE initial value problem.
 
     Solves::
@@ -335,6 +335,31 @@ def solve_complex_ivp(fun, tspan, y0, *,
           the solution at each requested time; the accuracy at those points
           equals the accuracy at internal steps.  Providing many intermediate
           knots has little effect on computational efficiency.
+    y0 : array_like, shape (n,)
+        Initial state; cast to ``complex128``.
+    rtol, atol : float or array_like, optional
+        Relative and absolute tolerances.  Scalar or per-component arrays.
+    jac : callable or None, optional
+        Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
+        convention as ``fun``:
+
+        * ``in_place=False``: ``jac(t, y) -> (n, n)`` array.
+        * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
+        * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
+          user band of ``pd`` in place.
+
+    method : {'BDF', 'Adams'}, optional
+        Linear multistep method.  ``'BDF'`` (default) for stiff problems
+        (max order 5); ``'Adams'`` for non-stiff (max order 12).
+    lband, uband : int or None, optional
+        Lower / upper half-bandwidths of a banded Jacobian.
+    in_place : bool, optional
+        Selects the callback convention for ``fun`` and ``jac``.
+        Default ``False`` (SciPy-compatible return-value form).
+        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
+        use the in-place convention; ``in_place=True`` is required for them.
+    ret_stats : bool, optional
+        If ``True``, append a :class:`ZVODEStats` object to the return tuple.
     save_steps : bool, optional
         When ``tspan`` has exactly two elements, controls whether every
         accepted internal step is stored.  ``True`` (default) collects all
@@ -355,24 +380,6 @@ def solve_complex_ivp(fun, tspan, y0, *,
         freely, which can occasionally be more efficient, but the last output
         point may lie slightly beyond ``tspan[1]``.  Ignored when
         ``save_steps=False`` or ``len(tspan) > 2``.
-    y0 : array_like, shape (n,)
-        Initial state; cast to ``complex128``.
-    method : {'BDF', 'Adams'}, optional
-        Linear multistep method.  ``'BDF'`` (default) for stiff problems
-        (max order 5); ``'Adams'`` for non-stiff (max order 12).
-    rtol, atol : float or array_like, optional
-        Relative and absolute tolerances.  Scalar or per-component arrays.
-    jac : callable or None, optional
-        Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
-        convention as ``fun``:
-
-        * ``in_place=False``: ``jac(t, y) -> (n, n)`` array.
-        * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
-        * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          user band of ``pd`` in place.
-
-    lband, uband : int or None, optional
-        Lower / upper half-bandwidths of a banded Jacobian.
     first_step, min_step, max_step : float, optional
         Step-size controls.
     max_num_steps : int, optional
@@ -389,13 +396,6 @@ def solve_complex_ivp(fun, tspan, y0, *,
         across multiple steps, trading extra memory for fewer Jacobian
         evaluations.  Set to ``False`` to recompute the Jacobian on every
         step.
-    in_place : bool, optional
-        Selects the callback convention for ``fun`` and ``jac``.
-        Default ``False`` (SciPy-compatible return-value form).
-        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
-        use the in-place convention; ``in_place=True`` is required for them.
-    ret_stats : bool, optional
-        If ``True``, append a :class:`ZVODEStats` object to the return tuple.
 
     Returns
     -------
