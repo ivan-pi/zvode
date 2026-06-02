@@ -5,13 +5,13 @@ This module provides a single-call integration function in the spirit of
 ``ode15s``, ...).  The goal is to hide the stateful workspace management
 of the underlying ZVODE Fortran library and expose a clean, Pythonic API
 that is familiar to users of those tools while still allowing access to
-ZVODE-specific options such as banded Jacobians and compiled callbacks.
+ZVODE-specific options such as banded Jacobians and user-supplied Jacobians.
 
 Routines
 --------
 solve_complex_ivp
-    Integrate a complex-valued initial value problem from ``tspan[0]`` to
-    ``tspan[-1]`` using variable-order Adams or BDF multistep methods.
+    Integrate a complex-valued initial value problem using variable-order
+    Adams or BDF multistep methods.
 """
 
 import ctypes
