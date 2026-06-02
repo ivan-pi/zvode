@@ -1,11 +1,14 @@
 """
 Demo: non-autonomous linear complex ODE solved with ZVODE.
 
-    y'(t) = t*y(t) + 2i,   y(0) = 1+i,   t in [0, 2]
+    y'(t) = t·y(t) + 2i,   y(0) = 1+i,   t ∈ [0, 2]
 
 Analytic solution (variation of constants / integrating factor exp(-t²/2)):
 
-    y(t) = exp(t²/2) * [ (1+i) + i*sqrt(2π) * erf(t/sqrt(2)) ]
+    y(t) = exp(t²/2) · [(1+i) + i·√(2π) · erf(t/√2)]
+
+Problem taken from the MATLAB ODE solver documentation:
+  https://www.mathworks.com/help/matlab/math/choose-an-ode-solver.html#bu8f_6x
 """
 
 import numpy as np

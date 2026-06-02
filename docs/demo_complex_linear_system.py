@@ -1,16 +1,21 @@
 """
-Demo: complex linear system y' = A*y from the SciPy solve_ivp docs.
+Demo: complex linear system y' = A·y, two ways.
 
-Two cases from:
+    y'(t) = A·y(t),   t ∈ [0, 25]
+
+Two formulations are solved:
+
+1. y as a 3-component state vector.
+2. Y as a 3×3 matrix (flattened to 9 components), with all columns
+   evolving simultaneously as independent IVPs.
+
+Exact solution in both cases: y(t) = expm(A·t) · y0  (matrix exponential).
+
+For the matrix IVP the Jacobian of flatten(A·Y) w.r.t. flatten(Y)
+(row-major) is the 9×9 Kronecker product A ⊗ I₃.
+
+The matrix A and initial conditions are adapted from the SciPy solve_ivp docs:
   https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html
-
-1. y as a 3-component state vector
-2. y as a flattened 3x3 matrix (each column evolves as an independent IVP)
-
-Exact solution in both cases: y(t) = expm(A*t) @ y0  (matrix exponential).
-
-For the flattened matrix IVP the Jacobian of flatten(A @ Y) with respect to
-flatten(Y) (row-major) is the 9x9 Kronecker product  A ⊗ I_3.
 """
 
 import numpy as np
