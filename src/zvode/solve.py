@@ -1,4 +1,18 @@
-"""Procedural ZVODE bindings for complex-valued ODE systems."""
+"""Procedural interface to the ZVODE ODE solver.
+
+This module provides a single-call integration function in the spirit of
+:func:`scipy.integrate.odeint` and the MATLAB ODE suite (``ode45``,
+``ode15s``, ...).  The goal is to hide the stateful workspace management
+of the underlying ZVODE Fortran library and expose a clean, Pythonic API
+that is familiar to users of those tools while still allowing access to
+ZVODE-specific options such as banded Jacobians and compiled callbacks.
+
+Routines
+--------
+solve_complex_ivp
+    Integrate a complex-valued initial value problem from ``tspan[0]`` to
+    ``tspan[-1]`` using variable-order Adams or BDF multistep methods.
+"""
 
 import ctypes
 import warnings
