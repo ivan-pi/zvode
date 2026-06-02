@@ -5,7 +5,7 @@ This module provides a single-call integration function in the spirit of
 ``ode15s``, ...).  The goal is to hide the stateful workspace management
 of the underlying ZVODE Fortran library and expose a clean, Pythonic API
 that is familiar to users of those tools while still allowing access to
-ZVODE-specific options such as banded Jacobians and user-supplied Jacobians.
+ZVODE-specific options such as banded Jacobians and step-size controls.
 
 Routines
 --------
@@ -91,7 +91,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
                     t_bound):
     """Allocate and initialise ZVODE's three workspace arrays.
 
-    Returns ``(zwork, rwork, iwork)`` as numpy arrays.
+    Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
     Note: zwork, rwork, and iwork are mutable; the integration drivers update
     them in place on every step and read diagnostic counters from them on return.
     """
@@ -205,12 +205,11 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                 # before the next zvode call overwrites zwork.
                 nq  = int(iwork[14])         # NQCUR: current order
                 hu  = float(rwork[10])       # HU: step size just used
-                tn  = t                       # TCUR: end of the current step
                 yh  = zwork[:n * (nq + 1)].reshape((n, nq + 1), order='F')
                 dky = np.empty(n, dtype=np.complex128)
                 for i in range(1, refine):
                     t_i = t_old + i * (t - t_old) / refine
-                    _zvode.zvindy(t_i, 0, yh, hu, tn, hu, dky)
+                    _zvode.zvindy(t_i, 0, yh, hu, t, hu, dky)
                     ts.append(t_i)
                     ys.append(dky.copy())
 
@@ -507,14 +506,14 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # Cap max_step at the largest interval in tspan so the solver cannot
     # overshoot a knot in a single step.  Honour a tighter user-supplied limit.
     _max_interval = float(np.max(np.abs(diffs)))
-    _effective_max_step = min(_max_interval, max_step) if max_step < np.inf else _max_interval
+    _effective_max_step = min(_max_interval, max_step)
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
         first_step, min_step, _effective_max_step, max_order, max_num_steps,
         t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------
-    # 5.  Normalise callbacks
+    # 5.  Normalize callbacks
     # ------------------------------------------------------------------
     #
     # Path A (in_place=False)
@@ -532,7 +531,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     #   raises NotImplementedError.
 
     fun_addr = _cfunc_address(fun)
-    jac_addr = _cfunc_address(jac) if jac is not None else None
+    jac_addr = _cfunc_address(jac) if jac is not None else None  # reserved for _zvode.drive()
 
     if fun_addr is not None and not in_place:
         raise ValueError(
