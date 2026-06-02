@@ -22,7 +22,7 @@ from zvode import ZVODE
 
 def f(t, y, alpha):
     w, z = y
-    return [1j * alpha * w + z, -alpha * z ** 2]
+    return [1j * alpha * w + z, -alpha * z**2]
 
 
 def jac(t, y, alpha):
@@ -53,11 +53,7 @@ dt = 1.0
 while r.successful() and r.t < t1 - 0.5 * dt:
     r.integrate(r.t + dt)
     w, z = r.y
-    print(
-        f"{r.t:4g}   "
-        f"{w.real:+.6f}{w.imag:+.6f}j   "
-        f"{z.real:+.6f}{z.imag:+.6f}j"
-    )
+    print(f"{r.t:4g}   {w.real:+.6f}{w.imag:+.6f}j   {z.real:+.6f}{z.imag:+.6f}j")
     t_ode.append(r.t)
     y_ode.append(r.y.copy())
 
@@ -121,8 +117,12 @@ ax_t.grid(True, alpha=0.4)
 # Right: trajectory of w in the complex plane
 ax_c.plot(w_num.real, w_num.imag, color=colors[0], label=r"$w$ (ZVODE)")
 ax_c.plot(w_ode.real, w_ode.imag, "o", ms=5, color=colors[0], label="scipy ode")
-ax_c.plot(w_num.real[0], w_num.imag[0], "^", ms=8, color="tab:green", zorder=5, label="$t=0$")
-ax_c.plot(w_num.real[-1], w_num.imag[-1], "s", ms=6, color="tab:red", zorder=5, label="$t=10$")
+ax_c.plot(
+    w_num.real[0], w_num.imag[0], "^", ms=8, color="tab:green", zorder=5, label="$t=0$"
+)
+ax_c.plot(
+    w_num.real[-1], w_num.imag[-1], "s", ms=6, color="tab:red", zorder=5, label="$t=10$"
+)
 ax_c.set_xlabel(r"$\mathrm{Re}\,w$")
 ax_c.set_ylabel(r"$\mathrm{Im}\,w$")
 ax_c.set_title(r"Trajectory of $w$ in the complex plane")

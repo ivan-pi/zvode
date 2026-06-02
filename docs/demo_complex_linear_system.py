@@ -97,9 +97,7 @@ print("Matrix IVP")
 print("  y[:, 0].reshape(3, 3):\n", sol_mat.y[:, 0].reshape(3, 3))
 print("  y[:, -1].reshape(3, 3):\n", sol_mat.y[:, -1].reshape(3, 3))
 
-ref_mat = np.column_stack(
-    [(expm(A * t) @ y0_mat).flatten() for t in t_eval]
-)
+ref_mat = np.column_stack([(expm(A * t) @ y0_mat).flatten() for t in t_eval])
 err_mat = np.max(np.abs(sol_mat.y - ref_mat))
 print(f"  Max absolute error vs expm: {err_mat:.2e}")
 
@@ -126,7 +124,9 @@ for row in range(3):
     for col in range(3):
         c = colors[color_idx % len(colors)]
         ax2.plot(t_eval, y_mat[row, col].real, color=c, label=f"$Y_{{{row},{col}}}$ re")
-        ax2.plot(t_eval, y_mat[row, col].imag, "--", color=c, label=f"$Y_{{{row},{col}}}$ im")
+        ax2.plot(
+            t_eval, y_mat[row, col].imag, "--", color=c, label=f"$Y_{{{row},{col}}}$ im"
+        )
         color_idx += 1
 ax2.set_title(r"Matrix IVP — $Y' = AY$, $Y_0 = [[2,3,4],[5,6,7],[9,34,78]]$")
 ax2.set_xlabel("$t$")
