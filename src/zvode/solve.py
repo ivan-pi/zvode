@@ -436,6 +436,20 @@ def solve_complex_ivp(fun, tspan, y0, *,
     a C-level integration loop (``_zvode.drive``) that is not yet
     implemented.  Once available, the full integration will run in compiled
     code with no Python involvement in the inner loop.
+
+    References
+    ----------
+    .. [1] A. C. Hindmarsh, "ODEPACK, A Systematized Collection of ODE
+       Solvers," in *Scientific Computing*, R. S. Stepleman et al. (eds.),
+       North-Holland, Amsterdam, 1983, pp. 55-64.
+       https://computing.llnl.gov/projects/odepack
+    .. [2] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE, A
+       Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
+       10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
+    .. [3] G. D. Byrne and A. C. Hindmarsh, "A Polyalgorithm for the
+       Numerical Solution of Ordinary Differential Equations," *ACM Trans.
+       Math. Soft.*, 1(1), pp. 71-96, 1975.
+       https://doi.org/10.1145/355626.355636
     """
 
     # ------------------------------------------------------------------
