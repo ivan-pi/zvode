@@ -13,6 +13,7 @@ Problem taken from the MATLAB ODE solver documentation:
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from scipy.integrate import solve_ivp
 from scipy.special import erf
 
@@ -53,8 +54,6 @@ err = np.abs(y_num - y_ref)
 
 print(f"nfev={sol.nfev}, njev={sol.njev}, nlu={sol.nlu}")
 print(f"Max absolute error: {np.max(err):.2e}")
-
-from matplotlib.collections import LineCollection
 
 fig, (ax_t, ax_c) = plt.subplots(1, 2, figsize=(12, 5))
 
