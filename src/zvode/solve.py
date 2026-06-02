@@ -220,10 +220,13 @@ def _zvode_knots(fun, jac, y0, tspan,
     ZVODE takes as many internal steps as needed to reach each knot and
     returns once per knot — no Python overhead between internal steps.
 
+    On failure (istate < 0) the arrays are truncated to only the successfully
+    completed knots; no uninitialized data is ever returned.
+
     Returns
     -------
-    tspan : ndarray   (the input, unchanged)
-    ys    : ndarray, shape (n, len(tspan)), complex128, Fortran order
+    tspan : ndarray   (truncated to completed knots on failure)
+    ys    : ndarray, shape (n, m), complex128, Fortran order
     istate : int
     """
     ITASK = 1   # normal: step to tout, taking as many steps as needed
@@ -248,10 +251,12 @@ def _zvode_knots(fun, jac, y0, tspan,
                 zwork, rwork, iwork,
                 jac, mf)
 
-            ys[:, i] = ytmp
-
             if istate < 0:
-                break
+                # Do not store ytmp: ZVODE's output is not meaningful on error.
+                # Return only the knots that completed successfully.
+                return tspan[:i], ys[:, :i], istate
+
+            ys[:, i] = ytmp
             # istate == 2: carry the ZVODE continuation state into the next
             # segment; do not reset to 1.
 
@@ -551,12 +556,29 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # 8.  Error reporting
     # ------------------------------------------------------------------
     if istate < 0:
-        warnings.warn(
-            f"solve_complex_ivp: integration did not complete. "
-            f"ZVODE ISTATE={istate}: {MESSAGES.get(istate, 'Unknown error.')}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
+        _msg = MESSAGES.get(istate, 'Unknown error.')
+        if len(tspan) == 2 and save_steps:
+            # Adaptive mode: every row returned is a valid accepted step, so
+            # partial output is still useful.  Warn rather than raise.
+            warnings.warn(
+                f"solve_complex_ivp: integration stopped early at t={t_out[-1]}. "
+                f"ZVODE ISTATE={istate}: {_msg}  "
+                f"Returning {t_out.size} step(s).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            # Knots / endpoint: the user asked for output at specific times and
+            # did not get it.  Raise rather than silently return partial data.
+            _where = (
+                f"after {len(t_out)} of {len(tspan)} requested output point(s)"
+                if len(tspan) > 2
+                else f"before reaching t={tspan[-1]}"
+            )
+            raise RuntimeError(
+                f"solve_complex_ivp: integration failed {_where}. "
+                f"ZVODE ISTATE={istate}: {_msg}"
+            )
 
     if ret_stats:
         return t_out, y_out, ZVODEStats(
