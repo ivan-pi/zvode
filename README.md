@@ -8,9 +8,9 @@ Python bindings to the classic ZVODE ODE solver.
 [![License](https://img.shields.io/github/license/ivan-pi/zvode)](https://github.com/ivan-pi/zvode/blob/main/LICENSE)
 
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
-first-order ordinary differential equations with complex-valued state. It is
-part of ODEPACK and uses a fixed-leading-coefficient Adams or BDF method
-depending on the problem type.
+first-order ordinary differential equations with complex-valued state, written
+by G. D. Byrne and A. C. Hindmarsh [[2]](#2). It is part of ODEPACK and uses
+a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
 This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
 so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
