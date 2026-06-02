@@ -56,12 +56,9 @@ def _cfunc_address(fun):
     * numba ``@cfunc`` objects — via the ``.address`` attribute (same approach
       as the numbalsoda package)
     * ctypes ``CFUNCTYPE`` instances — via ``ctypes.cast``
-    * plain ``int`` — treated as a raw address (advanced use)
 
     Returns ``None`` for ordinary Python callables.
     """
-    if isinstance(fun, int):
-        return fun
     if hasattr(fun, 'address'):          # numba @cfunc
         return int(fun.address)
     try:
