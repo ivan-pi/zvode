@@ -35,7 +35,12 @@ Most work lives in the Python and C glue layers.
 
 - Add a procedural `zvode()` function:
   - Version A: driver stores the automatically chosen step times
-  - Version B: uses ZVINDY to interpolate the solution at caller-supplied t_eval points
+  - Version B: uses ZVINDY to interpolate the solution at caller-supplied t_eval pointa
+  - Consider tcrit support (ITASK=4): lets users specify intermediate times
+    the solver must not overshoot, e.g. at discontinuities in a forcing
+    function.  Related to allow_overshoot but distinct — tcrit is a set of
+    critical times, not a global on/off switch.  Needs design and testing
+    before 1.0.
 - Ensure that when the RHS callback (and Jacobian) are compiled (e.g. via
   numba @cfunc, ctypes, or Cython), no Python frames are entered during integration
 - Document the ZVINDY COMMON block constraint: ZVINDY is only valid immediately
