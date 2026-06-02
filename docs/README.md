@@ -13,21 +13,19 @@ python docs/<script_name>.py
 
 2. **[`demo_linear.py`](demo_linear.py)** — Non-autonomous scalar ODE `y' = t·y + 2i`
    with a known analytic solution; demonstrates accuracy checking against `scipy.special.erf`.
-   Problem taken from the [MATLAB ODE solver documentation](https://www.mathworks.com/help/matlab/math/choose-an-ode-solver.html#bu8f_6x).
 
-3. **[`demo_scipy_ode_example.py`](demo_scipy_ode_example.py)** — Two coupled ODEs taken from
-   the [`scipy.integrate.ode` documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html).
-   Reproduces the legacy step-by-step integration loop and cross-checks it against
-   `solve_ivp` via dense output.
+3. **[`demo_scipy_ode_example.py`](demo_scipy_ode_example.py)** — Two coupled ODEs.
+   Reproduces the legacy `scipy.integrate.ode` step-by-step integration loop and
+   cross-checks it against `solve_ivp` via dense output.
 
-4. **[`demo_zvode_source.py`](demo_zvode_source.py)** — Two-ODE complex system taken directly
-   from the original ZVODE Fortran source (`zvode.f`). Uses a user-supplied Jacobian and
-   demonstrates the `args` parameter of `solve_ivp`.
+4. **[`demo_zvode_source.py`](demo_zvode_source.py)** — Two-ODE complex system from the
+   original ZVODE Fortran source. Uses a user-supplied Jacobian and demonstrates the
+   `args` parameter of `solve_ivp`.
 
 5. **[`demo_complex_linear_system.py`](demo_complex_linear_system.py)** — Complex linear
-   system `y' = A·y` adapted from the [`scipy.integrate.solve_ivp` documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html),
-   solved both as a 3-component vector IVP and as a flattened 3×3 matrix IVP.
-   Illustrates the Kronecker-product Jacobian trick and validation via `scipy.linalg.expm`.
+   system `y' = A·y` solved both as a 3-component vector IVP and as a flattened 3×3
+   matrix IVP. Illustrates the Kronecker-product Jacobian trick and validation via
+   `scipy.linalg.expm`.
 
 6. **[`demo_qme.py`](demo_qme.py)** — Lindblad master equation for a driven, dissipative
    two-level quantum system (qubit) undergoing Rabi oscillations with spontaneous emission.
