@@ -34,6 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9"]
+examples = ["matplotlib"]
 
 [project.urls]
 Repository = "https://github.com/ivan-pi/zvode"
