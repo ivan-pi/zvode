@@ -13,6 +13,7 @@ python docs/<script_name>.py
 
 2. **[`demo_linear.py`](demo_linear.py)** — Non-autonomous scalar ODE `y' = t·y + 2i`
    with a known analytic solution; demonstrates accuracy checking against `scipy.special.erf`.
+   Problem taken from the [MATLAB ODE solver documentation](https://www.mathworks.com/help/matlab/math/choose-an-ode-solver.html#bu8f_6x).
 
 3. **[`demo_scipy_ode_example.py`](demo_scipy_ode_example.py)** — Two coupled ODEs taken from
    the [`scipy.integrate.ode` documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html).
