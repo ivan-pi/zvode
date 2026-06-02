@@ -291,8 +291,13 @@ def solve_complex_ivp(fun, tspan, y0, *,
 
         dy/dt = f(t, y),   y(t0) = y0,   y, f ∈ ℂⁿ
 
-    using ZVODE (variable-coefficient, fixed-leading-coefficient BDF/Adams
-    multistep method).
+    The solver automatically selects and adjusts its order and step size at
+    each step to meet the requested tolerances.  Use ``method='BDF'``
+    (default) for stiff systems and ``method='Adams'`` for smooth, non-stiff
+    ones.  Providing a Jacobian via ``jac`` improves efficiency for BDF since
+    it avoids finite-difference approximation of the derivative matrix; for
+    large or banded systems supplying the sparsity structure through ``lband``
+    and ``uband`` reduces both memory and work per step.
 
     Parameters
     ----------
@@ -360,6 +365,21 @@ def solve_complex_ivp(fun, tspan, y0, *,
         use the in-place convention; ``in_place=True`` is required for them.
     ret_stats : bool, optional
         If ``True``, append a :class:`ZVODEStats` object to the return tuple.
+
+    Returns
+    -------
+    t : float or ndarray, shape (m,)
+        Output time(s).  A scalar float in endpoint-only mode
+        (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array otherwise.
+    y : ndarray, shape (n,) or (n, m), complex128
+        Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
+        Fortran-order array with ``y[:, k]`` the state at ``t[k]``
+        otherwise.
+    stats : ZVODEStats, only when ``ret_stats=True``
+        Integration statistics (nsteps, nfev, njev, nlu).
+
+    Other Parameters
+    ----------------
     save_steps : bool, optional
         When ``tspan`` has exactly two elements, controls whether every
         accepted internal step is stored.  ``True`` (default) collects all
@@ -396,18 +416,6 @@ def solve_complex_ivp(fun, tspan, y0, *,
         across multiple steps, trading extra memory for fewer Jacobian
         evaluations.  Set to ``False`` to recompute the Jacobian on every
         step.
-
-    Returns
-    -------
-    t : float or ndarray, shape (m,)
-        Output time(s).  A scalar float in endpoint-only mode
-        (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array otherwise.
-    y : ndarray, shape (n,) or (n, m), complex128
-        Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
-        Fortran-order array with ``y[:, k]`` the state at ``t[k]``
-        otherwise.
-    stats : ZVODEStats, only when ``ret_stats=True``
-        Integration statistics (nsteps, nfev, njev, nlu).
 
     Raises
     ------
