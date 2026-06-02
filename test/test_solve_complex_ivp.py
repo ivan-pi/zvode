@@ -327,3 +327,16 @@ def test_invalid_method_raises():
 def test_invalid_refine_raises():
     with pytest.raises(ValueError, match="refine"):
         solve_complex_ivp(fun, [T0, TF], Y0, refine=0)
+
+
+def test_compiled_callback_requires_in_place():
+    """Compiled callbacks (numba/ctypes) are incompatible with in_place=False."""
+    import ctypes
+
+    # A minimal ctypes function pointer — address detection is enough to
+    # trigger the check; the function is never actually called.
+    prototype = ctypes.CFUNCTYPE(None)
+    dummy = prototype(lambda: None)
+
+    with pytest.raises(ValueError, match="in_place"):
+        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)

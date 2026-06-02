@@ -501,8 +501,15 @@ def solve_complex_ivp(fun, tspan, y0, *,
     #   Python interpreter.  Until _zvode.drive() is implemented this path
     #   raises NotImplementedError.
 
-    fun_addr = _cfunc_address(fun) if in_place else None
-    jac_addr = _cfunc_address(jac) if (in_place and jac is not None) else None
+    fun_addr = _cfunc_address(fun)
+    jac_addr = _cfunc_address(jac) if jac is not None else None
+
+    if fun_addr is not None and not in_place:
+        raise ValueError(
+            "Compiled callbacks (numba @cfunc / ctypes) use the in-place calling "
+            "convention and are incompatible with `in_place=False`.  "
+            "Pass `in_place=True`, or use a plain Python callable with `in_place=False`."
+        )
 
     if fun_addr is not None:
         # Path C — compiled callback
