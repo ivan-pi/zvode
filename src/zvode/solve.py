@@ -1,5 +1,6 @@
 """Procedural ZVODE bindings for complex-valued ODE systems."""
 
+import ctypes
 import warnings
 from threading import Lock
 
@@ -19,8 +20,10 @@ from .zvode_impl import (
 ZVODE_LOCK = Lock()
 
 
-class ZVODEStats:
-    """A bunch-like object holding ZVODE integration statistics.
+class ZVODEStats(dict):
+    """Integration statistics returned when ``ret_stats=True``.
+
+    Subclasses :class:`dict`; fields are also accessible as attributes.
 
     Attributes
     ----------
@@ -30,19 +33,18 @@ class ZVODEStats:
     nlu    : int   Number of LU decompositions.
     """
 
-    def __init__(self, *stats):
-        self.__dict__.update(dict(zip(
-            ('nsteps', 'nfev', 'njev', 'nlu'), *stats)
-        ))
+    def __init__(self, stats):
+        super().__init__(zip(('nsteps', 'nfev', 'njev', 'nlu'), stats))
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
 
     def __repr__(self):
-        return (f"ZVODEStats(nsteps={self.nsteps}, nfev={self.nfev}, "
-                f"njev={self.njev}, nlu={self.nlu})")
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    # TODO: add other bunch-like methods
+        return (f"ZVODEStats(nsteps={self['nsteps']}, nfev={self['nfev']}, "
+                f"njev={self['njev']}, nlu={self['nlu']})")
 
 
 # ---------------------------------------------------------------------------
@@ -59,14 +61,10 @@ def _cfunc_address(fun):
 
     Returns ``None`` for ordinary Python callables.
     """
-    if hasattr(fun, 'address'):          # numba @cfunc
+    if hasattr(fun, 'address'):                 # numba @cfunc
         return int(fun.address)
-    try:
-        import ctypes
-        if isinstance(fun, ctypes._CFuncPtr):
-            return ctypes.cast(fun, ctypes.c_void_p).value
-    except Exception:
-        pass
+    if isinstance(fun, ctypes._CFuncPtr):       # ctypes CFUNCTYPE
+        return ctypes.cast(fun, ctypes.c_void_p).value
     return None
 
 
@@ -80,6 +78,8 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
     """Allocate and initialise ZVODE's three workspace arrays.
 
     Returns ``(zwork, rwork, iwork)`` as numpy arrays.
+    Note: zwork, rwork, and iwork are mutable; the integration drivers update
+    them in place on every step and read diagnostic counters from them on return.
     """
     _INT32_MAX = 2**31 - 1
 
@@ -182,11 +182,13 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                 zwork, rwork, iwork,
                 jac, mf)
 
+            if istate < 0:
+                break
+
             if refine > 1:
-                # After the step the Nordsieck array in zwork[0:n*(nq+1)]
-                # is valid for interpolation over [t_old, t].  ZVINDY is
-                # called with the Nordsieck array before the next zvode call
-                # overwrites zwork.
+                # After an accepted step the Nordsieck array in zwork[0:n*(nq+1)]
+                # is valid for interpolation over [t_old, t].  ZVINDY is called
+                # before the next zvode call overwrites zwork.
                 nq  = int(iwork[14])         # NQCUR: current order
                 hu  = float(rwork[10])       # HU: step size just used
                 tn  = t                       # TCUR: end of the current step
@@ -200,9 +202,6 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
 
             ts.append(t)
             ys.append(ytmp.copy())
-
-            if istate < 0:
-                break
 
     ts = np.asarray(ts)
     ys = np.asfortranarray(np.vstack(ys).T)  # (n, m)
@@ -220,6 +219,8 @@ def _zvode_knots(fun, jac, y0, tspan,
 
     On failure (istate < 0) the arrays are truncated to only the successfully
     completed knots; no uninitialized data is ever returned.
+
+    Note: zwork, rwork, and iwork are updated in place by each call.
 
     Returns
     -------
@@ -275,10 +276,10 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       first_step=None,
                       min_step=0.0,
                       max_step=np.inf,
-                      max_num_steps=np.iinfo(np.int32).max,
+                      max_num_steps=1_000_000,
                       max_order=None,
                       miter=None,
-                      jsv=1,
+                      save_jac=True,
                       in_place=False,
                       save_steps=True,
                       refine=1,
@@ -327,10 +328,13 @@ def solve_complex_ivp(fun, tspan, y0, *,
         * Two elements ``[t0, tf]`` and ``save_steps=True`` (default) →
           every accepted internal step is collected and returned.
         * Two elements ``[t0, tf]`` and ``save_steps=False`` →
-          endpoint-only mode: ZVODE steps freely to ``tf`` and returns the
-          single final state.  ``t`` is a scalar and ``y`` is a 1-D array.
-        * Three or more elements ``[t0, t1, …, tf]`` → solution returned
-          only at those knots (``save_steps`` is ignored).
+          endpoint-only mode: returns a scalar ``t`` and a 1-D ``y``.
+        * Three or more elements ``[t0, t1, …, tf]`` → output returned only
+          at the requested knots (``save_steps`` is ignored).  The solver
+          uses its own internal steps to advance between knots and evaluates
+          the solution at each requested time; the accuracy at those points
+          equals the accuracy at internal steps.  Providing many intermediate
+          knots has little effect on computational efficiency.
     save_steps : bool, optional
         When ``tspan`` has exactly two elements, controls whether every
         accepted internal step is stored.  ``True`` (default) collects all
@@ -340,21 +344,17 @@ def solve_complex_ivp(fun, tspan, y0, *,
     refine : int, optional
         Number of output points per accepted step when ``save_steps=True``.
         ``refine=1`` (default) records only the step endpoints.
-        ``refine=N`` inserts ``N - 1`` additional points inside each step by
-        calling ZVINDY to interpolate from the Nordsieck history array,
-        analogous to the ``Refine`` option in MATLAB's ODE suite.
-        This increases output density for smoother plots but does not improve
-        the accuracy of the integration.  Ignored when ``save_steps=False``
-        or when ``tspan`` contains more than two elements.
+        ``refine=N`` inserts ``N - 1`` additional interpolated points inside
+        each step for smoother plots; this does not improve the accuracy of
+        the integration.  Ignored when ``save_steps=False`` or
+        ``len(tspan) > 2``.
     allow_overshoot : bool, optional
-        When ``save_steps=True``, controls whether ZVODE may step past
-        ``tspan[1]``.  ``False`` (default) uses ITASK=5, which prevents
-        overshooting the final time (``TCRIT = tspan[1]`` is enforced
-        internally).  ``True`` uses ITASK=2, which ignores ``tout``
-        entirely and lets ZVODE choose its step size freely — this can
-        occasionally be more efficient but the last output point may lie
-        beyond ``tspan[1]``.  Ignored when ``save_steps=False`` or when
-        ``tspan`` contains more than two elements.
+        When ``save_steps=True``, allow the solver to step past the endpoint
+        ``tspan[1]``.  ``False`` (default) ensures the last output point is
+        exactly ``tspan[1]``.  ``True`` lets the solver choose its step size
+        freely, which can occasionally be more efficient, but the last output
+        point may lie slightly beyond ``tspan[1]``.  Ignored when
+        ``save_steps=False`` or ``len(tspan) > 2``.
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     method : {'BDF', 'Adams'}, optional
@@ -376,23 +376,26 @@ def solve_complex_ivp(fun, tspan, y0, *,
     first_step, min_step, max_step : float, optional
         Step-size controls.
     max_num_steps : int, optional
-        Maximum number of internal steps ZVODE may take between two
-        consecutive output points.  Default ``np.iinfo(np.int32).max``
-        (effectively unlimited).  Lower this when function evaluations are expensive and
-        you want to cap the computational work; the solver will return with
-        ISTATE=-1 if the budget is exhausted before reaching the next output
-        point, at which stage relaxing the tolerances is the usual remedy.
+        Maximum number of internal steps between two consecutive output
+        points.  Default 1 000 000.  Lower this to cap computational work
+        when function evaluations are expensive; an error is raised if the
+        budget is exhausted before the next output point.
     max_order : int or None, optional
         Maximum integration order (capped at the method limit if exceeded).
     miter : {0, 1, 2, 3, 4, 5} or None, optional
         Iteration method; inferred from ``jac`` / band arguments when ``None``.
-    jsv : {1, -1}, optional
-        Jacobian-saving flag (1 = reuse; -1 = recompute every step).
+    save_jac : bool, optional
+        If ``True`` (default), the Jacobian is evaluated once and reused
+        across multiple steps, trading extra memory for fewer Jacobian
+        evaluations.  Set to ``False`` to recompute the Jacobian on every
+        step.
     in_place : bool, optional
         Selects the callback convention for ``fun`` and ``jac``.
         Default ``False`` (SciPy-compatible return-value form).
+        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
+        use the in-place convention; ``in_place=True`` is required for them.
     ret_stats : bool, optional
-        If ``True``, append an integration statistics dict to the return.
+        If ``True``, append a :class:`ZVODEStats` object to the return tuple.
 
     Returns
     -------
@@ -403,16 +406,15 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
         Fortran-order array with ``y[:, k]`` the state at ``t[k]``
         otherwise.
-    stats : dict, only when ``ret_stats=True``
-        ``{'nsteps', 'nfev', 'njev', 'nlu'}``.
+    stats : ZVODEStats, only when ``ret_stats=True``
+        Integration statistics (nsteps, nfev, njev, nlu).
 
     Raises
     ------
     ValueError
         On invalid arguments.
-    RuntimeWarning
-        When the solver fails to complete (ZVODE ISTATE < 0); the partial
-        solution up to the failure point is still returned.
+    RuntimeError
+        When the solver cannot reach the requested endpoint.
 
     Notes
     -----
@@ -435,6 +437,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     if tspan.ndim != 1 or len(tspan) < 2:
         raise ValueError("`tspan` must be a 1-D array with at least two elements.")
     diffs = np.diff(tspan)
+    # Python `or` short-circuits: the second np.all is skipped when the first is True.
     if not (np.all(diffs > 0) or np.all(diffs < 0)):
         raise ValueError("`tspan` must be strictly monotonic (all increasing or all decreasing).")
 
@@ -462,22 +465,21 @@ def solve_complex_ivp(fun, tspan, y0, *,
     elif method == "BDF":
         meth, maxord_allowed = 2, 5
     else:
-        raise ValueError(f"Unknown method {method!r}; choose 'Adams' or 'BDF'.")
+        raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
     _miter, ml, mu = _determine_miter(jac, lband, uband, miter)
 
-    if jsv not in (1, -1):
-        raise ValueError("'jsv' must be 1 or -1.")
+    jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
     # ------------------------------------------------------------------
     # 4.  Workspace
     # ------------------------------------------------------------------
     iopt = 1  # optional inputs present (rwork / iwork slots populated below)
-    # ZVODE step size is unsigned; cap it at the total integration span so the
-    # solver cannot overshoot in a single step.  Honour a tighter user limit.
-    _span = abs(float(tspan[-1]) - float(tspan[0]))
-    _effective_max_step = min(_span, max_step) if max_step < np.inf else _span
+    # Cap max_step at the largest interval in tspan so the solver cannot
+    # overshoot a knot in a single step.  Honour a tighter user-supplied limit.
+    _max_interval = float(np.max(np.abs(diffs)))
+    _effective_max_step = min(_max_interval, max_step) if max_step < np.inf else _max_interval
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
         first_step, min_step, _effective_max_step, max_order, max_num_steps,
@@ -532,7 +534,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # ------------------------------------------------------------------
     # 6.  Validate refine
     # ------------------------------------------------------------------
-    if not isinstance(refine, int) or refine < 1:
+    if refine < 1:
         raise ValueError("`refine` must be a positive integer.")
 
     # ------------------------------------------------------------------
