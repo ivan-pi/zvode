@@ -423,7 +423,16 @@ def solve_complex_ivp(fun, tspan, y0, *,
     max_order : int or None, optional
         Maximum integration order (capped at the method limit if exceeded).
     miter : {0, 1, 2, 3, 4, 5} or None, optional
-        Iteration method; inferred from ``jac`` / band arguments when ``None``.
+        Iteration method used by the corrector.  Normally inferred
+        automatically from ``jac`` and the band arguments: ``0`` (functional
+        iteration, no Jacobian) when ``jac`` is ``None`` and no band is set,
+        ``1`` or ``4`` (user-supplied dense or banded Jacobian), and ``2`` or
+        ``5`` (internally generated dense or banded Jacobian).  Provide this
+        argument only to override that selection — for instance to force
+        finite-difference Jacobian generation even when a ``jac`` callable is
+        supplied.  Use with care: an inconsistent combination (e.g. ``miter=4``
+        without band arguments) will cause incorrect behaviour or a solver
+        failure.
     save_jac : bool, optional
         If ``True`` (default), the Jacobian is evaluated once and reused
         across multiple steps, trading extra memory for fewer Jacobian
