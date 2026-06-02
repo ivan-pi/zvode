@@ -4,10 +4,8 @@ Demo: SciPy ode docs example solved with ZVODE.
 Problem from the bottom of:
   https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html
 
-    dy[0]/dt = 1j*arg1*y[0] + y[1]
-    dy[1]/dt = -arg1*y[1]^2
-
-    y[0](0) = 1j,  y[1](0) = 2.0,  arg1 = 2.0,  t in [0, 10]
+    d/dt [w, z] = [iα·w + z, -α·z²],   α = 2
+    w(0) = i,  z(0) = 2,  t ∈ [0, 10]
 
 The script first reproduces the step-by-step integration loop shown in the
 SciPy docs using scipy.integrate.ode, then solves the same problem with the
@@ -16,17 +14,20 @@ ZVODE wrapper via solve_ivp, and shows that the two match.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from scipy.integrate import ode, solve_ivp
 
 from zvode import ZVODE
 
 
 def f(t, y, arg1):
-    return [1j * arg1 * y[0] + y[1], -arg1 * y[1] ** 2]
+    w, z = y
+    return [1j * arg1 * w + z, -arg1 * z ** 2]
 
 
 def jac(t, y, arg1):
-    return [[1j * arg1, 1], [0, -arg1 * 2 * y[1]]]
+    w, z = y
+    return [[1j * arg1, 1], [0, -arg1 * 2 * z]]
 
 
 arg1 = 2.0
@@ -44,17 +45,18 @@ r = (
 )
 
 print("scipy.integrate.ode  (step-by-step, reproducing the SciPy docs example):")
-print(f"{'t':>4}   {'y[0]':^26}   {'y[1]':^26}")
+print(f"{'t':>4}   {'w':^26}   {'z':^26}")
 
 t_ode = [t0]
 y_ode = [y0.copy()]
 dt = 1.0
 while r.successful() and r.t < t1 - 0.5 * dt:
     r.integrate(r.t + dt)
+    w, z = r.y
     print(
         f"{r.t:4g}   "
-        f"{r.y[0].real:+.6f}{r.y[0].imag:+.6f}j   "
-        f"{r.y[1].real:+.6f}{r.y[1].imag:+.6f}j"
+        f"{w.real:+.6f}{w.imag:+.6f}j   "
+        f"{z.real:+.6f}{z.imag:+.6f}j"
     )
     t_ode.append(r.t)
     y_ode.append(r.y.copy())
@@ -75,6 +77,7 @@ sol = solve_ivp(
     jac=jac,
     miter=1,
     t_eval=t_eval,
+    dense_output=True,
     rtol=1e-8,
     atol=1e-10,
 )
@@ -83,43 +86,52 @@ print(f"\nZVODE (solve_ivp):  nfev={sol.nfev}, njev={sol.njev}, nlu={sol.nlu}")
 
 # ---- Cross-check: max difference at the integer-step times ---------------
 
-# Interpolate the dense solve_ivp output at the coarse scipy-ode time points.
-y0_at_ode = np.interp(t_ode, sol.t, sol.y[0].real) + 1j * np.interp(
-    t_ode, sol.t, sol.y[0].imag
-)
-y1_at_ode = np.interp(t_ode, sol.t, sol.y[1].real) + 1j * np.interp(
-    t_ode, sol.t, sol.y[1].imag
-)
-
-max_err0 = np.max(np.abs(y0_at_ode - y_ode[0]))
-max_err1 = np.max(np.abs(y1_at_ode - y_ode[1]))
-print(f"Max |ZVODE - scipy ode|:  y[0]: {max_err0:.2e},  y[1]: {max_err1:.2e}")
+y_at_ode = sol.sol(t_ode)  # shape (2, n_steps), evaluated via dense output
+max_err_w = np.max(np.abs(y_at_ode[0] - y_ode[0]))
+max_err_z = np.max(np.abs(y_at_ode[1] - y_ode[1]))
+print(f"Max |ZVODE - scipy ode|:  w: {max_err_w:.2e},  z: {max_err_z:.2e}")
 
 # ---- Plot ---------------------------------------------------------------
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
+# z(0) = 2 is real and z' = -α·z² preserves the real line, so z stays real.
+# The complex-plane trajectory of z is therefore trivial (a segment on the
+# real axis) and is omitted from the right panel.
 
-for i in range(2):
-    axes[i, 0].plot(sol.t, sol.y[i].real, label="ZVODE (solve_ivp)")
-    axes[i, 0].plot(t_ode, y_ode[i].real, "o", ms=5, label="scipy ode (zvode)")
-    axes[i, 0].set_title(f"y[{i}].real")
-    axes[i, 0].legend()
-    axes[i, 0].grid(True, alpha=0.4)
+w_num, z_num = sol.y[0], sol.y[1]
+w_ode, z_ode = y_ode[0], y_ode[1]
 
-    axes[i, 1].plot(sol.t, sol.y[i].imag, label="ZVODE (solve_ivp)")
-    axes[i, 1].plot(t_ode, y_ode[i].imag, "o", ms=5, label="scipy ode (zvode)")
-    axes[i, 1].set_title(f"y[{i}].imag")
-    axes[i, 1].legend()
-    axes[i, 1].grid(True, alpha=0.4)
+colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-for ax in axes[-1]:
-    ax.set_xlabel("t")
+fig, (ax_t, ax_c) = plt.subplots(1, 2, figsize=(13, 5))
+
+# Left: Re w, Im w, and z (real) vs time
+ax_t.plot(t_eval, w_num.real, color=colors[0], label=r"$\mathrm{Re}\,w$")
+ax_t.plot(t_eval, w_num.imag, "--", color=colors[0], label=r"$\mathrm{Im}\,w$")
+ax_t.plot(t_eval, z_num.real, color=colors[1], label=r"$z$  (real-valued)")
+ax_t.plot(t_ode, w_ode.real, "o", ms=4, color=colors[0])
+ax_t.plot(t_ode, w_ode.imag, "o", ms=4, color=colors[0])
+ax_t.plot(t_ode, z_ode.real, "o", ms=4, color=colors[1])
+proxy = Line2D([0], [0], color="gray", marker="o", ms=4, ls="none", label="scipy ode")
+handles, labels = ax_t.get_legend_handles_labels()
+ax_t.legend(handles=handles + [proxy], labels=labels + ["scipy ode"])
+ax_t.set_xlabel("$t$")
+ax_t.set_title("Components vs. time")
+ax_t.grid(True, alpha=0.4)
+
+# Right: trajectory of w in the complex plane
+ax_c.plot(w_num.real, w_num.imag, color=colors[0], label=r"$w$ (ZVODE)")
+ax_c.plot(w_ode.real, w_ode.imag, "o", ms=5, color=colors[0], label="scipy ode")
+ax_c.plot(w_num.real[0], w_num.imag[0], "^", ms=8, color="tab:green", zorder=5, label="$t=0$")
+ax_c.plot(w_num.real[-1], w_num.imag[-1], "s", ms=6, color="tab:red", zorder=5, label="$t=10$")
+ax_c.set_xlabel(r"$\mathrm{Re}\,w$")
+ax_c.set_ylabel(r"$\mathrm{Im}\,w$")
+ax_c.set_title(r"Trajectory of $w$ in the complex plane")
+ax_c.legend()
+ax_c.grid(True, alpha=0.4)
 
 plt.suptitle(
-    "SciPy ode docs example  "
-    r"($\dot{y}_0 = i\alpha y_0 + y_1,\;$"
-    r"$\dot{y}_1 = -\alpha y_1^2,\;$"
-    r"$\alpha = 2$)"
+    r"$\dot{w} = i\alpha w + z,\quad \dot{z} = -\alpha z^2,\quad"
+    r"\alpha = 2,\quad w(0) = i,\quad z(0) = 2$"
 )
 plt.tight_layout()
 plt.show()
