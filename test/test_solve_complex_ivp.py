@@ -15,7 +15,8 @@ where B = C*y0[1]/(LAM2 - LAM1), A = y0[0] - B.
 import numpy as np
 import pytest
 
-from zvode import ZVODEStats, solve_complex_ivp
+from zvode import solve_complex_ivp
+from zvode.solve import ZVODEStats  # not re-exported from __all__; internal use only
 
 # ---------------------------------------------------------------------------
 # Problem parameters
@@ -71,9 +72,10 @@ def jac_dense_ip(t, y, pd):
 
 
 def jac_banded_ip(t, y, pd, ml, mu):
-    pd[mu + 0 - 0, 0] = LAM1
-    pd[mu + 0 - 1, 1] = C
-    pd[mu + 1 - 1, 1] = LAM2
+    # storage: pd[mu + i - j, j] = J[i, j]
+    pd[mu, 0] = LAM1       # J[0, 0]
+    pd[mu - 1, 1] = C      # J[0, 1]
+    pd[mu, 1] = LAM2       # J[1, 1]
 
 
 # Path A: SciPy-style, in_place=False — delegate to the in-place versions above
@@ -118,8 +120,8 @@ def test_save_steps_false(method):
     """Endpoint-only mode: scalar t and 1-D y."""
     t, y = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                              rtol=RTOL, atol=ATOL, save_steps=False)
-    assert np.isscalar(t) or (isinstance(t, np.floating))
-    assert float(t) == pytest.approx(TF)
+    assert np.isscalar(t)
+    assert t == pytest.approx(TF)
     assert y.ndim == 1 and y.shape == (2,)
     ref = exact(TF)  # shape (2,)
     assert np.allclose(y, ref, rtol=1e-5)
@@ -169,7 +171,7 @@ def test_inplace_fun(mode):
         ref = exact(TF)
         assert np.allclose(y, ref, rtol=1e-5)
     else:
-        _check(t if isinstance(t, np.ndarray) else np.array([t]), y)
+        _check(t, y)
 
 
 @pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
@@ -183,7 +185,7 @@ def test_inplace_fun_dense_jac(mode):
         ref = exact(TF)
         assert np.allclose(y, ref, rtol=1e-5)
     else:
-        _check(t if isinstance(t, np.ndarray) else np.array([t]), y)
+        _check(t, y)
 
 
 @pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
@@ -198,7 +200,7 @@ def test_inplace_fun_banded_jac(mode):
         ref = exact(TF)
         assert np.allclose(y, ref, rtol=1e-5)
     else:
-        _check(t if isinstance(t, np.ndarray) else np.array([t]), y)
+        _check(t, y)
 
 
 # ---------------------------------------------------------------------------
@@ -219,11 +221,10 @@ def test_backward_integration(mode):
 
     if mode == "endpoint":
         ref = exact(T0)
-        assert float(t) == pytest.approx(T0)
+        assert t == pytest.approx(T0)
         assert np.allclose(y, ref, rtol=1e-5)
     else:
-        t_arr = np.atleast_1d(t if isinstance(t, np.ndarray) else np.array([t]))
-        _check(t_arr, y if y.ndim == 2 else y.reshape(2, 1))
+        _check(t, y)
 
 
 # ---------------------------------------------------------------------------
@@ -231,14 +232,14 @@ def test_backward_integration(mode):
 # ---------------------------------------------------------------------------
 
 def test_allow_overshoot_false():
-    """ITASK=5: last output point must not exceed TF."""
+    """allow_overshoot=False (default): last output point must equal TF exactly."""
     t, y = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=False,
                              rtol=RTOL, atol=ATOL)
     assert t[-1] == pytest.approx(TF)
 
 
 def test_allow_overshoot_true():
-    """ITASK=2: last output point may overshoot TF slightly."""
+    """allow_overshoot=True: last output point may go slightly past TF."""
     t, y = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=True,
                              rtol=RTOL, atol=ATOL)
     assert t[-1] >= TF - 1e-12
@@ -255,11 +256,10 @@ def test_allow_overshoot_true():
 def test_max_num_steps_exceeded():
     """Solver raises RuntimeError when max_num_steps is too small.
 
-    MXSTEP limits internal steps between consecutive *output* points.  In
-    single-step mode (save_steps=True, ITASK=5) each call advances by one
-    step so MXSTEP is never triggered.  We therefore use save_steps=False
-    (ITASK=1), which asks ZVODE to reach TF in a single call — far more than
-    2 internal steps are needed, so ISTATE=-1 is returned.
+    save_steps=False asks the solver to reach TF in one shot, requiring far
+    more than 2 internal steps, so the step limit is hit and RuntimeError is
+    raised.  With save_steps=True the solver advances one step per call, so
+    the per-output-point limit would never be reached with max_num_steps=2.
     """
     with pytest.raises(RuntimeError, match="ISTATE"):
         solve_complex_ivp(fun, [T0, TF], Y0, save_steps=False, max_num_steps=2)
