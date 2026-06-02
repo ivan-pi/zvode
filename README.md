@@ -93,6 +93,8 @@ sol = solve_ivp(
 )
 ```
 
+Complete usage examples can be found in the [`docs/`](docs/) folder.
+
 ## Solver options
 
 Pass these as keyword arguments to `solve_ivp` (they are forwarded to the
