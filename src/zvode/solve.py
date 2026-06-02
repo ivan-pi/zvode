@@ -120,7 +120,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
     rwork[0] = float(t_bound)          # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
         rwork[4] = float(first_step)
-    if max_step < np.inf:
+    if max_step > 0:
         rwork[5] = float(max_step)
     if min_step:
         rwork[6] = float(min_step)
@@ -159,6 +159,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
 
     n = len(y0)
     t = float(t0)
+    direction = np.sign(float(t_bound) - t)
     ytmp = y0.copy()
 
     ts = [t]
@@ -171,7 +172,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
     # evaluation — making the entire integration run without re-entering the
     # Python interpreter.
     with ZVODE_LOCK:
-        while t < t_bound:
+        while direction * (float(t_bound) - t) > 0:
             t_old = t
             t, istate = _zvode.zvode(
                 fun, ytmp,
@@ -433,8 +434,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
     tspan = np.asarray(tspan, dtype=float)
     if tspan.ndim != 1 or len(tspan) < 2:
         raise ValueError("`tspan` must be a 1-D array with at least two elements.")
-    if not np.all(np.diff(tspan) > 0):
-        raise ValueError("`tspan` must be strictly increasing.")
+    diffs = np.diff(tspan)
+    if not (np.all(diffs > 0) or np.all(diffs < 0)):
+        raise ValueError("`tspan` must be strictly monotonic (all increasing or all decreasing).")
 
     if np.isrealobj(y0):
         warnings.warn(
@@ -472,9 +474,13 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # 4.  Workspace
     # ------------------------------------------------------------------
     iopt = 1  # optional inputs present (rwork / iwork slots populated below)
+    # ZVODE step size is unsigned; cap it at the total integration span so the
+    # solver cannot overshoot in a single step.  Honour a tighter user limit.
+    _span = abs(float(tspan[-1]) - float(tspan[0]))
+    _effective_max_step = min(_span, max_step) if max_step < np.inf else _span
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
-        first_step, min_step, max_step, max_order, max_num_steps,
+        first_step, min_step, _effective_max_step, max_order, max_num_steps,
         t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------
