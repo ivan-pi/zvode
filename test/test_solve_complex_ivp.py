@@ -57,27 +57,7 @@ def _check(t_arr, y_arr, sol_rtol=1e-5):
 # Callback definitions
 # ---------------------------------------------------------------------------
 
-# Path A: SciPy-style, in_place=False
-
-def fun(t, y):
-    return np.array([LAM1 * y[0] + C * y[1], LAM2 * y[1]])
-
-
-def jac_dense(t, y):
-    return np.array([[LAM1, C], [0.0, LAM2]])
-
-
-def jac_banded(t, y):
-    # ZVODE banded storage: pd[mu + i - j, j] = J[i, j]
-    # shape = (lband + uband + 1, n) = (2, 2)
-    pd = np.zeros((LBAND + UBAND + 1, 2), dtype=np.complex128)
-    pd[UBAND + 0 - 0, 0] = LAM1   # pd[1, 0]
-    pd[UBAND + 0 - 1, 1] = C      # pd[0, 1]
-    pd[UBAND + 1 - 1, 1] = LAM2   # pd[1, 1]
-    return pd
-
-
-# Path B: in-place, in_place=True
+# Path B: in-place, in_place=True  (defined first; scipy-style delegates below)
 
 def fun_ip(t, y, dy):
     dy[0] = LAM1 * y[0] + C * y[1]
@@ -96,6 +76,28 @@ def jac_banded_ip(t, y, pd, ml, mu):
     pd[mu + 1 - 1, 1] = LAM2
 
 
+# Path A: SciPy-style, in_place=False — delegate to the in-place versions above
+
+def fun(t, y):
+    dy = np.empty(len(y), dtype=np.complex128)
+    fun_ip(t, y, dy)
+    return dy
+
+
+def jac_dense(t, y):
+    pd = np.zeros((len(y), len(y)), dtype=np.complex128)
+    jac_dense_ip(t, y, pd)
+    return pd
+
+
+def jac_banded(t, y):
+    # ZVODE banded storage: pd[mu + i - j, j] = J[i, j]
+    # shape = (lband + uband + 1, n) = (2, 2)
+    pd = np.zeros((LBAND + UBAND + 1, len(y)), dtype=np.complex128)
+    jac_banded_ip(t, y, pd, LBAND, UBAND)
+    return pd
+
+
 # ---------------------------------------------------------------------------
 # 1. Output modes × methods
 # ---------------------------------------------------------------------------
@@ -106,7 +108,7 @@ def test_save_steps_true(method):
     t, y = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                              rtol=RTOL, atol=ATOL)
     assert isinstance(t, np.ndarray)
-    assert t.ndim == 1 and t[0] == pytest.approx(T0) and t[-1] == pytest.approx(TF)
+    assert t.ndim == 1 and t[0] == T0 and t[-1] == TF   # endpoints must be exact
     assert y.ndim == 2 and y.shape == (2, len(t))
     _check(t, y)
 
@@ -131,6 +133,7 @@ def test_knots_mode(method):
     assert isinstance(t, np.ndarray)
     np.testing.assert_array_equal(t, tspan)
     assert y.shape == (2, 11)
+    assert y.dtype == np.complex128
     _check(t, y)
 
 
@@ -283,12 +286,14 @@ def test_ret_stats():
 
 def test_refine():
     """refine=4 inserts 3 interpolated points per step; solution should match."""
-    t_base, y_base = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
-                                       refine=1)
+    REFINE = 4
+    t_base, _ = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
+                                   refine=1)
     t_ref, y_ref = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
-                                     refine=4)
-    # refine=4 must produce at least as many points as refine=1
-    assert len(t_ref) >= len(t_base)
+                                     refine=REFINE)
+    # Each of the (n-1) inter-step intervals gains (refine-1) extra points.
+    n_steps = len(t_base) - 1
+    assert len(t_ref) == len(t_base) + n_steps * (REFINE - 1)
     _check(t_ref, y_ref)
 
 
