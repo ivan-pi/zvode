@@ -15,33 +15,8 @@ MESSAGES = {
 }
 
 
-def _warn_extraneous(extraneous):
-    """Warn about unexpected keyword arguments passed to a solver."""
-    if extraneous:
-        warnings.warn(
-            "The following arguments have no effect for the chosen solver: {}.".format(
-                ", ".join(f"`{k}`" for k in extraneous)
-            ),
-            stacklevel=3,
-        )
-
-
-def _validate_max_step(max_step):
-    if max_step <= 0:
-        raise ValueError("`max_step` must be positive.")
-    return max_step
-
-
-def _validate_first_step(first_step, t0, t_bound):
-    if first_step <= 0:
-        raise ValueError("`first_step` must be positive.")
-    if first_step > abs(t_bound - t0):
-        raise ValueError("`first_step` exceeds `t_bound - t0`.")
-    return first_step
-
-
 def _wrapped_fun(fun):
-    """Adapt a ``f(t, y)`` return-value callable to the in-place ZVODE signature."""
+    """Adapt a SciPy-compatible ``f(t, y) -> array`` callable to the in-place ZVODE signature."""
 
     def _zvode_fun(t, y, dy):
         dy[:] = fun(t, y)
