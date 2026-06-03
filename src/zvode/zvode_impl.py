@@ -307,13 +307,16 @@ class ZVODE(OdeSolver):
 
         * 0 – functional iteration (no Jacobian, non-stiff only)
         * 1 – chord with user-supplied full Jacobian
-        * 2 – chord with internally generated full Jacobian (default for BDF without *jac*)
+        * 2 – chord with internally generated full Jacobian (default when no *jac* is provided)
         * 3 – chord with diagonal Jacobian approximation
         * 4 – chord with user-supplied banded Jacobian
         * 5 – chord with internally generated banded Jacobian
     jsv : {1, -1}, optional
         Jacobian-saving flag.  ``1`` (default) saves and reuses the Jacobian;
-        ``-1`` recomputes it every step.
+        ``-1`` recomputes it every step.  Only meaningful when ``miter`` is
+        1, 2, 4, or 5 (i.e. when a Jacobian matrix is used); ignored for
+        functional iteration (``miter=0``) and the diagonal approximation
+        (``miter=3``).
 
     Attributes
     ----------

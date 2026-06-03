@@ -362,10 +362,14 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
         convention as ``fun``:
 
-        * ``in_place=False``: ``jac(t, y) -> (n, n)`` array.
+        * ``in_place=False``, full (no ``lband``/``uband``):
+          ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
+        * ``in_place=False``, banded (``lband``/``uband`` set):
+          ``jac(t, y) -> (lband + uband + 1, n)`` array where element
+          ``[i - j + uband, j]`` holds ``df(i)/dy(j)``.
         * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
         * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          user band of ``pd`` in place.
+          user band of ``pd`` in place using the same row convention.
 
     method : {'BDF', 'Adams'}, optional
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
@@ -425,20 +429,24 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Maximum integration order (capped at the method limit if exceeded).
     miter : {0, 1, 2, 3, 4, 5} or None, optional
         Iteration method used by the corrector.  Normally inferred
-        automatically from ``jac`` and the band arguments: ``0`` (functional
-        iteration, no Jacobian) when ``jac`` is ``None`` and no band is set,
-        ``1`` or ``4`` (user-supplied dense or banded Jacobian), and ``2`` or
-        ``5`` (internally generated dense or banded Jacobian).  Provide this
-        argument only to override that selection — for instance to force
-        finite-difference Jacobian generation even when a ``jac`` callable is
-        supplied.  Use with care: an inconsistent combination (e.g. ``miter=4``
-        without band arguments) will cause incorrect behaviour or a solver
-        failure.
+        automatically from ``jac`` and the band arguments: ``2`` or ``5``
+        (internally generated dense or banded Jacobian) when ``jac`` is
+        ``None``; ``1`` or ``4`` (user-supplied dense or banded Jacobian)
+        when ``jac`` is provided.  Set to ``0`` to use functional iteration
+        (no Jacobian matrix; recommended only for non-stiff problems with the
+        Adams method).  Provide this argument only to override the automatic
+        selection — for instance to force finite-difference Jacobian
+        generation even when a ``jac`` callable is supplied.  Use with care:
+        an inconsistent combination (e.g. ``miter=4`` without band arguments)
+        will raise a ``ValueError`` or cause a solver failure.
     save_jac : bool, optional
-        If ``True`` (default), the Jacobian is evaluated once and reused
-        across multiple steps, trading extra memory for fewer Jacobian
-        evaluations.  Set to ``False`` to recompute the Jacobian on every
-        step.
+        If ``True`` (default), a copy of the Jacobian is saved and reused
+        in the corrector iteration across multiple steps, trading extra
+        memory for fewer Jacobian evaluations.  Set to ``False`` to
+        discard the saved copy and recompute the Jacobian at each step.
+        Only meaningful when a Jacobian matrix is used (``miter`` 1, 2, 4,
+        or 5); ignored for functional iteration (``miter=0``) and the
+        diagonal approximation (``miter=3``).
 
     Raises
     ------
