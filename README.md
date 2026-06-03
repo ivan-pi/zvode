@@ -91,18 +91,6 @@ solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
 - no solution back-tracking available
 - only dense or banded Jacobians
 
-## Contributing
-
-Bug reports and suggestions are welcome via the [issue tracker](https://github.com/ivan-pi/zvode/issues).
-The most useful reports are:
-
-- **Documentation errors** — typos, incorrect parameter descriptions, or misleading examples.
-- **Integration failures** — cases where the solver returns a wrong result, fails to converge,
-  or raises an unexpected error. A minimal reproducer (ODE, initial condition, tolerances) is
-  very helpful.
-- **Feature requests** — even if a feature is not planned, requests help track what practitioners
-  actually need.
-
 ## References
 
 <a id="1">[1]</a>
@@ -184,3 +172,15 @@ This package uses a modified version of the Fortran ZVODE library. See [`extern/
 ## License
 
 `zvode` is distributed under the BSD license. See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Bug reports and suggestions are welcome via the [issue tracker](https://github.com/ivan-pi/zvode/issues).
+The most useful reports are:
+
+- **Documentation errors** — typos, incorrect parameter descriptions, or misleading examples.
+- **Integration failures** — cases where the solver returns a wrong result, fails to converge,
+  or raises an unexpected error. A minimal reproducer (ODE, initial condition, tolerances) is
+  very helpful.
+- **Feature requests** — even if a feature is not planned, requests help track what practitioners
+  actually need.
