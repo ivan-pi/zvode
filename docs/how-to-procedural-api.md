@@ -78,7 +78,7 @@ sol = solve_complex_ivp(rhs, tspan=(0.0, 5.0),
 ```
 
 **Banded** — pass `lband` and `uband`; return a `(lband + uband + 1, n)` array
-where entry `[uband + i - j, j]` holds ∂f[i]/∂y[j]:
+where entry `[uband + i - j, j]` holds `df[i]/dy[j]`:
 
 ```python
 sol = solve_complex_ivp(rhs, tspan=(0.0, 5.0), y0=y0,

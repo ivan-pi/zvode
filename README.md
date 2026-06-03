@@ -16,13 +16,12 @@ This package exposes two interfaces to ZVODE:
 
 - **Procedural API** — `solve_complex_ivp(fun, tspan, y0, ...)`: a single-call
   function in the spirit of `scipy.integrate.odeint`. This is the recommended
-  starting point and the headline feature of **version 0.2.0**.
+  starting point.
 - **OdeSolver API** — `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`: a
   [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass for use with
   [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html).
 
-It uses a modified version of the original Fortran package; see
-[`extern/README.md`](extern/README.md) for the changes made.
+The underlying Fortran source has been modified; [`extern/README.md`](extern/README.md) documents the changes.
 
 > [!WARNING]
 > This integrator is not thread-safe. You cannot have two threads
@@ -132,7 +131,6 @@ through unchanged when supplied via `solve_ivp`.
 | `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
 | `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: `(n, n)` array; banded: `(lband + uband + 1, n)` array. Estimated by finite differences if omitted. |
 | `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-| `jsv` | `1` or `-1` | `1` | `1` saves and reuses the Jacobian; `-1` recomputes every step. |
 
 > **Note** — For stiff problems, `f` must be analytic (each component must be
 > an analytic function of each state variable). For stiff systems where `f` is
