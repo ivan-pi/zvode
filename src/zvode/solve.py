@@ -647,9 +647,9 @@ def solve_complex_ivp(
     #   raises NotImplementedError.
 
     fun_addr = _cfunc_address(fun)
-    jac_addr = (
+    jac_addr = (  # noqa: F841 — reserved for _zvode.drive()
         _cfunc_address(jac) if jac is not None else None
-    )  # reserved for _zvode.drive()
+    )
 
     if fun_addr is not None and not in_place:
         raise ValueError(
