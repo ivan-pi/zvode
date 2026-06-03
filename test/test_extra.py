@@ -5,10 +5,10 @@ Regression and validation tests for solve_complex_ivp:
   2. Nonlinear complex oscillator accuracy
   3. Error paths: negative atol, short tspan
   4. Exact Jacobian reduces RHS evaluations vs finite-diff
-  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF')
+  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF') on Van der Pol (n=2)
   6. Single-element (n=1) system: decay, damped oscillation, pure rotation
   7. refine > 1 interpolation accuracy (refine=2, refine=5)
-  8. max_order constrains Adams solver order
+  8. max_order constrains Adams solver order (n=2 decoupled decay)
 """
 
 import numpy as np
@@ -134,24 +134,24 @@ def test_exact_jacobian_reduces_nfev():
 # 5. Cross-validation against SciPy BDF
 # ---------------------------------------------------------------------------
 
-EPS_PR = 1e-3  # Prothero-Robinson stiffness
+VDP_MU = 10.0  # Van der Pol stiffness (mildly stiff, nonlinear, n=2)
 
 
-def pr_fun(t, y):
-    return np.array([(np.sin(t) - y[0]) / EPS_PR + np.cos(t)], dtype=complex)
+def vdp_fun(t, y):
+    return np.array([y[1], VDP_MU * (1 - y[0]**2) * y[1] - y[0]], dtype=complex)
 
 
-def pr_fun_real(t, y):
-    return [(np.sin(t) - y[0]) / EPS_PR + np.cos(t)]
+def vdp_fun_real(t, y):
+    return [y[1], VDP_MU * (1 - y[0]**2) * y[1] - y[0]]
 
 
 def test_scipy_bdf_comparison():
-    """solve_complex_ivp endpoint agrees with scipy BDF to 1e-5 on Prothero–Robinson."""
-    y0_z = np.array([0.0 + 0j])
+    """solve_complex_ivp endpoint agrees with scipy BDF to 1e-5 on the Van der Pol oscillator."""
+    y0_z = np.array([2.0 + 0j, 0.0 + 0j])
     tols = dict(rtol=1e-8, atol=1e-10)
 
-    sol_zvode = solve_complex_ivp(pr_fun, [0.0, 3.0], y0_z, save_steps=False, **tols)
-    sol_scipy = solve_ivp(pr_fun_real, [0.0, 3.0], [0.0], method="BDF", **tols)
+    sol_zvode = solve_complex_ivp(vdp_fun, [0.0, 0.5], y0_z, save_steps=False, **tols)
+    sol_scipy = solve_ivp(vdp_fun_real, [0.0, 0.5], [2.0, 0.0], method="BDF", **tols)
 
     assert sol_scipy.success, f"SciPy BDF failed: {sol_scipy.message}"
     assert_allclose(sol_zvode.y.real, sol_scipy.y[:, -1], rtol=1e-5)
@@ -207,16 +207,25 @@ def test_refine_interpolation_accuracy(refine):
 # 8. Edge case: max_order constraint
 # ---------------------------------------------------------------------------
 
+# Two-component decoupled linear system: y' = diag(lam1, lam2) * y
+# Exact endpoint: y[i](T) = y0[i] * exp(lam[i] * T)
+MAX_ORDER_LAM = np.array([-1.0 + 0j, -2.0 + 0j])
+MAX_ORDER_T = 5.0
+
+
+def max_order_fun(t, y):
+    return MAX_ORDER_LAM * y
+
+
 def test_max_order_constraint():
     """max_order=1 forces first-order Adams steps: more steps, same correct endpoint."""
-    lam = -1.0 + 0j
-    y0 = np.array([1.0 + 0j])
+    y0 = np.array([1.0 + 0j, 1.0 + 0j])
     kw = dict(method="Adams", rtol=1e-8, atol=1e-10, save_steps=False)
 
-    sol_default = solve_complex_ivp(lambda t, y: lam * y, [0.0, 5.0], y0, **kw)
-    sol_order1 = solve_complex_ivp(lambda t, y: lam * y, [0.0, 5.0], y0, max_order=1, **kw)
+    sol_default = solve_complex_ivp(max_order_fun, [0.0, MAX_ORDER_T], y0, **kw)
+    sol_order1 = solve_complex_ivp(max_order_fun, [0.0, MAX_ORDER_T], y0, max_order=1, **kw)
 
-    exact_end = np.array([np.exp(lam * 5.0)])
+    exact_end = y0 * np.exp(MAX_ORDER_LAM * MAX_ORDER_T)
     assert_allclose(sol_default.y, exact_end, rtol=1e-6)
     # Adams order-1 global error is O(sqrt(rtol)) ≈ 4e-4 for rtol=1e-8.
     assert_allclose(sol_order1.y, exact_end, rtol=1e-3)
