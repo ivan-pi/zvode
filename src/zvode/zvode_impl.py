@@ -213,10 +213,10 @@ class ZVODE(OdeSolver):
     ``y(t) = exp(i*t)``.  Pass ``ZVODE`` as the ``method`` argument to
     :func:`scipy.integrate.solve_ivp`:
 
-    >>> import numpy as np
+    >>> import math
     >>> from scipy.integrate import solve_ivp
     >>> from zvode import ZVODE
-    >>> sol = solve_ivp(lambda t, y: 1j*y, [0, 2*np.pi], [1+0j], method=ZVODE)
+    >>> sol = solve_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j], method=ZVODE)
     >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
     True
     """

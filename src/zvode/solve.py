@@ -488,9 +488,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
     Trace the unit circle: ``dy/dt = i*y``, ``y(0) = 1``, analytic solution
     ``y(t) = exp(i*t)``.  After one full revolution the state returns to 1:
 
-    >>> import numpy as np
+    >>> import math
     >>> from zvode import solve_complex_ivp
-    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, [0, 2*np.pi], [1+0j])
+    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j])
     >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
     True
     """
