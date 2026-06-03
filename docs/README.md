@@ -52,6 +52,14 @@ The examples require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), a
 
 ---
 
+## How-to guides
+
+- **[`banded_jacobian.md`](banded_jacobian.md)** — Detailed explanation of the banded
+  Jacobian interface: storage formula, ASCII layout diagrams, `jac` callback pattern,
+  and a memory-saving comparison table.
+
+---
+
 Have you solved an interesting ODE system with `zvode` and are willing to share it?
 Contributions are welcome — open an issue or pull request with your example script.
 A short note on what makes the problem interesting (stiffness, physics context, unusual
