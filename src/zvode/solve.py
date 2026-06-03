@@ -357,7 +357,10 @@ def solve_complex_ivp(fun, tspan, y0, *,
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     rtol, atol : float or array_like, optional
-        Relative and absolute tolerances.  Scalar or per-component arrays.
+        Relative and absolute local error tolerances.  The solver keeps the
+        local error roughly below ``rtol * |y(i)| + atol`` for each component.
+        Scalar or per-component arrays are accepted.  Defaults are
+        ``rtol=1e-3``, ``atol=1e-6``.
     jac : callable or None, optional
         Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
         convention as ``fun``:
@@ -375,7 +378,10 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
         (max order 5); ``'Adams'`` for non-stiff (max order 12).
     lband, uband : int or None, optional
-        Lower / upper half-bandwidths of a banded Jacobian.
+        Lower and upper half-bandwidths of a banded Jacobian.  Must be
+        non-negative integers.  When either is set, the banded Jacobian path
+        is used and the other defaults to 0.  The full band has width
+        ``lband + uband + 1``.
     in_place : bool, optional
         Selects the callback convention for ``fun`` and ``jac``.
         Default ``False`` (SciPy-compatible return-value form).
@@ -426,7 +432,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
         when function evaluations are expensive; an error is raised if the
         budget is exhausted before the next output point.
     max_order : int or None, optional
-        Maximum integration order (capped at the method limit if exceeded).
+        Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5} or None, optional
         Iteration method used by the corrector.  Normally inferred from
         ``method``, ``jac``, and the band arguments.  Without ``jac``,
@@ -468,7 +474,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
 
     References
     ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE, A
+    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
        Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
        10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
     """

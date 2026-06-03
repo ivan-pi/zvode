@@ -295,8 +295,10 @@ class ZVODE(OdeSolver):
         Jacobian matrix of `f` with respect to `y`, ``jac(t, y)``.
         For a full Jacobian, return an ``(n, n)`` array ``J[i, j] = df(i)/dy(j)``.
         For a banded Jacobian (when `lband` / `uband` are set), return an
-        ``(ml + mu + 1, n)`` array where ``PD[i-j+mu, j] = df(i)/dy(j)``.
-        If not supplied, ZVODE approximates the Jacobian by finite differences.
+        ``(lband + uband + 1, n)`` array where ``J[i-j+uband, j] = df(i)/dy(j)``.
+        If not supplied, BDF approximates the Jacobian by finite differences
+        (``miter=2``); Adams uses functional iteration and needs no Jacobian
+        (``miter=0``).
     lband, uband : int or None, optional
         Lower and upper half-bandwidths of a banded Jacobian.  Must be
         non-negative integers.  When either is set, the banded Jacobian path
@@ -317,8 +319,10 @@ class ZVODE(OdeSolver):
         * 4 – chord with user-supplied banded Jacobian
         * 5 – chord with internally generated banded Jacobian
     jsv : {1, -1}, optional
-        Jacobian-saving flag.  ``1`` (default) saves and reuses the Jacobian;
-        ``-1`` recomputes it every step.  Ignored when no full Jacobian matrix
+        Jacobian-saving flag.  ``1`` (default) retains a copy of the Jacobian
+        to reuse when rebuilding the Newton iteration matrix.  ``-1`` does not
+        retain a copy; the Jacobian is recomputed whenever the iteration matrix
+        needs updating.  Ignored when no full Jacobian matrix
         is stored, i.e. for functional iteration (``miter=0``) and the
         diagonal approximation (``miter=3``); both are normally selected
         automatically when `jac` is not supplied.
@@ -354,9 +358,9 @@ class ZVODE(OdeSolver):
 
     References
     ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A Variable
-       Coefficient ODE Solver," SIAM J. Sci. Stat. Comput., 10(5), 1038–1051
-       (1989).
+    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
+       Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
+       10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
     """
 
     def __init__(
