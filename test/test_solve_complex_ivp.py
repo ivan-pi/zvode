@@ -329,6 +329,55 @@ def test_invalid_refine_raises():
         solve_complex_ivp(fun, [T0, TF], Y0, refine=0)
 
 
+def test_miter1_without_jac_raises():
+    """miter=1 without a jac callable raises ValueError."""
+    with pytest.raises(ValueError, match="jac"):
+        solve_complex_ivp(fun, [T0, TF], Y0, miter=1)
+
+
+def test_miter4_without_jac_raises():
+    """miter=4 without a jac callable raises ValueError."""
+    with pytest.raises(ValueError, match="jac"):
+        solve_complex_ivp(fun, [T0, TF], Y0, miter=4, lband=LBAND, uband=UBAND)
+
+
+def test_miter4_without_band_params_raises():
+    """miter=4 with jac but without band parameters raises ValueError."""
+    with pytest.raises(ValueError, match="lband"):
+        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_dense, miter=4)
+
+
+def test_miter5_without_band_params_raises():
+    """miter=5 without band parameters raises ValueError."""
+    with pytest.raises(ValueError, match="lband"):
+        solve_complex_ivp(fun, [T0, TF], Y0, miter=5)
+
+
+def test_miter4_dense_jac_shape_raises():
+    """miter=4 with a dense (n×n) jac raises ValueError before Fortran is called.
+
+    jac_dense returns (2, 2) but miter=4 with lband=0, uband=1 expects (2, 2)
+    here — but using lband=0, uband=0 the expected shape is (1, 2), making the
+    mismatch detectable.
+    """
+    with pytest.raises(ValueError, match="shape"):
+        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_dense, miter=4,
+                          lband=0, uband=0)
+
+
+def test_miter1_banded_jac_shape_raises():
+    """miter=1 with a banded-format jac raises ValueError before Fortran is called.
+
+    jac_banded returns (lband+uband+1, n) = (2, 2) but miter=1 expects (n, n) = (2, 2)
+    — for this problem the shapes coincidentally match, so use a clearly wrong shape.
+    """
+    def jac_wrong(t, y):
+        return np.zeros((1, len(y)), dtype=np.complex128)  # (1, 2) for miter=1
+
+    with pytest.raises(ValueError, match="shape"):
+        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_wrong, miter=1)
+
+
 def test_compiled_callback_requires_in_place():
     """Compiled callbacks (numba/ctypes) are incompatible with in_place=False."""
     import ctypes

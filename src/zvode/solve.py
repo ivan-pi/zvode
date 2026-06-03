@@ -25,6 +25,7 @@ from .zvode_impl import (
     MESSAGES,
     _check_tolerances,
     _determine_miter,
+    _validate_jac_shape,
     _wrapped_fun,
     _wrapped_jac,
 )
@@ -504,6 +505,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
     _miter, ml, mu = _determine_miter(jac, lband, uband, miter)
+
+    if jac is not None and _miter in (1, 4) and not in_place:
+        _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)

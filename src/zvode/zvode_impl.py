@@ -113,6 +113,45 @@ def _check_tolerances(rtol, atol, n):
     return itol, rtol, atol
 
 
+def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
+    """Evaluate *jac* once at ``(t0, y0)`` and verify its return shape.
+
+    Only called for miter=1 (dense) and miter=4 (banded); skipped for
+    internally generated Jacobians (miter=2,3,5) and functional iteration
+    (miter=0) where no user callback is involved.
+
+    .. note::
+        This evaluation is not counted toward the Jacobian evaluation counter
+        because the Fortran library maintains its own internal counter in
+        ``iwork`` and it can only be read indirectly at the end of each
+        accepted step.
+    """
+    # FIXME: this evaluation should be counted toward the Jacobian evaluation
+    # counter (njev).  Currently the Fortran library maintains its own
+    # internal counter in iwork and we can only read it indirectly at the end
+    # of each accepted step, so there is no way to increment it here without
+    # duplicating the counter in Python.
+    trial = np.asarray(jac(t0, y0))
+    if miter == 4:
+        expected = (ml + mu + 1, n)
+        if trial.shape != expected:
+            raise ValueError(
+                f"For miter=4 (banded Jacobian), 'jac' must return an array "
+                f"of shape (lband + uband + 1, neq) = {expected}; "
+                f"got shape {trial.shape}. "
+                "Pass a dense Jacobian and use miter=1, or fix the banded format."
+            )
+    else:  # miter == 1
+        expected = (n, n)
+        if trial.shape != expected:
+            raise ValueError(
+                f"For miter=1 (dense Jacobian), 'jac' must return an array "
+                f"of shape (neq, neq) = {expected}; "
+                f"got shape {trial.shape}. "
+                "Pass a banded Jacobian with lband/uband and use miter=4."
+            )
+
+
 def _determine_miter(jac, lband, uband, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
 
@@ -389,31 +428,7 @@ class ZVODE(OdeSolver):
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
         if jac is not None and self.miter in (1, 4):
-            # FIXME: this evaluation should be counted toward the Jacobian
-            # evaluation counter (njev).  Currently the Fortran library
-            # maintains its own internal counter in iwork and we can only
-            # read it indirectly at the end of each accepted step, so there
-            # is no way to increment it here without duplicating the counter
-            # in Python.
-            _jac_trial = np.asarray(jac(t0, self._ytmp))
-            if self.miter == 4:
-                expected = (self.ml + self.mu + 1, self.n)
-                if _jac_trial.shape != expected:
-                    raise ValueError(
-                        f"For miter=4 (banded Jacobian), 'jac' must return an array "
-                        f"of shape (lband + uband + 1, neq) = {expected}; "
-                        f"got shape {_jac_trial.shape}. "
-                        "Pass a dense Jacobian and use miter=1, or fix the banded format."
-                    )
-            else:  # miter == 1
-                expected = (self.n, self.n)
-                if _jac_trial.shape != expected:
-                    raise ValueError(
-                        f"For miter=1 (dense Jacobian), 'jac' must return an array "
-                        f"of shape (neq, neq) = {expected}; "
-                        f"got shape {_jac_trial.shape}. "
-                        "Pass a banded Jacobian with lband/uband and use miter=4."
-                    )
+            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp)
 
         if jsv not in (1, -1):
             raise ValueError(
