@@ -145,8 +145,8 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
             )
 
 
-def _determine_miter(jac, lband, uband, explicit_miter=None):
-    """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
+def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
+    """Determine the MITER iteration-method flag from the supplied jac/band/meth arguments."""
 
     if jac is not None and not callable(jac):
         raise TypeError("'jac' must be callable or None.")
@@ -172,10 +172,12 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
             )
         return explicit_miter, lband, uband
 
+    # Adams (meth=1): functional iteration by default; BDF (meth=2): chord with generated Jacobian.
+    miter = 0 if meth == 1 else 2
+    if jac:
+        miter = 1                   # user-supplied full Jacobian
     if is_banded:
-        miter = 4 if jac else 5
-    else:
-        miter = 1 if jac else 2
+        miter = 4 if jac else 5     # banded overrides dense
     return miter, lband, uband
 
 
@@ -303,11 +305,14 @@ class ZVODE(OdeSolver):
     max_order : int, optional
         Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5}, optional
-        Iteration method override.  Normally inferred from `jac` and `lband`/`uband`:
+        Iteration method override.  Normally inferred from `lmm`, `jac`, and
+        `lband`/`uband`: Adams without `jac` defaults to ``0``; BDF without
+        `jac` defaults to ``2``; providing `jac` selects ``1`` (dense) or
+        ``4`` (banded).
 
-        * 0 – functional iteration (no Jacobian, non-stiff only)
+        * 0 – functional iteration (no Jacobian; default for Adams)
         * 1 – chord with user-supplied full Jacobian
-        * 2 – chord with internally generated full Jacobian (default when no *jac* is provided)
+        * 2 – chord with internally generated full Jacobian (default for BDF)
         * 3 – chord with diagonal Jacobian approximation
         * 4 – chord with user-supplied banded Jacobian
         * 5 – chord with internally generated banded Jacobian
@@ -409,7 +414,7 @@ class ZVODE(OdeSolver):
 
         self.wrap_fun = _wrapped_fun(fun)
 
-        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, miter)
+        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, self.meth, miter)
 
         if self.miter in (4, 5):
             bandwidth = self.ml + self.mu + 1

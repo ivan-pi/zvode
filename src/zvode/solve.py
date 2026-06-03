@@ -428,16 +428,15 @@ def solve_complex_ivp(fun, tspan, y0, *,
     max_order : int or None, optional
         Maximum integration order (capped at the method limit if exceeded).
     miter : {0, 1, 2, 3, 4, 5} or None, optional
-        Iteration method used by the corrector.  Normally inferred
-        automatically from ``jac`` and the band arguments: ``2`` or ``5``
-        (internally generated dense or banded Jacobian) when ``jac`` is
-        ``None``; ``1`` or ``4`` (user-supplied dense or banded Jacobian)
-        when ``jac`` is provided.  Set to ``0`` to use functional iteration
-        (no Jacobian matrix; recommended only for non-stiff problems with the
-        Adams method).  Provide this argument only to override the automatic
-        selection — for instance to force finite-difference Jacobian
-        generation even when a ``jac`` callable is supplied.  Use with care:
-        an inconsistent combination (e.g. ``miter=4`` without band arguments)
+        Iteration method used by the corrector.  Normally inferred from
+        ``method``, ``jac``, and the band arguments.  Without ``jac``,
+        ``method='Adams'`` defaults to ``0`` (functional iteration) and
+        ``method='BDF'`` defaults to ``2`` (internally generated Jacobian).
+        Providing ``jac`` selects ``1`` (dense) or ``4`` (banded).  Pass
+        this argument only to override the automatic selection — for instance
+        to force diagonal (``3``) or finite-difference Jacobian generation
+        even when a ``jac`` callable is supplied.  Use with care: an
+        inconsistent combination (e.g. ``miter=4`` without band arguments)
         will raise a ``ValueError`` or cause a solver failure.
     save_jac : bool, optional
         If ``True`` (default), a copy of the Jacobian is saved and reused
@@ -512,7 +511,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     else:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
-    _miter, ml, mu = _determine_miter(jac, lband, uband, miter)
+    _miter, ml, mu = _determine_miter(jac, lband, uband, meth, miter)
 
     if jac is not None and _miter in (1, 4) and not in_place:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
