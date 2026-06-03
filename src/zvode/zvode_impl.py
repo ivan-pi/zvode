@@ -119,18 +119,11 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
     Only called for miter=1 (dense) and miter=4 (banded); skipped for
     internally generated Jacobians (miter=2,3,5) and functional iteration
     (miter=0) where no user callback is involved.
-
-    .. note::
-        This evaluation is not counted toward the Jacobian evaluation counter
-        because the Fortran library maintains its own internal counter in
-        ``iwork`` and it can only be read indirectly at the end of each
-        accepted step.
     """
-    # FIXME: this evaluation should be counted toward the Jacobian evaluation
-    # counter (njev).  Currently the Fortran library maintains its own
-    # internal counter in iwork and we can only read it indirectly at the end
-    # of each accepted step, so there is no way to increment it here without
-    # duplicating the counter in Python.
+    # FIXME: this evaluation should be counted toward njev, but the Fortran
+    # library owns that counter inside iwork and it is only readable after
+    # each accepted step, so incrementing it here would require duplicating
+    # the counter in Python.
     trial = np.asarray(jac(t0, y0))
     if miter == 4:
         expected = (ml + mu + 1, n)
