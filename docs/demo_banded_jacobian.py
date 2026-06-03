@@ -38,10 +38,9 @@ The exact solution  y(t) = expm(A t) y0  is used to verify accuracy.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
 from scipy.linalg import expm
 
-from zvode import ZVODE
+from zvode import solve_complex_ivp
 
 # ---------------------------------------------------------------------------
 # System parameters
@@ -98,34 +97,32 @@ def jac_banded(t, y):
 
 y0 = np.array([1.0, 0.5 + 0.5j, -1j, 0.25, 1.0 - 0.5j], dtype=complex)
 
-t_span = (0.0, 4.0)
-t_eval = np.linspace(0.0, 4.0, 401)
+t_out = np.linspace(0.0, 4.0, 401)
 
 # ---------------------------------------------------------------------------
-# Integrate with ZVODE (BDF, user-supplied banded Jacobian)
+# Integrate with solve_complex_ivp (BDF, user-supplied banded Jacobian)
 # ---------------------------------------------------------------------------
 
-sol = solve_ivp(
+t, y, stats = solve_complex_ivp(
     fun,
-    t_span,
+    t_out,
     y0,
-    method=ZVODE,
     jac=jac_banded,
     lband=lband,
     uband=uband,
-    t_eval=t_eval,
     rtol=1e-10,
     atol=1e-12,
+    ret_stats=True,
 )
 
 # ---------------------------------------------------------------------------
 # Exact solution via matrix exponential
 # ---------------------------------------------------------------------------
 
-y_exact = np.array([expm(A * t) @ y0 for t in t_eval]).T
+y_exact = np.array([expm(A * ti) @ y0 for ti in t]).T
 
-max_err = np.max(np.abs(sol.y - y_exact))
-print(f"nsteps={sol.t.size - 1}, nfev={sol.nfev}, njev={sol.njev}, nlu={sol.nlu}")
+max_err = np.max(np.abs(y - y_exact))
+print(f"nsteps={stats.nsteps}, nfev={stats.nfev}, njev={stats.njev}, nlu={stats.nlu}")
 print(f"Max absolute error vs expm: {max_err:.2e}")
 
 # ---------------------------------------------------------------------------
@@ -140,8 +137,8 @@ for k in range(n):
     c = colors[k % len(colors)]
     for col, attr, label in [(0, "real", "Re"), (1, "imag", "Im")]:
         ax = axes[k, col]
-        ax.plot(t_eval, getattr(sol.y[k], attr), color=c, label="ZVODE")
-        ax.plot(t_eval, getattr(y_exact[k], attr), "--", color="k", lw=0.8,
+        ax.plot(t, getattr(y[k], attr), color=c, label="ZVODE")
+        ax.plot(t, getattr(y_exact[k], attr), "--", color="k", lw=0.8,
                 label="expm", alpha=0.6)
         ax.set_ylabel(rf"{label} $y_{k}$")
         ax.grid(True, alpha=0.3)

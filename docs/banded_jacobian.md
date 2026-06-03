@@ -6,7 +6,7 @@ For a system of size `n` the dense path allocates and factors an `n × n` matrix
 banded path works with an `(lband + uband + 1) × n` strip — a significant saving for
 large, narrowly banded systems.
 
-Activate the banded path by passing `lband` and/or `uband` to `solve_ivp`.
+Activate the banded path by passing `lband` and/or `uband` to `solve_complex_ivp`.
 The other bandwidth defaults to 0 if omitted.
 
 ## What "lower/upper half-bandwidth" means
@@ -59,7 +59,7 @@ c  c  c  *  *       row 3  (i - j =  2):  J[j+2, j] = c   second subdiagonal
 
 `*` marks unused positions (fixed at zero by convention).
 
-Notice how the columns of `pd` are the *columns* of `J` compacted downward:
+Notice how the columns of `pd` mirror the *columns* of `J` compacted downward:
 column `j` of `pd` contains the entries `J[j-uband, j]` through
 `J[j+lband, j]`, clamped to valid row indices.
 
@@ -87,27 +87,58 @@ def jac_banded(t, y):
 For a state-dependent Jacobian the same indexing applies; just compute the
 values from `y` before filling `pd`.
 
-## Calling `solve_ivp`
+## Calling `solve_complex_ivp`
 
 Pass `lband`, `uband`, and `jac` as keyword arguments:
 
 ```python
-from scipy.integrate import solve_ivp
-from zvode import ZVODE
+from zvode import solve_complex_ivp
 
-sol = solve_ivp(
-    fun, t_span, y0,
-    method=ZVODE,
+t, y = solve_complex_ivp(
+    fun, [t0, tf], y0,
     jac=jac_banded,
     lband=2,
     uband=1,
 )
 ```
 
-ZVODE infers `miter=4` (user-supplied banded Jacobian) automatically.
+`solve_complex_ivp` infers `miter=4` (user-supplied banded Jacobian) automatically.
 To let ZVODE estimate the banded Jacobian by finite differences instead,
 omit `jac` (or pass `jac=None`) while still providing `lband` and `uband`;
-ZVODE then uses `miter=5`.
+`solve_complex_ivp` then uses `miter=5`.
+
+### Output modes
+
+`tspan` controls what is returned:
+
+| `tspan` | `save_steps` | `t` | `y` |
+|---|---|---|---|
+| `[t0, tf]` | `True` (default) | 1-D array of all accepted step endpoints | `(n, m)` array |
+| `[t0, tf]` | `False` | scalar `tf` | 1-D array, shape `(n,)` |
+| `[t0, t1, …, tf]` | ignored | 1-D array of the requested knots | `(n, m)` array |
+
+To obtain output at specific times, pass them as `tspan`:
+
+```python
+import numpy as np
+
+t_out = np.linspace(t0, tf, 200)
+t, y = solve_complex_ivp(fun, t_out, y0, jac=jac_banded, lband=2, uband=1)
+# y has shape (n, 200)
+```
+
+### Integration statistics
+
+Pass `ret_stats=True` to receive a third return value with step and evaluation counts:
+
+```python
+t, y, stats = solve_complex_ivp(
+    fun, t_out, y0,
+    jac=jac_banded, lband=2, uband=1,
+    ret_stats=True,
+)
+print(stats)  # ZVODEStats(nsteps=..., nfev=..., njev=..., nlu=...)
+```
 
 ## Memory saving at a glance
 

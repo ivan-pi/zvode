@@ -7,6 +7,11 @@ to `solve_complex_ivp`: output modes, method selection, dense and banded
 Jacobians, integration statistics, backward integration, and in-place callbacks.
 Start here if you are new to the package.
 
+**[`banded_jacobian.md`](banded_jacobian.md)** — Banded Jacobian interface:
+what lower/upper half-bandwidths mean, the compact column-oriented storage
+formula with ASCII layout diagrams, how to write the `jac` callback, output
+modes of `solve_complex_ivp`, and a memory-saving comparison table.
+
 ---
 
 ## Examples (OdeSolver API)
@@ -19,7 +24,7 @@ Each script can be run directly:
 python docs/<script_name>.py
 ```
 
-The examples require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matplotlib](https://matplotlib.org/).
+They require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matplotlib](https://matplotlib.org/).
 
 1. **[`demo_minimal.py`](demo_minimal.py)** — Minimal working example.
    Scalar complex decay `y' = -i·y` solved with a single `solve_ivp` call.
@@ -44,19 +49,6 @@ The examples require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), a
    two-level quantum system (qubit) undergoing Rabi oscillations with spontaneous emission.
    The 2×2 density matrix is vectorized to a 4-component complex array to interface with
    `solve_ivp`.
-
-7. **[`demo_banded_jacobian.py`](demo_banded_jacobian.py)** — Banded Jacobian interface.
-   Solves a 5-component chain system `y' = Ay` with a constant complex banded matrix
-   (lower bandwidth `lband=2`, upper bandwidth `uband=1`).  Shows the compact
-   column-oriented storage layout required by ZVODE and verifies against `scipy.linalg.expm`.
-
----
-
-## How-to guides
-
-- **[`banded_jacobian.md`](banded_jacobian.md)** — Detailed explanation of the banded
-  Jacobian interface: storage formula, ASCII layout diagrams, `jac` callback pattern,
-  and a memory-saving comparison table.
 
 ---
 
