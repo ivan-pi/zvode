@@ -1,0 +1,7 @@
+---
+# Style for the C extension code.
+# BasedOnStyle: LLVM, then adjusted to match project conventions.
+BasedOnStyle: LLVM
+Language: Cpp
+IndentWidth: 4
+ColumnLimit: 88
