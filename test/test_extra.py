@@ -5,10 +5,10 @@ Regression and validation tests for solve_complex_ivp:
   2. Nonlinear complex oscillator accuracy
   3. Error paths: negative atol, short tspan
   4. Exact Jacobian reduces RHS evaluations vs finite-diff
-  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF') on Van der Pol (n=2)
+  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF') on a coupled complex system (n=2)
   6. Single-element (n=1) system: decay, damped oscillation, pure rotation
   7. refine > 1 interpolation accuracy (refine=2, refine=5)
-  8. max_order constrains Adams solver order (n=2 decoupled decay)
+  8. max_order constrains Adams solver order (n=2, complex eigenvalues)
 """
 
 import numpy as np
@@ -132,29 +132,34 @@ def test_exact_jacobian_reduces_nfev():
 
 # ---------------------------------------------------------------------------
 # 5. Cross-validation against SciPy BDF
+#
+#    Coupled complex linear system (upper triangular, n=2):
+#      dy0/dt = lam1*y0 + c*y1        lam1 = -1+2j, c = 0.5j
+#      dy1/dt = lam2*y1               lam2 = -2+1j
+#
+#    Both ZVODE and scipy BDF accept complex y0 natively; comparing
+#    their endpoints validates the solver against an independent implementation.
 # ---------------------------------------------------------------------------
 
-VDP_MU = 10.0  # Van der Pol stiffness (mildly stiff, nonlinear, n=2)
+CROSS_LAM1 = -1.0 + 2j
+CROSS_LAM2 = -2.0 + 1j
+CROSS_C = 0.5j
 
 
-def vdp_fun(t, y):
-    return np.array([y[1], VDP_MU * (1 - y[0]**2) * y[1] - y[0]], dtype=complex)
-
-
-def vdp_fun_real(t, y):
-    return [y[1], VDP_MU * (1 - y[0]**2) * y[1] - y[0]]
+def coupled_complex_fun(t, y):
+    return np.array([CROSS_LAM1 * y[0] + CROSS_C * y[1], CROSS_LAM2 * y[1]], dtype=complex)
 
 
 def test_scipy_bdf_comparison():
-    """solve_complex_ivp endpoint agrees with scipy BDF to 1e-5 on the Van der Pol oscillator."""
-    y0_z = np.array([2.0 + 0j, 0.0 + 0j])
+    """solve_complex_ivp endpoint agrees with scipy BDF to 1e-5 on a coupled complex system."""
+    y0 = np.array([1.0 + 0j, 0.0 + 1j])
     tols = dict(rtol=1e-8, atol=1e-10)
 
-    sol_zvode = solve_complex_ivp(vdp_fun, [0.0, 0.5], y0_z, save_steps=False, **tols)
-    sol_scipy = solve_ivp(vdp_fun_real, [0.0, 0.5], [2.0, 0.0], method="BDF", **tols)
+    sol_zvode = solve_complex_ivp(coupled_complex_fun, [0.0, 2.0], y0, save_steps=False, **tols)
+    sol_scipy = solve_ivp(coupled_complex_fun, [0.0, 2.0], y0, method="BDF", **tols)
 
     assert sol_scipy.success, f"SciPy BDF failed: {sol_scipy.message}"
-    assert_allclose(sol_zvode.y.real, sol_scipy.y[:, -1], rtol=1e-5)
+    assert_allclose(sol_zvode.y, sol_scipy.y[:, -1], rtol=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -207,9 +212,10 @@ def test_refine_interpolation_accuracy(refine):
 # 8. Edge case: max_order constraint
 # ---------------------------------------------------------------------------
 
-# Two-component decoupled linear system: y' = diag(lam1, lam2) * y
+# Two-component decoupled system with complex eigenvalues: y' = diag(lam) * y
+# Complex lam → solution oscillates and decays; genuinely complex-valued.
 # Exact endpoint: y[i](T) = y0[i] * exp(lam[i] * T)
-MAX_ORDER_LAM = np.array([-1.0 + 0j, -2.0 + 0j])
+MAX_ORDER_LAM = np.array([-1.0 + 2j, -2.0 + 1j])
 MAX_ORDER_T = 5.0
 
 
