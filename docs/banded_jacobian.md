@@ -20,8 +20,9 @@ A matrix that couples each row to the two rows below it and one row above has
 
 ## Storage layout
 
-Return a NumPy array `pd` of shape `(lband + uband + 1, n)` from your `jac`
-callable.  The mapping between `pd` and the logical Jacobian `J` is:
+Return a NumPy array `pd` (short for *partial derivatives*) of shape
+`(lband + uband + 1, n)` from your `jac` callable.
+The mapping between `pd` and the logical Jacobian `J` is:
 
 ```
 pd[i - j + uband, j]  =  J[i, j]
@@ -107,49 +108,20 @@ To let ZVODE estimate the banded Jacobian by finite differences instead,
 omit `jac` (or pass `jac=None`) while still providing `lband` and `uband`;
 `solve_complex_ivp` then uses `miter=5`.
 
-### Output modes
-
-`tspan` controls what is returned:
-
-| `tspan` | `save_steps` | `t` | `y` |
-|---|---|---|---|
-| `[t0, tf]` | `True` (default) | 1-D array of all accepted step endpoints | `(n, m)` array |
-| `[t0, tf]` | `False` | scalar `tf` | 1-D array, shape `(n,)` |
-| `[t0, t1, …, tf]` | ignored | 1-D array of the requested knots | `(n, m)` array |
-
-To obtain output at specific times, pass them as `tspan`:
-
-```python
-import numpy as np
-
-t_out = np.linspace(t0, tf, 200)
-t, y = solve_complex_ivp(fun, t_out, y0, jac=jac_banded, lband=2, uband=1)
-# y has shape (n, 200)
-```
-
-### Integration statistics
-
-Pass `ret_stats=True` to receive a third return value with step and evaluation counts:
-
-```python
-t, y, stats = solve_complex_ivp(
-    fun, t_out, y0,
-    jac=jac_banded, lband=2, uband=1,
-    ret_stats=True,
-)
-print(stats)  # ZVODEStats(nsteps=..., nfev=..., njev=..., nlu=...)
-```
+Output modes and integration statistics are covered in
+[`how-to-procedural-api.md`](how-to-procedural-api.md).
 
 ## Memory saving at a glance
 
-| `n`   | `lband` | `uband` | Dense `n²` | Banded `(l+u+1)·n` | Factor |
-|------:|--------:|--------:|-----------:|-------------------:|-------:|
-| 100   | 2       | 1       | 10 000     | 400                | 25×    |
-| 1 000 | 2       | 1       | 1 000 000  | 4 000              | 250×   |
-| 1 000 | 5       | 3       | 1 000 000  | 9 000              | 111×   |
+| `n`   | `lband` | `uband` | Dense `n²` | Banded `(l+u+1)·n` | Memory reduction |
+|------:|--------:|--------:|-----------:|-------------------:|-----------------:|
+| 100   | 2       | 1       | 10 000     | 400                | 25×              |
+| 1 000 | 2       | 1       | 1 000 000  | 4 000              | 250×             |
+| 1 000 | 5       | 3       | 1 000 000  | 9 000              | 111×             |
 
-(Each entry is the number of complex numbers stored in the Jacobian workspace;
-the banded path also avoids fill-in during LU factorisation.)
+Each entry is the number of complex numbers in the Jacobian workspace (`Dense / Banded`
+gives the memory reduction factor).  The banded path also avoids fill-in during
+LU factorisation, so the work-per-step saving is comparable.
 
 ## Complete example
 
