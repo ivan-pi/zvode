@@ -357,21 +357,31 @@ def solve_complex_ivp(fun, tspan, y0, *,
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     rtol, atol : float or array_like, optional
-        Relative and absolute tolerances.  Scalar or per-component arrays.
+        Relative and absolute local error tolerances.  The solver keeps the
+        local error roughly below ``rtol * |y(i)| + atol`` for each component.
+        Scalar or per-component arrays are accepted.  Defaults are
+        ``rtol=1e-3``, ``atol=1e-6``.
     jac : callable or None, optional
         Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
         convention as ``fun``:
 
-        * ``in_place=False``: ``jac(t, y) -> (n, n)`` array.
+        * ``in_place=False``, full (no ``lband``/``uband``):
+          ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
+        * ``in_place=False``, banded (``lband``/``uband`` set):
+          ``jac(t, y) -> (lband + uband + 1, n)`` array where element
+          ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
         * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
         * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          user band of ``pd`` in place.
+          banded matrix ``pd`` in place using the same row convention.
 
     method : {'BDF', 'Adams'}, optional
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
         (max order 5); ``'Adams'`` for non-stiff (max order 12).
     lband, uband : int or None, optional
-        Lower / upper half-bandwidths of a banded Jacobian.
+        Lower and upper half-bandwidths of a banded Jacobian.  Must be
+        non-negative integers.  When either is set, the banded Jacobian path
+        is used and the other defaults to 0.  The full band has width
+        ``lband + uband + 1``.
     in_place : bool, optional
         Selects the callback convention for ``fun`` and ``jac``.
         Default ``False`` (SciPy-compatible return-value form).
@@ -422,23 +432,25 @@ def solve_complex_ivp(fun, tspan, y0, *,
         when function evaluations are expensive; an error is raised if the
         budget is exhausted before the next output point.
     max_order : int or None, optional
-        Maximum integration order (capped at the method limit if exceeded).
+        Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5} or None, optional
-        Iteration method used by the corrector.  Normally inferred
-        automatically from ``jac`` and the band arguments: ``0`` (functional
-        iteration, no Jacobian) when ``jac`` is ``None`` and no band is set,
-        ``1`` or ``4`` (user-supplied dense or banded Jacobian), and ``2`` or
-        ``5`` (internally generated dense or banded Jacobian).  Provide this
-        argument only to override that selection — for instance to force
-        finite-difference Jacobian generation even when a ``jac`` callable is
-        supplied.  Use with care: an inconsistent combination (e.g. ``miter=4``
-        without band arguments) will cause incorrect behaviour or a solver
-        failure.
+        Iteration method used by the corrector.  Normally inferred from
+        ``method``, ``jac``, and the band arguments.  Without ``jac``,
+        ``method='Adams'`` defaults to ``0`` (functional iteration) and
+        ``method='BDF'`` defaults to ``2`` (internally generated Jacobian).
+        Providing ``jac`` selects ``1`` (dense) or ``4`` (banded).  Pass
+        this argument only to override the automatic selection — for instance
+        to force diagonal (``3``) or finite-difference Jacobian generation
+        even when a ``jac`` callable is supplied.  Use with care: an
+        inconsistent combination (e.g. ``miter=4`` without band arguments)
+        will raise a ``ValueError`` or cause a solver failure.
     save_jac : bool, optional
-        If ``True`` (default), the Jacobian is evaluated once and reused
-        across multiple steps, trading extra memory for fewer Jacobian
-        evaluations.  Set to ``False`` to recompute the Jacobian on every
-        step.
+        If ``True`` (default), the solver retains a copy of the Jacobian to
+        reuse when rebuilding the Newton iteration matrix, reducing Jacobian
+        evaluations at the cost of extra memory.  If ``False``, no copy is
+        kept and the Jacobian is recomputed whenever the iteration matrix
+        needs updating.  Ignored for functional iteration (``miter=0``) or
+        diagonal approximation (``miter=3``).
 
     Raises
     ------
@@ -462,7 +474,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
 
     References
     ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE, A
+    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
        Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
        10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
     """
@@ -504,7 +516,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     else:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
-    _miter, ml, mu = _determine_miter(jac, lband, uband, miter)
+    _miter, ml, mu = _determine_miter(jac, lband, uband, meth, miter)
 
     if jac is not None and _miter in (1, 4) and not in_place:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)

@@ -145,8 +145,8 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
             )
 
 
-def _determine_miter(jac, lband, uband, explicit_miter=None):
-    """Determine the MITER iteration-method flag from the supplied jac/band arguments."""
+def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
+    """Determine the MITER iteration-method flag from the supplied jac/band/meth arguments."""
 
     if jac is not None and not callable(jac):
         raise TypeError("'jac' must be callable or None.")
@@ -174,8 +174,10 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
 
     if is_banded:
         miter = 4 if jac else 5
+    elif jac:
+        miter = 1
     else:
-        miter = 1 if jac else 2
+        miter = 0 if meth == 1 else 2   # Adams: functional; BDF: chord with generated Jacobian
     return miter, lband, uband
 
 
@@ -293,8 +295,10 @@ class ZVODE(OdeSolver):
         Jacobian matrix of `f` with respect to `y`, ``jac(t, y)``.
         For a full Jacobian, return an ``(n, n)`` array ``J[i, j] = df(i)/dy(j)``.
         For a banded Jacobian (when `lband` / `uband` are set), return an
-        ``(ml + mu + 1, n)`` array where ``PD[i-j+mu, j] = df(i)/dy(j)``.
-        If not supplied, ZVODE approximates the Jacobian by finite differences.
+        ``(lband + uband + 1, n)`` array where ``J[i-j+uband, j] = df(i)/dy(j)``.
+        If not supplied, BDF approximates the Jacobian by finite differences
+        (``miter=2``); Adams uses functional iteration and needs no Jacobian
+        (``miter=0``).
     lband, uband : int or None, optional
         Lower and upper half-bandwidths of a banded Jacobian.  Must be
         non-negative integers.  When either is set, the banded Jacobian path
@@ -303,17 +307,24 @@ class ZVODE(OdeSolver):
     max_order : int, optional
         Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5}, optional
-        Iteration method override.  Normally inferred from `jac` and `lband`/`uband`:
+        Iteration method override.  Normally inferred from `lmm`, `jac`, and
+        `lband`/`uband`: Adams without `jac` defaults to ``0``; BDF without
+        `jac` defaults to ``2``; providing `jac` selects ``1`` (dense) or
+        ``4`` (banded).
 
-        * 0 – functional iteration (no Jacobian, non-stiff only)
+        * 0 – functional iteration (no Jacobian; default for Adams)
         * 1 – chord with user-supplied full Jacobian
-        * 2 – chord with internally generated full Jacobian (default for BDF without *jac*)
+        * 2 – chord with internally generated full Jacobian (default for BDF)
         * 3 – chord with diagonal Jacobian approximation
         * 4 – chord with user-supplied banded Jacobian
         * 5 – chord with internally generated banded Jacobian
     jsv : {1, -1}, optional
-        Jacobian-saving flag.  ``1`` (default) saves and reuses the Jacobian;
-        ``-1`` recomputes it every step.
+        Jacobian-saving flag.  ``1`` (default) retains a copy of the Jacobian
+        to reuse when rebuilding the Newton iteration matrix.  ``-1`` does not
+        retain a copy; the Jacobian is recomputed whenever the iteration matrix
+        needs updating.  Ignored when no full Jacobian matrix is stored, i.e.
+        for functional iteration (``miter=0``) and the diagonal approximation
+        (``miter=3``).
 
     Attributes
     ----------
@@ -346,9 +357,9 @@ class ZVODE(OdeSolver):
 
     References
     ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A Variable
-       Coefficient ODE Solver," SIAM J. Sci. Stat. Comput., 10(5), 1038–1051
-       (1989).
+    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
+       Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
+       10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
     """
 
     def __init__(
@@ -406,7 +417,7 @@ class ZVODE(OdeSolver):
 
         self.wrap_fun = _wrapped_fun(fun)
 
-        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, miter)
+        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, self.meth, miter)
 
         if self.miter in (4, 5):
             bandwidth = self.ml + self.mu + 1
