@@ -184,7 +184,14 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 | Resource | URL |
 |---|---|
 | `scipy.integrate.OdeSolver` (base class) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html> |
+| `scipy.integrate.ode` (legacy ZVODE wrapper) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html> |
 | R wrappers — deSolve `zvode` | <https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode> |
+
+SciPy has historically provided a ZVODE wrapper through
+[`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html),
+a stateful, class-based interface (`integrator='zvode'`). In recent SciPy
+versions the underlying Fortran source was replaced with a C translation of
+ZVODE that is thread-safe.
 
 ## Building from source
 
