@@ -7,6 +7,11 @@ to `solve_complex_ivp`: output modes, method selection, dense and banded
 Jacobians, integration statistics, backward integration, and in-place callbacks.
 Start here if you are new to the package.
 
+**[`banded_jacobian.md`](banded_jacobian.md)** — Banded Jacobian interface:
+what lower/upper half-bandwidths mean, the compact column-oriented storage
+formula with ASCII layout diagrams, how to write the `jac` callback, output
+modes of `solve_complex_ivp`, and a memory-saving comparison table.
+
 ---
 
 ## Examples (OdeSolver API)
@@ -19,7 +24,7 @@ Each script can be run directly:
 python docs/<script_name>.py
 ```
 
-The examples require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matplotlib](https://matplotlib.org/).
+They require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matplotlib](https://matplotlib.org/).
 
 1. **[`demo_minimal.py`](demo_minimal.py)** — Minimal working example.
    Scalar complex decay `y' = -i·y` solved with a single `solve_ivp` call.
