@@ -72,6 +72,8 @@ system, and developer-facing conveniences such as type stubs and validation.
 - Ensure implicit none is used and all variables are strictly typed
   (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
 - Add Python typing hints (the .pyi files)
+- Add short docstring Examples sections to ZVODE and solve_complex_ivp
+  (a few ``>>>`` lines each; enough for ``help()`` to be useful in a REPL)
 - Check older SciPy versions for any bug fixes not yet incorporated, and verify
   original licenses are properly attributed
 - Note on NEQ reset: when NEQ is reset during integration (ISTATE = 3), we must
