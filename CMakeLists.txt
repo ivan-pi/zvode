@@ -54,10 +54,9 @@ else()
   target_compile_definitions(_zvode PRIVATE ZVODE_USE_LINPACK)
   target_link_libraries(_zvode PRIVATE BLAS::BLAS)
   # In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
-  # (BLAS no-op), however m+1 > lda which trips gfortran's bound checker.
-  # See my chat with Claude for a full description of the problem
-  #   https://claude.ai/code/session_01P6jXN7Mrzxv28HirHe8UhG
-  # Originally surfaced in the banded test_oscillator_miter
+  # (BLAS no-op), but m+1 > lda trips gfortran's bounds checker even though
+  # the call is harmless (lm=0 means zscal does nothing).
+  # Originally surfaced in the banded test_oscillator_miter test case.
   set_source_files_properties(
     extern/linpack/zgbfa.f
     PROPERTIES
