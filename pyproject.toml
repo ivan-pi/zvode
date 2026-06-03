@@ -34,6 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=9"]
+bench = ["pytest>=9", "pytest-benchmark>=4"]
 
 [project.urls]
 Repository = "https://github.com/ivan-pi/zvode"
