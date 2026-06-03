@@ -189,9 +189,9 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 
 SciPy has historically provided a ZVODE wrapper through
 [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html),
-a stateful, class-based interface (`integrator='zvode'`). In recent SciPy
-versions the underlying Fortran source was replaced with a C translation of
-ZVODE that is thread-safe.
+a stateful, class-based interface (`integrator='zvode'`). As of SciPy 1.17,
+the underlying Fortran source was replaced with a C translation of ZVODE
+that is thread-safe.
 
 ## Building from source
 
