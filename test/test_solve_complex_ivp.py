@@ -306,14 +306,14 @@ def test_result_dict_access():
 def test_refine():
     """refine=4 inserts 3 interpolated points per step; solution should match."""
     REFINE = 4
-    result_base = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
-                                    refine=1)
-    result_ref = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
-                                   refine=REFINE)
+    sol_base = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
+                                 refine=1)
+    sol_ref = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
+                                refine=REFINE)
     # Each of the (n-1) inter-step intervals gains (refine-1) extra points.
-    n_steps = len(result_base.t) - 1
-    assert len(result_ref.t) == len(result_base.t) + n_steps * (REFINE - 1)
-    _check(result_ref.t, result_ref.y)
+    n_steps = len(sol_base.t) - 1
+    assert len(sol_ref.t) == len(sol_base.t) + n_steps * (REFINE - 1)
+    _check(sol_ref.t, sol_ref.y)
 
 
 # ---------------------------------------------------------------------------
