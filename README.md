@@ -14,7 +14,7 @@ a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
 This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
 so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
-argument. It uses a modified version of the upstream Fortran source; see
+argument. It uses a modified version of the original Fortran package; see
 [`extern/README.md`](extern/README.md) for the changes made.
 
 > [!WARNING]
@@ -57,7 +57,8 @@ Complete usage examples can be found in the [`docs/`](docs/) folder.
 ## Installation
 
 ```bash
-pip install zvode
+pip install zvode          # once available on PyPI
+pip install .              # install locally from source
 ```
 
 ## Solver options
@@ -137,8 +138,7 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 ## Building from source
 
 Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
-The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
-**ifx**, and **flang** are also known to work.
+The code has been tested with **gfortran** (passing `-std=f2003`).
 
 A BLAS library is required at link time (located by CMake's
 `find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
