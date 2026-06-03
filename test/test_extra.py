@@ -9,6 +9,16 @@ Regression and validation tests for solve_complex_ivp:
   6. Single-element (n=1) system: decay, damped oscillation, pure rotation
   7. refine > 1 interpolation accuracy (refine=2, refine=5)
   8. max_order constrains Adams solver order (n=2, complex eigenvalues)
+
+Note on real-in-complex problems
+---------------------------------
+Tests 1 and 4 use real-valued ODEs (real coefficients, real initial conditions)
+run through a complex-typed solver.  The solution stays on the real axis throughout.
+This is NOT the intended use of solve_complex_ivp, which targets genuinely
+complex-valued dynamics (quantum systems, complex analytic flows, etc.).
+These two tests are included for specific mechanical reasons — numerical accuracy
+regression against an exact solution (test 1) and a precise RHS-evaluation count
+that requires n=1 (test 4) — not as examples of how the solver should be used.
 """
 
 import numpy as np
@@ -21,6 +31,8 @@ from zvode import solve_complex_ivp
 
 # ---------------------------------------------------------------------------
 # 1. Numerical accuracy: underdamped harmonic oscillator
+#
+#    Real-valued ODE (real coefficients, real IC) — see module note above.
 # ---------------------------------------------------------------------------
 
 OMEGA = 2.0
@@ -100,8 +112,9 @@ def test_error_paths(tspan, kwargs, match):
 # ---------------------------------------------------------------------------
 # 4. Jacobian efficiency: exact Jacobian (miter=1) vs finite-diff (miter=2)
 #
-#    For n=1 each finite-diff Jacobian update costs one extra RHS evaluation,
-#    so nfev(miter=2) > nfev(miter=1) is a precise and checkable inequality.
+#    Real-valued ODE (real coefficients, real IC) — see module note above.
+#    n=1 is intentional: the finite-diff overhead is exactly +1 RHS evaluation
+#    per Jacobian update, making the nfev inequality precise.
 # ---------------------------------------------------------------------------
 
 LAM_EFF = -1000.0  # Prothero-Robinson stiffness parameter
