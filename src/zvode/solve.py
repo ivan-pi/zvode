@@ -86,7 +86,7 @@ def _cfunc_address(fun):
 
 def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
                     first_step, min_step, max_step, max_order, max_num_steps,
-                    t_bound):
+                    t0, t_bound):
     """Allocate and initialise ZVODE's three workspace arrays.
 
     Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
@@ -131,7 +131,8 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 
     rwork[0] = float(t_bound)          # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
-        rwork[4] = float(first_step)
+        # ZVODE (zvode.F:1328) requires H0 to carry the direction sign.
+        rwork[4] = float(first_step) * np.sign(t_bound - t0)
     if max_step > 0:
         rwork[5] = float(max_step)
     if min_step:
@@ -537,7 +538,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
         first_step, min_step, _effective_max_step, max_order, max_num_steps,
-        t_bound=float(tspan[-1]))
+        t0=float(tspan[0]), t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------
     # 5.  Normalize callbacks
