@@ -27,7 +27,17 @@ The underlying Fortran source has been modified; [`extern/README.md`](extern/REA
 > This integrator is not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
-[Quick start](#quick-start) · [Installation](#installation) · [Solver options](#solver-options) · [Limitations](#limitations) · [References](#references) · [Links](#links) · [Building from source](#building-from-source) · [License](#license) · [Contributing](#contributing)
+**Table of Contents:**
+
+- [Quick start](#quick-start)
+- [Installation](#installation)
+- [Solver options](#solver-options)
+- [Limitations](#limitations)
+- [References](#references)
+- [Links](#links)
+- [Building from source](#building-from-source)
+- [License](#license)
+- [Contributing](#contributing)
 
 ## Quick start
 
