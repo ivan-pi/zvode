@@ -68,6 +68,10 @@ is deferred to 0.4.0.
 Work in this release is concentrated on the Fortran layer, the CMake build
 system, and developer-facing conveniences such as type stubs and validation.
 
+- Add a test that asserts NotImplementedError is raised when in_place=True is
+  used with a ctypes or numba cfunc function pointer, so the current compiled-
+  callback stub is covered and a regression will fire automatically when 0.4.0
+  enables the path.
 - Domain checking of arguments in Python; there is some duplication of
   responsibilities, as ZVODE does some checks internally too; doing the checks
   in Python beforehand allows to raise a proper exception.
@@ -128,6 +132,10 @@ compiled code without GIL round-trips.
   - API reference, user guide, and at least one worked example
 - Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
   and macOS wheels to PyPI on each release tag
+- Windows wheel builds: add a windows-latest runner to the CI matrix,
+  document the required Fortran toolchain (gfortran via MSYS2/mingw-w64 or
+  Intel ifx), and add "Operating System :: Microsoft :: Windows" to the
+  pyproject.toml classifiers
 
 
 ## Post-1.0 — Future work (no API breaks expected)
@@ -145,6 +153,30 @@ are internal concerns that should not require any user-visible API changes.
 - Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - 64-bit integer build variant (ILP64) for very large systems.
+
+
+## Out of scope — desirable but not attainable short-term
+
+These features are genuinely useful but are architecturally out of scope for
+a binding to the classic ZVODE Fortran solver, or require effort that is
+disproportionate to the library's current stage.  They are documented here so
+users understand why they are absent and know where to look instead.
+
+- Sparse or matrix-free Jacobians: ZVODE is a dense/banded Adams-BDF solver
+  and has never had a sparse path.  Adding this would require replacing the
+  underlying solver entirely, e.g. with SUNDIALS CVODE (available via
+  scikits.odes or diffrax).  Out of scope for this package.
+
+- Event/root-finding: ZVODE has no built-in root-detection mechanism.
+  Implementing it at the Python layer (bisecting between steps) is feasible
+  but adds significant complexity.  Users who need event handling today should
+  use scipy.integrate.solve_ivp with the events= argument on the equivalent
+  doubled real system, or SUNDIALS CVODE.
+
+- Automatic detection of non-analytic stiff RHS: the analytic requirement for
+  stiff complex-valued problems (Cauchy-Riemann equations) cannot be checked
+  automatically for an arbitrary callable.  Documentation is the correct and
+  only feasible response.
 
 
 Developer notes
