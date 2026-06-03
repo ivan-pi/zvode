@@ -12,9 +12,16 @@ first-order ordinary differential equations with complex-valued state, written
 by G. D. Byrne and A. C. Hindmarsh [[2]](#2). It is part of ODEPACK and uses
 a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
-This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
-so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
-argument. It uses a modified version of the original Fortran package; see
+This package exposes two interfaces to ZVODE:
+
+- **Procedural API** — `solve_complex_ivp(fun, tspan, y0, ...)`: a single-call
+  function in the spirit of `scipy.integrate.odeint`. This is the recommended
+  starting point and the headline feature of **version 0.2.0**.
+- **OdeSolver API** — `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`: a
+  [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass for use with
+  [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html).
+
+It uses a modified version of the original Fortran package; see
 [`extern/README.md`](extern/README.md) for the changes made.
 
 > [!WARNING]
@@ -22,6 +29,74 @@ argument. It uses a modified version of the original Fortran package; see
 > using the ZVODE integrator simultaneously.
 
 ## Quick start
+
+### Procedural API — `solve_complex_ivp` (new in 0.2.0)
+
+`solve_complex_ivp` is the recommended entry point. It works like
+`scipy.integrate.odeint`: pass the RHS, a time span, and an initial condition;
+get back arrays of times and states.
+
+**Non-stiff problem** — collect every accepted step:
+
+```python
+import numpy as np
+from zvode import solve_complex_ivp
+
+t, y = solve_complex_ivp(
+    fun=lambda t, y: -1j * y,
+    tspan=(0.0, 10.0),
+    y0=[1.0 + 0.0j],
+    method='Adams',
+)
+# t : 1-D float array of accepted step times, shape (m,)
+# y : complex array, shape (1, m)
+```
+
+**Output at requested times** — pass three or more points as `tspan`:
+
+```python
+t_out = np.linspace(0.0, 10.0, 101)
+t, y = solve_complex_ivp(
+    fun=lambda t, y: -1j * y,
+    tspan=t_out,
+    y0=[1.0 + 0.0j],
+)
+# t is t_out, y.shape == (1, 101)
+```
+
+**Stiff problem** — BDF method with a user-supplied Jacobian:
+
+```python
+t, y = solve_complex_ivp(
+    fun=lambda t, y: -1j * y,
+    tspan=(0.0, 10.0),
+    y0=np.array([1.0 + 0.0j]),
+    method='BDF',
+    jac=lambda t, y: np.array([[-1j]]),
+    rtol=1e-8,
+    atol=1e-10,
+)
+```
+
+**Retrieve integration statistics** — append `ret_stats=True`:
+
+```python
+t, y, stats = solve_complex_ivp(
+    fun=lambda t, y: -1j * y,
+    tspan=(0.0, 10.0),
+    y0=[1.0 + 0.0j],
+    ret_stats=True,
+)
+print(stats)  # ZVODEStats(nsteps=..., nfev=..., njev=..., nlu=...)
+```
+
+A step-by-step how-to guide for the procedural API — covering output modes,
+banded Jacobians, backward integration, and more — is in
+[`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md).
+
+### OdeSolver API (scipy-compatible)
+
+Pass a `ZVODE_*` class as the `method` argument to `scipy.integrate.solve_ivp`.
 
 **Non-stiff problem** — rotating complex exponential:
 
@@ -52,7 +127,7 @@ sol = solve_ivp(
 )
 ```
 
-Complete usage examples can be found in the [`docs/`](docs/) folder.
+More OdeSolver examples are in the [`docs/`](docs/) folder.
 
 ## Installation
 
@@ -63,8 +138,31 @@ pip install .              # install locally from source
 
 ## Solver options
 
-Pass these as keyword arguments to `solve_ivp` (they are forwarded to the
-solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
+### `solve_complex_ivp` key parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `fun` | callable | — | RHS `f(t, y) → array_like`. With `in_place=True`: `f(t, y, dy)` fills `dy` in place. |
+| `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
+| `y0` | array-like | — | Initial state; cast to `complex128`. |
+| `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
+| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
+| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
+| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
+| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
+| `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
+| `ret_stats` | bool | `False` | Append a `ZVODEStats(nsteps, nfev, njev, nlu)` object as the third return value. |
+| `refine` | int | `1` | Insert `refine − 1` interpolated points between each pair of accepted steps using ZVINDY dense output. |
+| `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
+| `first_step` | float | auto | Initial step size. |
+| `max_step` | float | `np.inf` | Maximum step size. |
+| `min_step` | float | `0` | Minimum step size. |
+| `max_num_steps` | int | `1 000 000` | Maximum internal steps between output points; raises `RuntimeError` if exceeded. |
+
+### OdeSolver API options
+
+Pass these as keyword arguments to `solve_ivp` (forwarded to the solver
+constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
 `ZVODE_Adams`.
 
 | Option | Type | Default | Description |

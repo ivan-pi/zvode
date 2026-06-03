@@ -1,6 +1,17 @@
-# Examples
+# Docs
 
-The scripts in this folder are self-contained examples that show how to use
+## How-to guides
+
+**[`how-to-procedural-api.md`](how-to-procedural-api.md)** — Step-by-step guide
+to `solve_complex_ivp`: output modes, method selection, dense and banded
+Jacobians, integration statistics, backward integration, and in-place callbacks.
+Start here if you are new to the package.
+
+---
+
+## Examples (OdeSolver API)
+
+The scripts below are self-contained examples that show how to use
 `zvode` with [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html).
 Each script can be run directly:
 
