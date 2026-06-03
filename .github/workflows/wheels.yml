@@ -40,6 +40,12 @@ jobs:
           CIBW_TEST_COMMAND: "python -m pytest {project}/test -x -q"
           CIBW_CONFIG_SETTINGS_LINUX: "cmake.define.BLA_VENDOR=OpenBLAS"
           CIBW_CONFIG_SETTINGS_MACOS: "cmake.define.BLA_VENDOR=Apple"
+          # manylinux_2_28 (AlmaLinux 8, glibc 2.28) is required so that
+          # scipy's binary wheels are available in the test environment.
+          # scipy 1.15+ only ships manylinux_2_28 wheels; using the older
+          # manylinux_2_17 image forces pip to build scipy from source,
+          # which fails because the test venv has no OpenBLAS.
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_BEFORE_ALL_LINUX: "yum install -y openblas-devel || dnf install -y openblas-devel"
           CIBW_ARCHS_MACOS: arm64
           # GCC 14 from Homebrew targets macOS 14; match the deployment target
