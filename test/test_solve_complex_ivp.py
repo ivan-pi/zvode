@@ -107,37 +107,37 @@ def jac_banded(t, y):
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_save_steps_true(method):
     """Default mode: collect all accepted steps."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                                rtol=RTOL, atol=ATOL)
-    assert isinstance(result, ZVODEResult)
-    assert isinstance(result.t, np.ndarray)
-    assert result.t.ndim == 1 and result.t[0] == T0 and result.t[-1] == TF
-    assert result.y.ndim == 2 and result.y.shape == (2, len(result.t))
-    _check(result.t, result.y)
+    assert isinstance(sol, ZVODEResult)
+    assert isinstance(sol.t, np.ndarray)
+    assert sol.t.ndim == 1 and sol.t[0] == T0 and sol.t[-1] == TF
+    assert sol.y.ndim == 2 and sol.y.shape == (2, len(sol.t))
+    _check(sol.t, sol.y)
 
 
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_save_steps_false(method):
     """Endpoint-only mode: scalar t and 1-D y."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                                rtol=RTOL, atol=ATOL, save_steps=False)
-    assert np.isscalar(result.t)
-    assert result.t == pytest.approx(TF)
-    assert result.y.ndim == 1 and result.y.shape == (2,)
+    assert np.isscalar(sol.t)
+    assert sol.t == pytest.approx(TF)
+    assert sol.y.ndim == 1 and sol.y.shape == (2,)
     ref = exact(TF)  # shape (2,)
-    assert np.allclose(result.y, ref, rtol=1e-5)
+    assert np.allclose(sol.y, ref, rtol=1e-5)
 
 
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_knots_mode(method):
     """Knot mode (len(tspan) > 2): output at exactly the requested times."""
     tspan = np.linspace(T0, TF, 11)
-    result = solve_complex_ivp(fun, tspan, Y0, method=method, rtol=RTOL, atol=ATOL)
-    assert isinstance(result, ZVODEResult)
-    np.testing.assert_array_equal(result.t, tspan)
-    assert result.y.shape == (2, 11)
-    assert result.y.dtype == np.complex128
-    _check(result.t, result.y)
+    sol = solve_complex_ivp(fun, tspan, Y0, method=method, rtol=RTOL, atol=ATOL)
+    assert isinstance(sol, ZVODEResult)
+    np.testing.assert_array_equal(sol.t, tspan)
+    assert sol.y.shape == (2, 11)
+    assert sol.y.dtype == np.complex128
+    _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +152,9 @@ def test_knots_mode(method):
 ])
 def test_jacobian_types(method, jac_fn, jac_kwargs):
     """Dense and banded user Jacobians against the no-Jacobian baseline."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                                rtol=RTOL, atol=ATOL, jac=jac_fn, **jac_kwargs)
-    _check(result.t, result.y)
+    _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +166,13 @@ def test_inplace_fun(mode):
     """in_place=True plain Python callable, no Jacobian."""
     tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
     save = (mode == "steps")
-    result = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True,
+    sol = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True,
                                save_steps=save, rtol=RTOL, atol=ATOL)
     if mode == "endpoint":
         ref = exact(TF)
-        assert np.allclose(result.y, ref, rtol=1e-5)
+        assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
-        _check(result.t, result.y)
+        _check(sol.t, sol.y)
 
 
 @pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
@@ -180,13 +180,13 @@ def test_inplace_fun_dense_jac(mode):
     """in_place=True with dense Jacobian."""
     tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
     save = (mode == "steps")
-    result = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True, jac=jac_dense_ip,
+    sol = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True, jac=jac_dense_ip,
                                save_steps=save, rtol=RTOL, atol=ATOL)
     if mode == "endpoint":
         ref = exact(TF)
-        assert np.allclose(result.y, ref, rtol=1e-5)
+        assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
-        _check(result.t, result.y)
+        _check(sol.t, sol.y)
 
 
 @pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
@@ -194,14 +194,14 @@ def test_inplace_fun_banded_jac(mode):
     """in_place=True with banded Jacobian."""
     tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
     save = (mode == "steps")
-    result = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True, jac=jac_banded_ip,
+    sol = solve_complex_ivp(fun_ip, tspan, Y0, in_place=True, jac=jac_banded_ip,
                                lband=LBAND, uband=UBAND, save_steps=save,
                                rtol=RTOL, atol=ATOL)
     if mode == "endpoint":
         ref = exact(TF)
-        assert np.allclose(result.y, ref, rtol=1e-5)
+        assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
-        _check(result.t, result.y)
+        _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -218,14 +218,14 @@ def test_backward_integration(mode):
         tspan = [TF, T0]
     save = (mode == "steps")
 
-    result = solve_complex_ivp(fun, tspan, y_tf, save_steps=save, rtol=RTOL, atol=ATOL)
+    sol = solve_complex_ivp(fun, tspan, y_tf, save_steps=save, rtol=RTOL, atol=ATOL)
 
     if mode == "endpoint":
         ref = exact(T0)
-        assert result.t == pytest.approx(T0)
-        assert np.allclose(result.y, ref, rtol=1e-5)
+        assert sol.t == pytest.approx(T0)
+        assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
-        _check(result.t, result.y)
+        _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -234,20 +234,20 @@ def test_backward_integration(mode):
 
 def test_allow_overshoot_false():
     """allow_overshoot=False (default): last output point must equal TF exactly."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=False,
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=False,
                                rtol=RTOL, atol=ATOL)
-    assert result.t[-1] == pytest.approx(TF)
+    assert sol.t[-1] == pytest.approx(TF)
 
 
 def test_allow_overshoot_true():
     """allow_overshoot=True: last output point may go slightly past TF."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=True,
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, allow_overshoot=True,
                                rtol=RTOL, atol=ATOL)
-    assert result.t[-1] >= TF - 1e-12
+    assert sol.t[-1] >= TF - 1e-12
     # Solution at TF should still be accurate regardless of overshoot
     # Find the closest output point to TF and verify the analytic match
-    idx = np.argmin(np.abs(result.t - TF))
-    _check(result.t[idx:idx+1], result.y[:, idx:idx+1])
+    idx = np.argmin(np.abs(sol.t - TF))
+    _check(sol.t[idx:idx+1], sol.y[:, idx:idx+1])
 
 
 # ---------------------------------------------------------------------------
@@ -272,34 +272,34 @@ def test_max_num_steps_exceeded():
 
 def test_result_type():
     """solve_complex_ivp always returns a ZVODEResult."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    assert isinstance(result, ZVODEResult)
-    assert hasattr(result, 't')
-    assert hasattr(result, 'y')
-    assert hasattr(result, 'nfev')
-    assert hasattr(result, 'njev')
-    assert hasattr(result, 'nlu')
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
+    assert isinstance(sol, ZVODEResult)
+    assert hasattr(sol, 't')
+    assert hasattr(sol, 'y')
+    assert hasattr(sol, 'nfev')
+    assert hasattr(sol, 'njev')
+    assert hasattr(sol, 'nlu')
 
 
 def test_stats_always_present():
-    """Solver statistics are always present on the result, no opt-in needed."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    assert result.nsteps > 0
-    assert result.nfev > 0
-    assert result.njev >= 0
-    assert result.nlu >= 0
-    assert result.nni >= 0
-    assert result.ncfn >= 0
-    assert result.netf >= 0
+    """Solver statistics are always present on the sol, no opt-in needed."""
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
+    assert sol.nsteps > 0
+    assert sol.nfev > 0
+    assert sol.njev >= 0
+    assert sol.nlu >= 0
+    assert sol.nni >= 0
+    assert sol.ncfn >= 0
+    assert sol.netf >= 0
 
 
 def test_result_dict_access():
     """ZVODEResult fields accessible both as attributes and dict keys."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    np.testing.assert_array_equal(result['t'], result.t)
-    np.testing.assert_array_equal(result['y'], result.y)
-    assert result['nfev'] == result.nfev
-    assert result['nlu'] == result.nlu
+    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
+    np.testing.assert_array_equal(sol['t'], sol.t)
+    np.testing.assert_array_equal(sol['y'], sol.y)
+    assert sol['nfev'] == sol.nfev
+    assert sol['nlu'] == sol.nlu
 
 
 # ---------------------------------------------------------------------------
