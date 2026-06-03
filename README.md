@@ -20,48 +20,6 @@ argument.
 > This integrator is not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
-## Fortran source
-
-This package uses a modified version of the Fortran ZVODE library. See [`extern/README.md`](extern/README.md) for the changes made.
-
-## Installation
-
-```bash
-pip install .
-```
-
-### Building from source
-
-Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
-The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
-**ifx**, and **flang** are also known to work.
-
-A BLAS library is required at link time (located by CMake's
-`find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
-or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
-Accelerate framework is picked up automatically.
-
-```bash
-# Example: Ubuntu / Debian
-sudo apt update
-sudo apt install gfortran libopenblas-dev
-pip install -v ".[test]"
-```
-
-```bash
-# Example: macOS (Homebrew)
-brew update
-brew install gfortran
-pip install -v ".[test]"
-```
-
-To control which BLAS library is used, add the option,
-```
-pip install ... \
-  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
-```
-The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
-
 ## Quick start
 
 **Non-stiff problem** — rotating complex exponential:
@@ -95,6 +53,12 @@ sol = solve_ivp(
 
 Complete usage examples can be found in the [`docs/`](docs/) folder.
 
+## Installation
+
+```bash
+pip install zvode
+```
+
 ## Solver options
 
 Pass these as keyword arguments to `solve_ivp` (they are forwarded to the
@@ -126,6 +90,18 @@ solver constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
 - not thread-safe (ZVODE uses global Fortran COMMON blocks)
 - no solution back-tracking available
 - only dense or banded Jacobians
+
+## Contributing
+
+Bug reports and suggestions are welcome via the [issue tracker](https://github.com/ivan-pi/zvode/issues).
+The most useful reports are:
+
+- **Documentation errors** — typos, incorrect parameter descriptions, or misleading examples.
+- **Integration failures** — cases where the solver returns a wrong result, fails to converge,
+  or raises an unexpected error. A minimal reproducer (ODE, initial condition, tolerances) is
+  very helpful.
+- **Feature requests** — even if a feature is not planned, requests help track what practitioners
+  actually need.
 
 ## References
 
@@ -169,18 +145,42 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 | `scipy.integrate.OdeSolver` (base class) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html> |
 | R wrappers — deSolve `zvode` | <https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode> |
 
+## Building from source
+
+Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
+The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
+**ifx**, and **flang** are also known to work.
+
+A BLAS library is required at link time (located by CMake's
+`find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
+or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
+Accelerate framework is picked up automatically.
+
+```bash
+# Example: Ubuntu / Debian
+sudo apt update
+sudo apt install gfortran libopenblas-dev
+pip install -v ".[test]"
+```
+
+```bash
+# Example: macOS (Homebrew)
+brew update
+brew install gfortran
+pip install -v ".[test]"
+```
+
+To control which BLAS library is used, add the option,
+```
+pip install ... \
+  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
+```
+The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
+
+## Fortran source
+
+This package uses a modified version of the Fortran ZVODE library. See [`extern/README.md`](extern/README.md) for the changes made.
+
 ## License
 
 `zvode` is distributed under the BSD license. See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Bug reports and suggestions are welcome via the [issue tracker](https://github.com/ivan-pi/zvode/issues).
-The most useful reports are:
-
-- **Documentation errors** — typos, incorrect parameter descriptions, or misleading examples.
-- **Integration failures** — cases where the solver returns a wrong result, fails to converge,
-  or raises an unexpected error. A minimal reproducer (ODE, initial condition, tolerances) is
-  very helpful.
-- **Feature requests** — even if a feature is not planned, requests help track what practitioners
-  actually need.
