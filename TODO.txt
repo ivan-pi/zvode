@@ -26,7 +26,7 @@ Release plan
    process-wide Lock is required — one instance per thread is not sufficient)
 
 
-## [RELEASED] 0.2.0 — Procedural interface (Python layer)
+## [NEXT] 0.2.0 — Procedural interface (Python layer)
 
 The goal of this release is to provide a standalone `solve_complex_ivp()` function.
 Note: the integration loop is implemented in Python rather than compiled C, so
