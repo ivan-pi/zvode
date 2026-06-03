@@ -510,7 +510,7 @@ _S_EXACT_FINAL = np.exp(-1j * 1.0)
 def test_scalar_jac_shape_raises(jac, label):
     """Jacobians that don't return a (1,1) array must raise ValueError naming 'shape'."""
     with pytest.raises(ValueError, match="shape"):
-        solve_complex_ivp(_S_FUN, _S_TSPAN, _S_Y0, jac=jac, miter=1)
+        solve_complex_ivp(_S_FUN, _S_TSPAN, _S_Y0, jac=jac)
 
 
 def test_nested_list_jac_accepted():
@@ -520,7 +520,6 @@ def test_nested_list_jac_accepted():
         _S_TSPAN,
         _S_Y0,
         jac=lambda t, y: [[-1j]],
-        miter=1,
         rtol=1e-8,
         atol=1e-10,
     )

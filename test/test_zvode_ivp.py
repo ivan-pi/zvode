@@ -1384,7 +1384,7 @@ _SJ_EXACT_FINAL = np.exp(-1j * 1.0)
 def test_scalar_jac_shape_raises(jac, label):
     """Jacobians that don't return a (1,1) array raise ValueError naming 'shape'."""
     with pytest.raises(ValueError, match="shape"):
-        solve_ivp(_SJ_FUN, _SJ_T_SPAN, _SJ_Y0, method=ZVODE, jac=jac, miter=1)
+        solve_ivp(_SJ_FUN, _SJ_T_SPAN, _SJ_Y0, method=ZVODE, jac=jac)
 
 
 def test_nested_list_jac_accepted():
@@ -1395,7 +1395,6 @@ def test_nested_list_jac_accepted():
         _SJ_Y0,
         method=ZVODE,
         jac=lambda t, y: [[-1j]],
-        miter=1,
         rtol=1e-8,
         atol=1e-10,
     )
