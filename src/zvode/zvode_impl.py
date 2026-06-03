@@ -206,6 +206,19 @@ class ZVODE(OdeSolver):
     .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
        Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
        10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
+
+    Examples
+    --------
+    Trace the unit circle: ``dy/dt = i*y``, ``y(0) = 1``, analytic solution
+    ``y(t) = exp(i*t)``.  Pass ``ZVODE`` as the ``method`` argument to
+    :func:`scipy.integrate.solve_ivp`:
+
+    >>> import math
+    >>> from scipy.integrate import solve_ivp
+    >>> from zvode import ZVODE
+    >>> sol = solve_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j], method=ZVODE)
+    >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
+    True
     """
 
     def __init__(
