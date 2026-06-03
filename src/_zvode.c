@@ -165,6 +165,11 @@ check_array(PyArrayObject *ap, const char *name, int ndim, int typenum, char ord
             "zvode: %s must be Fortran-contiguous", name);
         return 0;
     }
+    if (!PyArray_ISALIGNED(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s is not suitably aligned for its dtype", name);
+        return 0;
+    }
     return 1;
 }
 
@@ -200,6 +205,11 @@ check_array_scalar_or_1d(PyArrayObject *ap, const char *name, int typenum)
     if (PyArray_NDIM(ap) == 1 && !PyArray_IS_C_CONTIGUOUS(ap)) {
         PyErr_Format(PyExc_ValueError,
             "zvode: %s must be C-contiguous", name);
+        return 0;
+    }
+    if (!PyArray_ISALIGNED(ap)) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: %s is not suitably aligned for its dtype", name);
         return 0;
     }
     return 1;
@@ -311,7 +321,6 @@ static void jac_adaptor(
         return;
     }
 
-
     PyObject *res;
     if (cb->jac_is_banded) {
         /* jac(t, y, pd, ml, mu): Python writes the Jacobian into pd in place. */
@@ -372,14 +381,7 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
         return NULL;
     }
 
-    assert(ap_y);
-    assert(ap_rtol);
-    assert(ap_atol);
-    assert(ap_zwork);
-    assert(ap_rwork);
-    assert(ap_iwork);
-    assert(cb.fun);
-    assert(cb.jac); // should be Py_None or a callable
+    /* 'O!' in PyArg_ParseTuple guarantees these are non-NULL PyArrayObjects. */
 
     if (ZVODE_DEBUG) {
         dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
@@ -387,11 +389,18 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
                         cb.jac, mf);
     }
 
-    const int neq = (int) PyArray_DIM(ap_y, 0);
-    if (neq <= 0) {
+    const npy_intp dim0 = PyArray_DIM(ap_y, 0);
+    if (dim0 <= 0) {
         PyErr_SetString(PyExc_ValueError, "zvode: y must be non-empty");
         return NULL;
     }
+    if (dim0 > INT_MAX) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: y length %lld overflows a 32-bit Fortran INTEGER",
+            (long long) dim0);
+        return NULL;
+    }
+    const int neq = (int) dim0;
 
     if (itask < 1 || itask > 5) {
         PyErr_Format(PyExc_ValueError,
@@ -400,8 +409,17 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     }
 
     const int miter = abs(mf) % 10;
-    assert(miter <= 5);
-    assert(abs(mf)/10 == 1 || abs(mf)/10 == 2); /* method */
+    if (miter > 5) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: invalid mf=%d (derived miter=%d, must be 0-5)", mf, miter);
+        return NULL;
+    }
+    const int meth = abs(mf) / 10;
+    if (meth != 1 && meth != 2) {
+        PyErr_Format(PyExc_ValueError,
+            "zvode: invalid mf=%d (derived meth=%d, must be 1 or 2)", mf, meth);
+        return NULL;
+    }
 
     cb.jac_is_banded = (miter == 4);
 
@@ -459,9 +477,17 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
         }
     }
 
-    const int lzw = (int) PyArray_SIZE(ap_zwork);
-    const int lrw = (int) PyArray_SIZE(ap_rwork);
-    const int liw = (int) PyArray_SIZE(ap_iwork);
+    const npy_intp sz_zwork = PyArray_SIZE(ap_zwork);
+    const npy_intp sz_rwork = PyArray_SIZE(ap_rwork);
+    const npy_intp sz_iwork = PyArray_SIZE(ap_iwork);
+    if (sz_zwork > INT_MAX || sz_rwork > INT_MAX || sz_iwork > INT_MAX) {
+        PyErr_SetString(PyExc_ValueError,
+            "zvode: workspace array length overflows a 32-bit Fortran INTEGER");
+        return NULL;
+    }
+    const int lzw = (int) sz_zwork;
+    const int lrw = (int) sz_rwork;
+    const int liw = (int) sz_iwork;
 
     double complex *y     = (double complex *) PyArray_DATA(ap_y);
     double complex *zwork = (double complex *) PyArray_DATA(ap_zwork);
@@ -543,7 +569,12 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
     const int ldyh = (int) PyArray_DIM(ap_yh, 0);     /* leading dimension   */
     const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order       */
 
-    assert(ldyh >= n);
+    if (ldyh < n) {
+        PyErr_Format(PyExc_ValueError,
+            "zvindy: yh leading dimension (%d) must be >= dky length (%d)",
+            ldyh, n);
+        return NULL;
+    }
 
     if ((int) PyArray_SIZE(ap_dky) < n) {
         PyErr_Format(PyExc_ValueError,
