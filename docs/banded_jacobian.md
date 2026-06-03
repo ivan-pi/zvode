@@ -103,10 +103,8 @@ t, y = solve_complex_ivp(
 )
 ```
 
-`solve_complex_ivp` infers `miter=4` (user-supplied banded Jacobian) automatically.
 To let ZVODE estimate the banded Jacobian by finite differences instead,
-omit `jac` (or pass `jac=None`) while still providing `lband` and `uband`;
-`solve_complex_ivp` then uses `miter=5`.
+omit `jac` while still providing `lband` and `uband`.
 
 Output modes and integration statistics are covered in
 [`how-to-procedural-api.md`](how-to-procedural-api.md).
