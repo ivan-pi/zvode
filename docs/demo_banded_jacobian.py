@@ -69,6 +69,7 @@ A += np.diag([gamma] * (n - 2), -2)   # second subdiagonal
 # ---------------------------------------------------------------------------
 
 def fun(t, y):
+    # Dense matrix-vector product for convenience; the Jacobian is banded.
     return A @ y
 
 # ---------------------------------------------------------------------------
