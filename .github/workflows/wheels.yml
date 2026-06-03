@@ -62,6 +62,33 @@ jobs:
       - name: Build sdist
         run: pipx run build --sdist
 
+      - name: Check sdist metadata
+        run: pipx run twine check dist/*.tar.gz
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract sdist
+        run: tar -xf dist/*.tar.gz
+
+      - name: Build wheel from sdist
+        run: |
+          pip wheel zvode-*/ \
+            --config-settings cmake.define.BLA_VENDOR=OpenBLAS \
+            --no-deps \
+            -w wheelhouse/ \
+            -v
+
+      - name: Install wheel and pytest
+        run: pip install wheelhouse/*.whl pytest
+
+      - name: Run tests
+        run: python -m pytest zvode-*/test/ -v
+
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-sdist
