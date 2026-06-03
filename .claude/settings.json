@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(dpkg -l *)",
+      "Bash(dpkg -s *)",
+      "Bash(apt-cache show *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
