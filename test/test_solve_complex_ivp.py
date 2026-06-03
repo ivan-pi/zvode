@@ -16,7 +16,6 @@ import numpy as np
 import pytest
 
 from zvode import solve_complex_ivp
-from zvode.solve import ZVODEResult  # internal; not part of the public API
 
 # ---------------------------------------------------------------------------
 # Problem parameters
@@ -109,7 +108,6 @@ def test_save_steps_true(method):
     """Default mode: collect all accepted steps."""
     sol = solve_complex_ivp(fun, [T0, TF], Y0, method=method,
                                rtol=RTOL, atol=ATOL)
-    assert isinstance(sol, ZVODEResult)
     assert isinstance(sol.t, np.ndarray)
     assert sol.t.ndim == 1 and sol.t[0] == T0 and sol.t[-1] == TF
     assert sol.y.ndim == 2 and sol.y.shape == (2, len(sol.t))
@@ -133,7 +131,6 @@ def test_knots_mode(method):
     """Knot mode (len(tspan) > 2): output at exactly the requested times."""
     tspan = np.linspace(T0, TF, 11)
     sol = solve_complex_ivp(fun, tspan, Y0, method=method, rtol=RTOL, atol=ATOL)
-    assert isinstance(sol, ZVODEResult)
     np.testing.assert_array_equal(sol.t, tspan)
     assert sol.y.shape == (2, 11)
     assert sol.y.dtype == np.complex128
@@ -271,9 +268,8 @@ def test_max_num_steps_exceeded():
 # ---------------------------------------------------------------------------
 
 def test_result_type():
-    """solve_complex_ivp always returns a ZVODEResult."""
+    """solve_complex_ivp returns an object with the expected attributes."""
     sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    assert isinstance(sol, ZVODEResult)
     assert hasattr(sol, 't')
     assert hasattr(sol, 'y')
     assert hasattr(sol, 'nfev')
@@ -282,19 +278,20 @@ def test_result_type():
 
 
 def test_stats_always_present():
-    """Solver statistics are always present on the sol, no opt-in needed."""
+    """Solver statistics are always present on the result, no opt-in needed."""
     sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
     assert sol.nsteps > 0
     assert sol.nfev > 0
     assert sol.njev >= 0
     assert sol.nlu >= 0
+    # Names below are provisional and may be revised before stabilisation.
     assert sol.nni >= 0
     assert sol.ncfn >= 0
     assert sol.netf >= 0
 
 
 def test_result_dict_access():
-    """ZVODEResult fields accessible both as attributes and dict keys."""
+    """Result fields accessible both as attributes and dict keys."""
     sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
     np.testing.assert_array_equal(sol['t'], sol.t)
     np.testing.assert_array_equal(sol['y'], sol.y)
