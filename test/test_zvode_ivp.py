@@ -630,8 +630,108 @@ def test_invalid_lmm():
 def test_miter1_without_jac_raises():
     """miter=1 without a jac callable raises ValueError."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="jac"):
         solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=1)
+
+
+def test_miter4_without_jac_raises():
+    """miter=4 without a jac callable raises ValueError."""
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="jac"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=4, lband=0, uband=0)
+
+
+# ---------------------------------------------------------------------------
+# miter override: missing band parameters
+# ---------------------------------------------------------------------------
+
+
+def test_miter4_without_band_params_raises():
+    """miter=4 without either lband or uband raises ValueError.
+
+    Banded user-Jacobian (miter=4) requires at least one band parameter so the
+    workspace and Jacobian wrapper can be sized correctly.  Omitting both must
+    be caught before any Fortran call.  Supplying only lband or only uband is
+    allowed — the missing half-bandwidth defaults to 0 (triangular structure).
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="lband"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE,
+                  jac=jac_decay_dense, miter=4)
+
+
+def test_miter5_without_band_params_raises():
+    """miter=5 without either lband or uband raises ValueError.
+
+    Internally generated banded Jacobian (miter=5) still requires band
+    parameters so the workspace can be correctly sized.  Omitting both must be
+    caught before any Fortran call.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="lband"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=5)
+
+
+# ---------------------------------------------------------------------------
+# miter override: Jacobian shape mismatch detected at __init__ time
+# ---------------------------------------------------------------------------
+
+
+def _fun_decay2(t, y):
+    """Two-component complex decay: dy/dt = -y."""
+    return -y
+
+
+def _jac_decay2_dense(t, y):
+    """Dense (2, 2) Jacobian for the two-component decay."""
+    return -np.eye(2, dtype=np.complex128)
+
+
+def _jac_decay2_banded(t, y):
+    """Banded (1, 2) Jacobian for the two-component decay (ml=0, mu=0)."""
+    pd = np.zeros((1, 2), dtype=np.complex128)
+    pd[0, :] = -1.0
+    return pd
+
+
+def test_miter4_dense_jac_shape_raises():
+    """miter=4 with a dense (n×n) jac raises ValueError at __init__ time.
+
+    The jac callback returns a (2, 2) array but miter=4 with lband=0, uband=0
+    expects shape (1, 2).  ZVODE evaluates the jac once at t0 to detect the
+    mismatch before any data reaches Fortran.
+    """
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        ZVODE(_fun_decay2, 0.0, y0, 1.0,
+              jac=_jac_decay2_dense, miter=4, lband=0, uband=0)
+
+
+def test_miter4_dense_jac_shape_raises_via_solve_ivp():
+    """Same shape mismatch detected when ZVODE is used through solve_ivp."""
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(_fun_decay2, (0.0, 1.0), y0, method=ZVODE,
+                  jac=_jac_decay2_dense, miter=4, lband=0, uband=0)
+
+
+def test_miter1_banded_jac_shape_raises():
+    """miter=1 with a banded-format (1×n) jac raises ValueError at __init__ time.
+
+    The jac callback returns a (1, 2) banded array but miter=1 expects shape
+    (2, 2).  The shape check catches the mismatch before Fortran is entered.
+    """
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        ZVODE(_fun_decay2, 0.0, y0, 1.0, jac=_jac_decay2_banded, miter=1)
+
+
+def test_miter1_banded_jac_shape_raises_via_solve_ivp():
+    """Same miter=1 shape mismatch detected through solve_ivp."""
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(_fun_decay2, (0.0, 1.0), y0, method=ZVODE,
+                  jac=_jac_decay2_banded, miter=1)
 
 
 def test_negative_rtol_raises():

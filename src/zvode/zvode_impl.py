@@ -134,6 +134,10 @@ def _determine_miter(jac, lband, uband, explicit_miter=None):
             raise ValueError(
                 f"'jac' must be provided when 'miter' is {explicit_miter}."
             )
+        if explicit_miter in (4, 5) and not is_banded:
+            raise ValueError(
+                f"'lband' and 'uband' must be provided when 'miter' is {explicit_miter}."
+            )
         return explicit_miter, lband, uband
 
     if is_banded:
@@ -383,6 +387,27 @@ class ZVODE(OdeSolver):
                 )
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
+
+        if jac is not None and self.miter in (1, 4):
+            _jac_trial = np.asarray(jac(t0, self._ytmp))
+            if self.miter == 4:
+                expected = (self.ml + self.mu + 1, self.n)
+                if _jac_trial.shape != expected:
+                    raise ValueError(
+                        f"For miter=4 (banded Jacobian), 'jac' must return an array "
+                        f"of shape (lband + uband + 1, neq) = {expected}; "
+                        f"got shape {_jac_trial.shape}. "
+                        "Pass a dense Jacobian and use miter=1, or fix the banded format."
+                    )
+            else:  # miter == 1
+                expected = (self.n, self.n)
+                if _jac_trial.shape != expected:
+                    raise ValueError(
+                        f"For miter=1 (dense Jacobian), 'jac' must return an array "
+                        f"of shape (neq, neq) = {expected}; "
+                        f"got shape {_jac_trial.shape}. "
+                        "Pass a banded Jacobian with lband/uband and use miter=4."
+                    )
 
         if jsv not in (1, -1):
             raise ValueError(
