@@ -1,10 +1,12 @@
 """
-Demo: banded Jacobian for a coupled complex chain system.
+Demo: supplying a banded Jacobian to solve_complex_ivp.
 
-We solve  y' = A y  where  A  is a constant complex n x n matrix with
-lower bandwidth  lband = 2  and upper bandwidth  uband = 1  (n = 5).
+We solve  y' = A y  where  A  is a constant complex 5 x 5 banded matrix
+(lband=2, uband=1).  The values are chosen to produce non-trivial complex
+dynamics; the system serves purely as a vehicle to demonstrate the banded
+Jacobian interface.
 
-Full Jacobian (symbolic):
+Full matrix (symbolic):
 
     a  d  .  .  .
     b  a  d  .  .
@@ -18,8 +20,8 @@ Full Jacobian (symbolic):
     d = delta = 0.5j    superdiagonal       (uband >= 1)
     . = 0
 
-ZVODE stores the banded Jacobian in a compact array  pd  of shape
-(lband + uband + 1, n).  Each column of  pd  corresponds to a column
+ZVODE stores the banded Jacobian in a compact array  pd  (partial derivatives)
+of shape (lband + uband + 1, n).  Each column of  pd  corresponds to a column
 of  J, keeping only the entries that lie within the band:
 
     pd[i - j + uband, j]  =  J[i, j]
@@ -123,32 +125,28 @@ print(f"nsteps={stats.nsteps}, nfev={stats.nfev}, njev={stats.njev}, nlu={stats.
 print(f"Max absolute error vs expm: {max_err:.2e}")
 
 # ---------------------------------------------------------------------------
-# Plot: real and imaginary parts of each component
+# Plot: real and imaginary parts of all five components
 # ---------------------------------------------------------------------------
 
 fig, axes = plt.subplots(n, 2, figsize=(10, 2.2 * n), sharex=True)
 
-colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
 for k in range(n):
-    c = colors[k % len(colors)]
-    for col, attr, label in [(0, "real", "Re"), (1, "imag", "Im")]:
-        ax = axes[k, col]
-        ax.plot(t, getattr(y[k], attr), color=c, label="ZVODE")
-        ax.plot(t, getattr(y_exact[k], attr), "--", color="k", lw=0.8,
-                label="expm", alpha=0.6)
-        ax.set_ylabel(rf"{label} $y_{k}$")
-        ax.grid(True, alpha=0.3)
-        if k == 0:
-            ax.legend(fontsize=8)
+    axes[k, 0].plot(t, y[k].real, label="ZVODE")
+    axes[k, 0].plot(t, y_exact[k].real, "--k", lw=0.8, label="expm", alpha=0.6)
+    axes[k, 0].set_ylabel(rf"Re $y_{k}$")
+    axes[k, 0].grid(True, alpha=0.3)
 
-for col, title in [(0, "Real part"), (1, "Imaginary part")]:
-    axes[-1, col].set_xlabel("$t$")
-    axes[0, col].set_title(title)
+    axes[k, 1].plot(t, y[k].imag, label="ZVODE")
+    axes[k, 1].plot(t, y_exact[k].imag, "--k", lw=0.8, label="expm", alpha=0.6)
+    axes[k, 1].set_ylabel(rf"Im $y_{k}$")
+    axes[k, 1].grid(True, alpha=0.3)
 
-plt.suptitle(
-    r"$y' = Ay$,  banded $A$ with $\ell_b = 2$, $u_b = 1$  ($n = 5$)",
-    fontsize=12,
-)
+axes[0, 0].legend(fontsize=8)
+axes[0, 0].set_title("Real part")
+axes[0, 1].set_title("Imaginary part")
+axes[-1, 0].set_xlabel("$t$")
+axes[-1, 1].set_xlabel("$t$")
+
+plt.suptitle(r"$y' = Ay$,  banded $A$ with $\ell_b = 2$, $u_b = 1$  ($n = 5$)", fontsize=12)
 plt.tight_layout()
 plt.show()
