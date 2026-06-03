@@ -95,12 +95,13 @@ Pass `lband`, `uband`, and `jac` as keyword arguments:
 ```python
 from zvode import solve_complex_ivp
 
-t, y = solve_complex_ivp(
+sol = solve_complex_ivp(
     fun, [t0, tf], y0,
     jac=jac_banded,
     lband=2,
     uband=1,
 )
+t, y = sol.t, sol.y
 ```
 
 To let ZVODE estimate the banded Jacobian by finite differences instead,
