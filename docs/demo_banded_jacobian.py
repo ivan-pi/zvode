@@ -2,9 +2,7 @@
 Demo: supplying a banded Jacobian to solve_complex_ivp.
 
 We solve  y' = A y  where  A  is a constant complex 5 x 5 banded matrix
-(lband=2, uband=1).  The values are chosen to produce non-trivial complex
-dynamics; the system serves purely as a vehicle to demonstrate the banded
-Jacobian interface.
+(lband=2, uband=1), used as a minimal example for the banded Jacobian interface.
 
 Full matrix (symbolic):
 
@@ -125,27 +123,24 @@ print(f"nsteps={stats.nsteps}, nfev={stats.nfev}, njev={stats.njev}, nlu={stats.
 print(f"Max absolute error vs expm: {max_err:.2e}")
 
 # ---------------------------------------------------------------------------
-# Plot: real and imaginary parts of all five components
+# Plot: real and imaginary parts, all components on one panel each
 # ---------------------------------------------------------------------------
 
-fig, axes = plt.subplots(n, 2, figsize=(10, 2.2 * n), sharex=True)
+fig, (ax_re, ax_im) = plt.subplots(1, 2, figsize=(10, 4))
 
 for k in range(n):
-    axes[k, 0].plot(t, y[k].real, label="ZVODE")
-    axes[k, 0].plot(t, y_exact[k].real, "--k", lw=0.8, label="expm", alpha=0.6)
-    axes[k, 0].set_ylabel(rf"Re $y_{k}$")
-    axes[k, 0].grid(True, alpha=0.3)
+    ax_re.plot(t, y[k].real, label=rf"$y_{k}$")
+    ax_im.plot(t, y[k].imag, label=rf"$y_{k}$")
 
-    axes[k, 1].plot(t, y[k].imag, label="ZVODE")
-    axes[k, 1].plot(t, y_exact[k].imag, "--k", lw=0.8, label="expm", alpha=0.6)
-    axes[k, 1].set_ylabel(rf"Im $y_{k}$")
-    axes[k, 1].grid(True, alpha=0.3)
+ax_re.set_title("Real parts")
+ax_re.set_xlabel("$t$")
+ax_re.legend()
+ax_re.grid(True, alpha=0.3)
 
-axes[0, 0].legend(fontsize=8)
-axes[0, 0].set_title("Real part")
-axes[0, 1].set_title("Imaginary part")
-axes[-1, 0].set_xlabel("$t$")
-axes[-1, 1].set_xlabel("$t$")
+ax_im.set_title("Imaginary parts")
+ax_im.set_xlabel("$t$")
+ax_im.legend()
+ax_im.grid(True, alpha=0.3)
 
 plt.suptitle(r"$y' = Ay$,  banded $A$ with $\ell_b = 2$, $u_b = 1$  ($n = 5$)", fontsize=12)
 plt.tight_layout()
