@@ -366,10 +366,10 @@ def solve_complex_ivp(fun, tspan, y0, *,
           ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
         * ``in_place=False``, banded (``lband``/``uband`` set):
           ``jac(t, y) -> (lband + uband + 1, n)`` array where element
-          ``[i - j + uband, j]`` holds ``df(i)/dy(j)``.
+          ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
         * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
         * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          user band of ``pd`` in place using the same row convention.
+          banded matrix ``pd`` in place using the same row convention.
 
     method : {'BDF', 'Adams'}, optional
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
@@ -439,13 +439,12 @@ def solve_complex_ivp(fun, tspan, y0, *,
         inconsistent combination (e.g. ``miter=4`` without band arguments)
         will raise a ``ValueError`` or cause a solver failure.
     save_jac : bool, optional
-        If ``True`` (default), a copy of the Jacobian is saved and reused
-        in the corrector iteration across multiple steps, trading extra
-        memory for fewer Jacobian evaluations.  Set to ``False`` to
-        discard the saved copy and recompute the Jacobian at each step.
-        Ignored when no full Jacobian matrix is stored, i.e. for functional
-        iteration (``miter=0``) and the diagonal approximation (``miter=3``);
-        both are normally selected automatically when ``jac`` is not supplied.
+        If ``True`` (default), the solver retains a copy of the Jacobian to
+        reuse when rebuilding the Newton iteration matrix, reducing Jacobian
+        evaluations at the cost of extra memory.  If ``False``, no copy is
+        kept and the Jacobian is recomputed whenever the iteration matrix
+        needs updating.  Ignored for functional iteration (``miter=0``) or
+        diagonal approximation (``miter=3``).
 
     Raises
     ------

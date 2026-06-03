@@ -172,12 +172,12 @@ def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
             )
         return explicit_miter, lband, uband
 
-    # Adams (meth=1): functional iteration by default; BDF (meth=2): chord with generated Jacobian.
-    miter = 0 if meth == 1 else 2
-    if jac:
-        miter = 1                   # user-supplied full Jacobian
     if is_banded:
-        miter = 4 if jac else 5     # banded overrides dense
+        miter = 4 if jac else 5
+    elif jac:
+        miter = 1
+    else:
+        miter = 0 if meth == 1 else 2   # Adams: functional; BDF: chord with generated Jacobian
     return miter, lband, uband
 
 
