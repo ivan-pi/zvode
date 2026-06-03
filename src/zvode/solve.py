@@ -35,21 +35,11 @@ from .zvode_impl import (
 ZVODE_LOCK = Lock()
 
 
-class ZVODEStats(dict):
-    """Integration statistics returned when ``ret_stats=True``.
+class ZVODEResult(dict):
+    """Result of :func:`solve_complex_ivp`; a dict with attribute access.
 
-    Subclasses :class:`dict`; fields are also accessible as attributes.
-
-    Attributes
-    ----------
-    nsteps : int   Total number of steps taken.
-    nfev   : int   Number of right-hand side evaluations.
-    njev   : int   Number of Jacobian evaluations.
-    nlu    : int   Number of LU decompositions.
+    All fields are accessible both as ``result['key']`` and ``result.key``.
     """
-
-    def __init__(self, stats):
-        super().__init__(zip(('nsteps', 'nfev', 'njev', 'nlu'), stats))
 
     def __getattr__(self, name):
         try:
@@ -58,8 +48,15 @@ class ZVODEStats(dict):
             raise AttributeError(name) from None
 
     def __repr__(self):
-        return (f"ZVODEStats(nsteps={self['nsteps']}, nfev={self['nfev']}, "
-                f"njev={self['njev']}, nlu={self['nlu']})")
+        t = self.get('t')
+        y = self.get('y')
+        t_s = (f"ndarray(shape={t.shape})" if isinstance(t, np.ndarray)
+               else repr(t))
+        y_s = (f"ndarray(shape={y.shape}, dtype={y.dtype})"
+               if isinstance(y, np.ndarray) else repr(y))
+        return (f"ZVODEResult(t={t_s}, y={y_s}, "
+                f"nfev={self.get('nfev')}, njev={self.get('njev')}, "
+                f"nlu={self.get('nlu')})")
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +285,6 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       lband=None,
                       uband=None,
                       in_place=False,
-                      ret_stats=False,
                       save_steps=True,
                       refine=1,
                       allow_overshoot=False,
@@ -387,20 +383,26 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Default ``False`` (SciPy-compatible return-value form).
         Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
         use the in-place convention; ``in_place=True`` is required for them.
-    ret_stats : bool, optional
-        If ``True``, append a :class:`ZVODEStats` object to the return tuple.
 
     Returns
     -------
-    t : float or ndarray, shape (m,)
-        Output time(s).  A scalar float in endpoint-only mode
-        (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array otherwise.
-    y : ndarray, shape (n,) or (n, m), complex128
-        Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
-        Fortran-order array with ``y[:, k]`` the state at ``t[k]``
-        otherwise.
-    stats : ZVODEStats, only when ``ret_stats=True``
-        Integration statistics (nsteps, nfev, njev, nlu).
+    result : dict-like with attribute access
+        Always contains:
+
+        result.t : float or ndarray, shape (m,)
+            Output time(s).  A scalar float in endpoint-only mode
+            (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array
+            otherwise.
+        result.y : ndarray, shape (n,) or (n, m), complex128
+            Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
+            Fortran-order array with ``result.y[:, k]`` the state at
+            ``result.t[k]`` otherwise.
+        result.nfev : int
+            Number of right-hand side evaluations.
+        result.njev : int
+            Number of Jacobian evaluations.
+        result.nlu : int
+            Number of LU decompositions.
 
     Other Parameters
     ----------------
@@ -633,9 +635,17 @@ def solve_complex_ivp(fun, tspan, y0, *,
             f"ZVODE ISTATE={istate}: {_msg}"
         )
 
-    if ret_stats:
-        return t_out, y_out, ZVODEStats(
-            (int(iwork[10]), int(iwork[11]), int(iwork[12]), int(iwork[19]))
-        )
-
-    return t_out, y_out
+    # Indices follow the ZVODE user documentation (Fortran 1-based → Python 0-based):
+    #   IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE,
+    #   IWORK(20)=NLU, IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF.
+    return ZVODEResult({
+        't':      t_out,
+        'y':      y_out,
+        'nsteps': int(iwork[10]),
+        'nfev':   int(iwork[11]),
+        'njev':   int(iwork[12]),
+        'nlu':    int(iwork[19]),
+        'nni':    int(iwork[20]),
+        'ncfn':   int(iwork[21]),
+        'netf':   int(iwork[22]),
+    })
