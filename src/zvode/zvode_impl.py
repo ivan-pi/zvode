@@ -322,10 +322,9 @@ class ZVODE(OdeSolver):
         Jacobian-saving flag.  ``1`` (default) retains a copy of the Jacobian
         to reuse when rebuilding the Newton iteration matrix.  ``-1`` does not
         retain a copy; the Jacobian is recomputed whenever the iteration matrix
-        needs updating.  Ignored when no full Jacobian matrix
-        is stored, i.e. for functional iteration (``miter=0``) and the
-        diagonal approximation (``miter=3``); both are normally selected
-        automatically when `jac` is not supplied.
+        needs updating.  Ignored when no full Jacobian matrix is stored, i.e.
+        for functional iteration (``miter=0``) and the diagonal approximation
+        (``miter=3``).
 
     Attributes
     ----------
