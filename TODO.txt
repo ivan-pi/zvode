@@ -50,6 +50,9 @@ is deferred to 0.4.0.
 - [DONE] Add SUNDIALS link to README Links table (currently missing)
 - Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
   that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html)
+- Add a solve_complex_ivp quick-start section to the README (example + key
+  parameters); it is the headline feature of 0.2.0 and currently invisible to
+  anyone reading the project page
 - Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
 - Replace the bare (t, y[, stats]) tuple return from solve_complex_ivp with a
   result object (t, y, stats attributes always present); eliminates the variable-
