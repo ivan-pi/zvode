@@ -21,7 +21,7 @@ from threading import Lock
 import numpy as np
 
 from . import _zvode
-from .zvode_impl import (
+from ._helpers import (
     MESSAGES,
     _check_tolerances,
     _determine_miter,
