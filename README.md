@@ -111,8 +111,8 @@ More OdeSolver examples are in the [`docs/`](docs/) folder.
 ## Installation
 
 ```bash
-pip install zvode          # once available on PyPI
-pip install .              # install locally from source
+pip install zvode          # from PyPI (source distribution)
+pip install .              # build and install locally from source
 ```
 
 ## Solver options
