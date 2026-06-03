@@ -21,10 +21,12 @@ from threading import Lock
 import numpy as np
 
 from . import _zvode
-from .zvode_impl import (
+from ._helpers import (
     MESSAGES,
     _check_tolerances,
     _determine_miter,
+    _validate_max_step,
+    _validate_first_step,
     _validate_jac_shape,
     _wrapped_fun,
     _wrapped_jac,
@@ -86,7 +88,7 @@ def _cfunc_address(fun):
 
 def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
                     first_step, min_step, max_step, max_order, max_num_steps,
-                    t_bound):
+                    t0, t_bound):
     """Allocate and initialise ZVODE's three workspace arrays.
 
     Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
@@ -131,7 +133,8 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 
     rwork[0] = float(t_bound)          # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
-        rwork[4] = float(first_step)
+        # ZVODE requires H0 to carry the sign of the integration direction.
+        rwork[4] = float(first_step) * np.sign(t_bound - t0)
     if max_step > 0:
         rwork[5] = float(max_step)
     if min_step:
@@ -526,6 +529,10 @@ def solve_complex_ivp(fun, tspan, y0, *,
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
+    _validate_max_step(max_step)
+    if first_step is not None:
+        _validate_first_step(first_step, tspan[0], tspan[-1])
+
     # ------------------------------------------------------------------
     # 4.  Workspace
     # ------------------------------------------------------------------
@@ -537,7 +544,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     zwork, rwork, iwork = _make_workspace(
         n, _miter, ml, mu, mf, maxord_allowed,
         first_step, min_step, _effective_max_step, max_order, max_num_steps,
-        t_bound=float(tspan[-1]))
+        t0=float(tspan[0]), t_bound=float(tspan[-1]))
 
     # ------------------------------------------------------------------
     # 5.  Normalize callbacks

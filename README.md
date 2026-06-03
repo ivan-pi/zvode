@@ -111,8 +111,21 @@ More OdeSolver examples are in the [`docs/`](docs/) folder.
 ## Installation
 
 ```bash
-pip install zvode          # from PyPI (source distribution)
-pip install .              # build and install locally from source
+pip install zvode          # procedural API only (numpy only)
+pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams (requires SciPy)
+```
+
+The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) are a SciPy
+add-on: they subclass `scipy.integrate.OdeSolver` so they can be passed
+as the `method` argument to `scipy.integrate.solve_ivp`.  If your code
+only uses `solve_complex_ivp` you do not need SciPy.
+
+To install locally from source:
+
+```bash
+pip install .              # procedural API only
+pip install ".[scipy]"     # also install SciPy
+pip install ".[test]"      # run the test suite (includes SciPy)
 ```
 
 ## Solver options

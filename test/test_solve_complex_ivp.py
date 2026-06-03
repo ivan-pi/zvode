@@ -225,6 +225,33 @@ def test_backward_integration(mode):
         _check(sol.t, sol.y)
 
 
+def test_backward_integration_with_first_step():
+    """Backward integration with an explicit first_step must not fail.
+
+    first_step is a positive magnitude; solve_complex_ivp must negate it
+    (i.e. multiply by sign(t_bound - t0)) before passing it to ZVODE as H0.
+    Without this correction ZVODE sees (TOUT - T)*H0 < 0 and returns
+    ISTATE = -3 ("Illegal input detected").
+    """
+    y_tf = exact(TF)
+    sol = solve_complex_ivp(
+        fun, [TF, T0], y_tf,
+        first_step=0.1,
+        rtol=RTOL, atol=ATOL,
+    )
+    _check(sol.t, sol.y)
+
+
+def test_negative_first_step_raises():
+    """A negative first_step must raise ValueError regardless of direction.
+
+    first_step is documented as a positive magnitude; a negative value is
+    nonsensical and should be rejected before ZVODE is ever called.
+    """
+    with pytest.raises(ValueError, match="first_step"):
+        solve_complex_ivp(fun, [T0, TF], Y0, first_step=-0.1)
+
+
 # ---------------------------------------------------------------------------
 # 5. allow_overshoot
 # ---------------------------------------------------------------------------
