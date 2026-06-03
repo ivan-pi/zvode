@@ -136,15 +136,6 @@ through unchanged when supplied via `solve_ivp`.
 > an analytic function of each state variable). For stiff systems where `f` is
 > not analytic, use a real-valued solver on the equivalent doubled real system.
 
-## Banded Jacobians
-
-Set `lband` and/or `uband` to activate the banded solver path and return a
-compact `(lband + uband + 1, n)` array from `jac` instead of a full `(n, n)`
-matrix.  See [`docs/banded_jacobian.md`](docs/banded_jacobian.md) for the
-storage layout, ASCII diagrams, output modes of `solve_complex_ivp`, and a
-memory-saving comparison table.  A runnable script is in
-[`docs/demo_banded_jacobian.py`](docs/demo_banded_jacobian.py).
-
 ## Limitations
 
 - complex floats (fp64) only
