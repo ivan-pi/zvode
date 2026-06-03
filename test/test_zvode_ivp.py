@@ -760,7 +760,10 @@ def test_dense_jac_int32_overflow_guard():
     with pytest.raises(ValueError, match="neq"):
         ZVODE(_rhs, 0.0, y0, 1.0)
 
-    # miter=1: user-supplied dense Jacobian
+    # miter=1: user-supplied dense Jacobian.
+    # WARNING: if the overflow guard fails to fire, _validate_jac_shape will
+    # evaluate this lambda and attempt to allocate a (46341, 46341) complex128
+    # array (~32 GiB), causing a MemoryError on most CI runners.
     with pytest.raises(ValueError, match="neq"):
         ZVODE(
             _rhs,
