@@ -1,29 +1,14 @@
 """
-Extra regression and validation tests for solve_complex_ivp.
+Regression and validation tests for solve_complex_ivp:
 
-Each test here was verified to be absent from the three existing test files
-(test_zvode.py, test_zvode_ivp.py, test_solve_complex_ivp.py).
-
-Tests:
-  1. Numerical accuracy — underdamped harmonic oscillator vs exact solution
-     (no oscillator ODE is tested in any existing file)
-  2. Numerical accuracy — nonlinear complex oscillator (dw/dt = -iw²z, dz/dt = iz)
-     vs exact solution; this problem is tested via ZVODE/solve_ivp in
-     test_zvode_ivp.py but never via solve_complex_ivp
-  3. Error paths — negative atol and single-element tspan (the remaining two
-     invalid-argument cases not covered by the existing tests)
-  4. Jacobian efficiency — supplying an exact Jacobian (miter=1) reduces the
-     number of RHS evaluations compared to finite-diff (miter=2), verifying that
-     ZVODE actually uses the Jacobian rather than silently ignoring it
-  5. Cross-validation — endpoint agrees with scipy.integrate.solve_ivp(method='BDF')
-  6. Edge case — single-element (n=1) system via solve_complex_ivp
-     (n=1 is tested at the _zvode / ZVODE level but not through solve_complex_ivp)
-  7. Edge case — refine > 1 inserts ZVINDY-interpolated points that match the
-     exact solution (test_refine in test_solve_complex_ivp.py only checks output
-     structure, not accuracy against an analytical reference)
-  8. Edge case — max_order=1 forces first-order Adams steps; the correct answer
-     is still reached but more steps are required (max_order is never tested
-     functionally in the existing suite)
+  1. Damped harmonic oscillator accuracy (Adams, BDF)
+  2. Nonlinear complex oscillator accuracy
+  3. Error paths: negative atol, short tspan
+  4. Exact Jacobian reduces RHS evaluations vs finite-diff
+  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF')
+  6. Single-element (n=1) system: decay, damped oscillation, pure rotation
+  7. refine > 1 interpolation accuracy (refine=2, refine=5)
+  8. max_order constrains Adams solver order
 """
 
 import numpy as np
@@ -55,16 +40,17 @@ def _osc_exact(t):
     return np.array([x + 0j, v + 0j])
 
 
-def test_damped_oscillator_accuracy():
-    """Numerical solution tracks underdamped oscillator to within 1e-5 relative error."""
+@pytest.mark.parametrize("method", ["Adams", "BDF"])
+def test_damped_oscillator_accuracy(method):
+    """Both Adams and BDF track the underdamped oscillator to within 1e-5 relative error."""
     y0 = np.array([1.0 + 0j, 0.0 + 0j])
-    t_arr, y_arr = solve_complex_ivp(_osc_fun, [0.0, 10.0], y0, rtol=1e-10, atol=1e-12)
+    t_arr, y_arr = solve_complex_ivp(_osc_fun, [0.0, 10.0], y0,
+                                     method=method, rtol=1e-10, atol=1e-12)
 
     ref = _osc_exact(t_arr)
     # rtol=1e-5 accommodates global error accumulation over t=[0,10];
-    # atol=1e-9 handles the near-zero values at the end of the damped range.
-    assert_allclose(y_arr, ref, rtol=1e-5, atol=1e-9,
-                    err_msg="Damped oscillator: numerical vs analytical mismatch")
+    # atol=1e-9 handles near-zero values at the end of the damped range.
+    assert_allclose(y_arr, ref, rtol=1e-5, atol=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +58,6 @@ def test_damped_oscillator_accuracy():
 #
 #    dw/dt = -i w² z          z(0) = 1        z(t) = exp(it)
 #    dz/dt =  i z             w(0) = 1/2.1    w(t) = 1/(exp(it) + 1.1)
-#
-#    Tested via ZVODE/solve_ivp in test_zvode_ivp.py but not via solve_complex_ivp.
 # ---------------------------------------------------------------------------
 
 def _nl_osc_fun(t, y):
@@ -88,23 +72,17 @@ def _nl_osc_exact(t):
 
 
 def test_nonlinear_oscillator_accuracy():
-    """solve_complex_ivp tracks the nonlinear complex oscillator to within 1e-7."""
+    """solve_complex_ivp tracks the nonlinear complex oscillator to within 1e-6."""
     y0 = np.array([1.0 / 2.1 + 0j, 1.0 + 0j])
     t_arr, y_arr = solve_complex_ivp(_nl_osc_fun, [0.0, 4 * np.pi], y0,
                                      rtol=1e-10, atol=1e-12)
 
     ref = _nl_osc_exact(t_arr)
-    # Global error accumulates over t=[0, 4π]; atol covers the near-zero imaginary parts.
-    assert_allclose(y_arr, ref, rtol=1e-6, atol=1e-9,
-                    err_msg="Nonlinear complex oscillator: numerical vs analytical mismatch")
+    assert_allclose(y_arr, ref, rtol=1e-6, atol=1e-9)
 
 
 # ---------------------------------------------------------------------------
-# 3. Error paths (only the two cases not already in the existing test files)
-#
-#    Covered elsewhere and therefore excluded here:
-#      - rtol < 0  →  test_negative_rtol_raises in test_zvode_ivp.py
-#      - invalid method string  →  test_invalid_method_raises in test_solve_complex_ivp.py
+# 3. Error paths
 # ---------------------------------------------------------------------------
 
 _FUN_1D = lambda t, y: -y  # noqa: E731
@@ -112,8 +90,8 @@ _Y0_1D = np.array([1.0 + 0j])
 
 
 @pytest.mark.parametrize("tspan,kwargs,match", [
-    ([0.0, 1.0], {"atol": -1e-10}, "positive"),   # negative atol
-    ([0.0],      {},               "two elements"),  # tspan too short
+    ([0.0, 1.0], {"atol": -1e-10}, "positive"),    # negative atol
+    ([0.0],      {},               "two elements"), # tspan too short
 ])
 def test_error_paths(tspan, kwargs, match):
     """Invalid arguments raise ValueError with a descriptive message."""
@@ -124,10 +102,8 @@ def test_error_paths(tspan, kwargs, match):
 # ---------------------------------------------------------------------------
 # 4. Jacobian efficiency: exact Jacobian (miter=1) vs finite-diff (miter=2)
 #
-#    For a scalar system (n=1), each finite-diff Jacobian update costs one
-#    extra RHS evaluation.  Providing the exact Jacobian eliminates those
-#    extra evaluations, so nfev(miter=1) < nfev(miter=2).  This verifies
-#    that ZVODE actually uses the supplied Jacobian.
+#    For n=1 each finite-diff Jacobian update costs one extra RHS evaluation,
+#    so nfev(miter=2) > nfev(miter=1) is a precise and checkable inequality.
 # ---------------------------------------------------------------------------
 
 _LAM_EFF = -1000.0  # Prothero-Robinson stiffness parameter
@@ -161,7 +137,7 @@ def test_exact_jacobian_reduces_nfev():
 # 5. Cross-validation against SciPy BDF
 # ---------------------------------------------------------------------------
 
-_EPS_PR = 1e-3   # Prothero-Robinson stiffness
+_EPS_PR = 1e-3  # Prothero-Robinson stiffness
 
 
 def _pr_fun(t, y):
@@ -182,35 +158,30 @@ def test_scipy_bdf_comparison():
     sol = solve_ivp(_pr_fun_real, [0.0, 3.0], [0.0], method="BDF", **tols)
     assert sol.success, f"SciPy BDF failed: {sol.message}"
 
-    assert_allclose(y_zvode.real, sol.y[:, -1], rtol=1e-5,
-                    err_msg="solve_complex_ivp vs scipy BDF endpoint mismatch")
+    assert_allclose(y_zvode.real, sol.y[:, -1], rtol=1e-5)
 
 
 # ---------------------------------------------------------------------------
-# 6. Edge case: single-element (n=1) system via solve_complex_ivp
+# 6. Edge case: single-element (n=1) system
 # ---------------------------------------------------------------------------
 
-def test_single_element_system():
-    """n=1 scalar complex ODE integrates correctly via solve_complex_ivp."""
-    lam = -1.0 + 2.0j
+@pytest.mark.parametrize("lam", [
+    pytest.param(-1.0 + 0j,  id="decay"),
+    pytest.param(-1.0 + 2j,  id="damped_osc"),
+    pytest.param(1j,          id="rotation"),
+])
+def test_single_element_system(lam):
+    """n=1 scalar complex ODE y'=lam*y integrates correctly for three qualitatively different lam."""
     y0 = np.array([1.0 + 0j])
-
-    def fun(t, y):
-        return np.array([lam * y[0]])
-
-    t_arr, y_arr = solve_complex_ivp(fun, [0.0, 2.0], y0, rtol=1e-10, atol=1e-12)
-
-    ref = y0[0] * np.exp(lam * t_arr)
-    assert_allclose(y_arr[0], ref, rtol=1e-7,
-                    err_msg="Single-element system: numerical vs analytical mismatch")
+    t_arr, y_arr = solve_complex_ivp(
+        lambda t, y: np.array([lam * y[0]]),
+        [0.0, 2.0], y0, rtol=1e-10, atol=1e-12,
+    )
+    assert_allclose(y_arr[0], y0[0] * np.exp(lam * t_arr), rtol=1e-7)
 
 
 # ---------------------------------------------------------------------------
 # 7. Edge case: refine > 1 interpolation accuracy
-#
-#    test_refine in test_solve_complex_ivp.py only checks that the output has
-#    the expected shape and is close to the no-refine solution.  This test
-#    compares the interpolated points directly against an analytical solution.
 # ---------------------------------------------------------------------------
 
 _OMEGA_R = np.pi  # one full Rabi oscillation over t ∈ [0, 2]
@@ -225,26 +196,20 @@ def _rabi_exact(t):
     return np.array([np.cos(_OMEGA_R * t / 2) + 0j, -1j * np.sin(_OMEGA_R * t / 2)])
 
 
-def test_refine_interpolation_accuracy():
-    """refine=5 ZVINDY-interpolated points match the Rabi exact solution to 1e-6."""
+@pytest.mark.parametrize("refine", [2, 5])
+def test_refine_interpolation_accuracy(refine):
+    """ZVINDY-interpolated points match the Rabi exact solution for refine=2 and refine=5."""
     y0 = np.array([1.0 + 0j, 0.0 + 0j])
     t_arr, y_arr = solve_complex_ivp(
-        _rabi_fun, [0.0, 2.0], y0, rtol=1e-10, atol=1e-12, refine=5,
+        _rabi_fun, [0.0, 2.0], y0, rtol=1e-10, atol=1e-12, refine=refine,
     )
-
     ref = _rabi_exact(t_arr)
-    # atol=1e-9 guards the Rabi zero-crossing where exact value is ~1e-16.
-    assert_allclose(y_arr, ref, rtol=1e-6, atol=1e-9,
-                    err_msg="refine=5: interpolated points diverge from exact solution")
+    # atol=1e-9 guards the zero-crossing where the exact value is ~1e-16.
+    assert_allclose(y_arr, ref, rtol=1e-6, atol=1e-9)
 
 
 # ---------------------------------------------------------------------------
 # 8. Edge case: max_order constraint
-#
-#    max_order is never tested functionally in the existing suite (only via an
-#    int32 overflow guard).  With max_order=1, Adams is restricted to
-#    first-order steps: the correct answer must still be reached but the solver
-#    needs significantly more steps.
 # ---------------------------------------------------------------------------
 
 def test_max_order_constraint():
@@ -261,11 +226,9 @@ def test_max_order_constraint():
     )
 
     exact_end = np.array([np.exp(lam * 5.0)])
-    assert_allclose(y_default, exact_end, rtol=1e-6,
-                    err_msg="Default Adams: wrong endpoint")
-    # Adams order-1 global error is O(sqrt(rtol)) ≈ 4e-4 for rtol=1e-8, so use rtol=1e-3.
-    assert_allclose(y_order1, exact_end, rtol=1e-3,
-                    err_msg="Adams max_order=1: wrong endpoint")
+    assert_allclose(y_default, exact_end, rtol=1e-6)
+    # Adams order-1 global error is O(sqrt(rtol)) ≈ 4e-4 for rtol=1e-8.
+    assert_allclose(y_order1, exact_end, rtol=1e-3)
     assert s_order1.nsteps > s_default.nsteps, (
         f"max_order=1 should need more steps than default "
         f"(got {s_order1.nsteps} vs {s_default.nsteps})"
