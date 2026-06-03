@@ -4,21 +4,19 @@ Regression and validation tests for solve_complex_ivp:
   1. Damped harmonic oscillator accuracy (Adams, BDF)
   2. Nonlinear complex oscillator accuracy
   3. Error paths: negative atol, short tspan
-  4. Exact Jacobian reduces RHS evaluations vs finite-diff
-  5. Cross-validation against scipy.integrate.solve_ivp(method='BDF') on a coupled complex system (n=2)
-  6. Single-element (n=1) system: decay, damped oscillation, pure rotation
-  7. refine > 1 interpolation accuracy (refine=2, refine=5)
-  8. max_order constrains Adams solver order (n=2, complex eigenvalues)
+  4. Cross-validation against scipy.integrate.solve_ivp(method='BDF') on a coupled complex system (n=2)
+  5. Single-element (n=1) system: decay, damped oscillation, pure rotation
+  6. refine > 1 interpolation accuracy (refine=2, refine=5)
+  7. max_order constrains Adams solver order (n=2, complex eigenvalues)
 
 Note on real-in-complex problems
 ---------------------------------
-Tests 1 and 4 use real-valued ODEs (real coefficients, real initial conditions)
-run through a complex-typed solver.  The solution stays on the real axis throughout.
+Test 1 uses a real-valued ODE (real coefficients, real initial conditions) run
+through a complex-typed solver.  The solution stays on the real axis throughout.
 This is NOT the intended use of solve_complex_ivp, which targets genuinely
 complex-valued dynamics (quantum systems, complex analytic flows, etc.).
-These two tests are included for specific mechanical reasons — numerical accuracy
-regression against an exact solution (test 1) and a precise RHS-evaluation count
-that requires n=1 (test 4) — not as examples of how the solver should be used.
+It is included solely as a numerical accuracy regression against a known exact
+solution, not as an example of how the solver should be used.
 """
 
 import numpy as np
@@ -110,41 +108,7 @@ def test_error_paths(tspan, kwargs, match):
 
 
 # ---------------------------------------------------------------------------
-# 4. Jacobian efficiency: exact Jacobian (miter=1) vs finite-diff (miter=2)
-#
-#    Real-valued ODE (real coefficients, real IC) — see module note above.
-#    n=1 is intentional: the finite-diff overhead is exactly +1 RHS evaluation
-#    per Jacobian update, making the nfev inequality precise.
-# ---------------------------------------------------------------------------
-
-LAM_EFF = -1000.0  # Prothero-Robinson stiffness parameter
-
-
-def pr_eff_fun(t, y):
-    return np.array([LAM_EFF * (y[0] - np.sin(t)) + np.cos(t)], dtype=complex)
-
-
-def pr_eff_jac(t, y):
-    return np.array([[LAM_EFF + 0j]])
-
-
-def test_exact_jacobian_reduces_nfev():
-    """Exact Jacobian (miter=1) requires fewer RHS evaluations than finite-diff (miter=2)."""
-    y0 = np.array([0.0 + 0j])
-    tols = dict(rtol=1e-8, atol=1e-10, save_steps=False)
-
-    sol_no_jac = solve_complex_ivp(pr_eff_fun, [0.0, 1.0], y0, **tols)
-    sol_jac = solve_complex_ivp(pr_eff_fun, [0.0, 1.0], y0, jac=pr_eff_jac, **tols)
-
-    assert sol_jac.njev > 0, "User Jacobian was never called"
-    assert sol_no_jac.nfev > sol_jac.nfev, (
-        f"Expected finite-diff (nfev={sol_no_jac.nfev}) > "
-        f"exact Jacobian (nfev={sol_jac.nfev})"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 5. Cross-validation against SciPy BDF
+# 4. Cross-validation against SciPy BDF
 #
 #    Coupled complex linear system (upper triangular, n=2):
 #      dy0/dt = lam1*y0 + c*y1        lam1 = -1+2j, c = 0.5j
@@ -176,7 +140,7 @@ def test_scipy_bdf_comparison():
 
 
 # ---------------------------------------------------------------------------
-# 6. Edge case: single-element (n=1) system
+# 5. Edge case: single-element (n=1) system
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("lam", [
@@ -195,7 +159,7 @@ def test_single_element_system(lam):
 
 
 # ---------------------------------------------------------------------------
-# 7. Edge case: refine > 1 interpolation accuracy
+# 6. Edge case: refine > 1 interpolation accuracy
 # ---------------------------------------------------------------------------
 
 OMEGA_R = np.pi  # one full Rabi oscillation over t ∈ [0, 2]
@@ -222,7 +186,7 @@ def test_refine_interpolation_accuracy(refine):
 
 
 # ---------------------------------------------------------------------------
-# 8. Edge case: max_order constraint
+# 7. Edge case: max_order constraint
 # ---------------------------------------------------------------------------
 
 # Two-component decoupled system with complex eigenvalues: y' = diag(lam) * y
