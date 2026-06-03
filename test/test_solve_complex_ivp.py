@@ -473,3 +473,55 @@ def test_compiled_callback_requires_in_place():
 
     with pytest.raises(ValueError, match="in_place"):
         solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
+
+
+# ---------------------------------------------------------------------------
+# Jacobian shape semantics: scalar-like forms for a single-equation system
+#
+# Problem: dy/dt = -1j*y,  y(0) = 1,  exact solution y(t) = exp(-1j*t).
+# For neq=1, miter=1 requires shape (1, 1).  The table below lists every
+# natural way a user might write "the scalar -1j" and what np.asarray()
+# makes of it:
+#
+#   Form               np.asarray(...)   shape    result
+#   -----------------  ----------------  -------  --------
+#   -1j                complex scalar    ()       ValueError
+#   [-1j]              1-D list          (1,)     ValueError
+#   [[-1j]]            nested list       (1, 1)   accepted ← correct form
+#   np.array(-1j)      0-D ndarray       ()       ValueError
+#   np.array([-1j])    1-D ndarray       (1,)     ValueError
+# ---------------------------------------------------------------------------
+
+_S_FUN = lambda t, y: -1j * y
+_S_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
+_S_TSPAN = [0.0, 1.0]
+_S_EXACT_FINAL = np.exp(-1j * 1.0)
+
+
+@pytest.mark.parametrize(
+    "jac,label",
+    [
+        (lambda t, y: -1j,             "scalar complex"),
+        (lambda t, y: [-1j],           "1-D list"),
+        (lambda t, y: np.array(-1j),   "0-D ndarray"),
+        (lambda t, y: np.array([-1j]), "1-D ndarray"),
+    ],
+)
+def test_scalar_jac_shape_raises(jac, label):
+    """Jacobians that don't return a (1,1) array must raise ValueError naming 'shape'."""
+    with pytest.raises(ValueError, match="shape"):
+        solve_complex_ivp(_S_FUN, _S_TSPAN, _S_Y0, jac=jac, miter=1)
+
+
+def test_nested_list_jac_accepted():
+    """[[item]] produces shape (1,1) after np.asarray() and is the correct scalar form."""
+    sol = solve_complex_ivp(
+        _S_FUN,
+        _S_TSPAN,
+        _S_Y0,
+        jac=lambda t, y: [[-1j]],
+        miter=1,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(sol.y[0, -1], _S_EXACT_FINAL, rtol=1e-5, atol=1e-8)
