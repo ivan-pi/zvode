@@ -242,6 +242,16 @@ def test_backward_integration_with_first_step():
     _check(sol.t, sol.y)
 
 
+def test_negative_first_step_raises():
+    """A negative first_step must raise ValueError regardless of direction.
+
+    first_step is documented as a positive magnitude; a negative value is
+    nonsensical and should be rejected before ZVODE is ever called.
+    """
+    with pytest.raises(ValueError, match="first_step"):
+        solve_complex_ivp(fun, [T0, TF], Y0, first_step=-0.1)
+
+
 # ---------------------------------------------------------------------------
 # 5. allow_overshoot
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ from ._helpers import (
     MESSAGES,
     _check_tolerances,
     _determine_miter,
+    _validate_first_step,
     _validate_jac_shape,
     _wrapped_fun,
     _wrapped_jac,
@@ -526,6 +527,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
 
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
+
+    if first_step is not None:
+        _validate_first_step(first_step, tspan[0], tspan[-1])
 
     # ------------------------------------------------------------------
     # 4.  Workspace
