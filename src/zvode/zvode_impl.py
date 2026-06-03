@@ -32,11 +32,12 @@ def _validate_max_step(max_step):
 
 
 def _validate_first_step(first_step, t0, t_bound):
-    """Validate the user-supplied initial step size (a positive magnitude).
+    """Validate the user-supplied initial step size.
 
-    ZVODE's H0 (RWORK(5)) must carry the sign of the integration direction,
-    so callers are responsible for applying ``np.sign(t_bound - t0)`` to the
-    returned value before writing it into rwork[4].
+    Like ``max_step`` and ``min_step``, ``first_step`` is always a positive
+    magnitude regardless of integration direction.  ZVODE's H0 (RWORK(5))
+    must carry the sign of the direction, so the caller is responsible for
+    applying ``np.sign(t_bound - t0)`` when writing the value into rwork[4].
     """
     if first_step <= 0:
         raise ValueError("`first_step` must be positive.")
