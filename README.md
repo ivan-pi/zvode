@@ -32,67 +32,37 @@ It uses a modified version of the original Fortran package; see
 
 ### Procedural API — `solve_complex_ivp` (new in 0.2.0)
 
-`solve_complex_ivp` is the recommended entry point. It works like
-`scipy.integrate.odeint`: pass the RHS, a time span, and an initial condition;
-get back arrays of times and states.
-
-**Non-stiff problem** — collect every accepted step:
+`solve_complex_ivp` is the recommended entry point. Pass the RHS, a time span,
+and an initial condition; get back a `ZVODEResult` with `sol.t`, `sol.y`, and
+integration statistics (`sol.nfev`, `sol.njev`, …) as attributes.
 
 ```python
 import numpy as np
 from zvode import solve_complex_ivp
 
-t, y = solve_complex_ivp(
-    fun=lambda t, y: -1j * y,
-    tspan=(0.0, 10.0),
-    y0=[1.0 + 0.0j],
-    method='Adams',
-)
-# t : 1-D float array of accepted step times, shape (m,)
-# y : complex array, shape (1, m)
-```
+def rhs(t, y):
+    return np.array([-100j * y[0] + y[1],
+                     -1j   * y[1]])
 
-**Output at requested times** — pass three or more points as `tspan`:
+def jac(t, y):
+    return np.array([[-100j, 1.0],
+                     [ 0.0, -1j]])
 
-```python
-t_out = np.linspace(0.0, 10.0, 101)
-t, y = solve_complex_ivp(
-    fun=lambda t, y: -1j * y,
-    tspan=t_out,
-    y0=[1.0 + 0.0j],
-)
-# t is t_out, y.shape == (1, 101)
-```
-
-**Stiff problem** — BDF method with a user-supplied Jacobian:
-
-```python
-t, y = solve_complex_ivp(
-    fun=lambda t, y: -1j * y,
-    tspan=(0.0, 10.0),
-    y0=np.array([1.0 + 0.0j]),
+sol = solve_complex_ivp(
+    fun=rhs,
+    tspan=(0.0, 5.0),
+    y0=[1.0 + 0j, 0.0 + 1j],
     method='BDF',
-    jac=lambda t, y: np.array([[-1j]]),
-    rtol=1e-8,
-    atol=1e-10,
+    jac=jac,
 )
+
+print(sol.t.shape)   # (m,)   — every accepted step
+print(sol.y.shape)   # (2, m)
+print(sol.nfev)      # RHS evaluations
 ```
 
-**Retrieve integration statistics** — append `ret_stats=True`:
-
-```python
-t, y, stats = solve_complex_ivp(
-    fun=lambda t, y: -1j * y,
-    tspan=(0.0, 10.0),
-    y0=[1.0 + 0.0j],
-    ret_stats=True,
-)
-print(stats)  # ZVODEStats(nsteps=..., nfev=..., njev=..., nlu=...)
-```
-
-A step-by-step how-to guide for the procedural API — covering output modes,
-banded Jacobians, backward integration, and more — is in
-[`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md).
+See [`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md) for output
+modes, banded Jacobians, backward integration, and other options.
 
 ### OdeSolver API (scipy-compatible)
 
@@ -151,7 +121,6 @@ pip install .              # install locally from source
 | `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
 | `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
 | `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
-| `ret_stats` | bool | `False` | Append a `ZVODEStats(nsteps, nfev, njev, nlu)` object as the third return value. |
 | `refine` | int | `1` | Insert `refine − 1` interpolated points between each pair of accepted steps using ZVINDY dense output. |
 | `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
 | `first_step` | float | auto | Initial step size. |
