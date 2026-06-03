@@ -27,6 +27,24 @@ The underlying Fortran source has been modified; [`extern/README.md`](extern/REA
 > This integrator is not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
+## Table of contents
+
+- [Quick start](#quick-start)
+  - [Procedural API — `solve_complex_ivp` (new in 0.2.0)](#procedural-api-solve_complex_ivp-new-in-0-2-0)
+  - [OdeSolver API (scipy-compatible)](#odesolver-api-scipy-compatible)
+- [Installation](#installation)
+- [Solver options](#solver-options)
+  - [`solve_complex_ivp` key parameters](#solve_complex_ivp-key-parameters)
+  - [OdeSolver API options](#odesolver-api-options)
+- [Limitations](#limitations)
+- [References](#references)
+- [Links](#links)
+  - [ZVODE upstream](#zvode-upstream)
+  - [Python / R ecosystem](#python-r-ecosystem)
+- [Building from source](#building-from-source)
+- [License](#license)
+- [Contributing](#contributing)
+
 ## Quick start
 
 ### Procedural API — `solve_complex_ivp` (new in 0.2.0)
