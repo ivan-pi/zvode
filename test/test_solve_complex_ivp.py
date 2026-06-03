@@ -15,7 +15,8 @@ where B = C*y0[1]/(LAM2 - LAM1), A = y0[0] - B.
 import numpy as np
 import pytest
 
-from zvode import solve_complex_ivp, ZVODEResult, ZVODEStats
+from zvode import solve_complex_ivp
+from zvode.solve import ZVODEResult  # internal; not part of the public API
 
 # ---------------------------------------------------------------------------
 # Problem parameters
@@ -275,43 +276,21 @@ def test_result_type():
     assert isinstance(result, ZVODEResult)
     assert hasattr(result, 't')
     assert hasattr(result, 'y')
-    assert hasattr(result, 'stats')
+    assert hasattr(result, 'nfev')
+    assert hasattr(result, 'njev')
+    assert hasattr(result, 'nlu')
 
 
 def test_stats_always_present():
-    """Stats are always present on the result, no opt-in needed."""
+    """Solver statistics are always present on the result, no opt-in needed."""
     result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    stats = result.stats
-    assert isinstance(stats, ZVODEStats)
-    assert stats.nsteps > 0
-    assert stats.nfev > 0
-    assert stats.njev >= 0
-    assert stats.nlu >= 0
-    assert stats.nni >= 0
-    assert stats.ncfn >= 0
-    assert stats.netf >= 0
-    assert stats.nqu >= 1
-    assert stats.hu > 0.0
-    assert stats.tcur == pytest.approx(TF)
-
-
-def test_stats_dict_access():
-    """ZVODEStats fields accessible both as attributes and dict keys."""
-    result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    stats = result.stats
-    assert stats['nsteps'] == stats.nsteps
-    assert stats['nfev'] == stats.nfev
-    assert stats['hu'] == stats.hu
-    assert stats['tcur'] == stats.tcur
-
-
-def test_ret_stats_deprecated():
-    """ret_stats=True emits a DeprecationWarning but still works."""
-    with pytest.warns(DeprecationWarning, match="ret_stats"):
-        result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL,
-                                   ret_stats=True)
-    assert isinstance(result, ZVODEResult)
-    assert isinstance(result.stats, ZVODEStats)
+    assert result.nsteps > 0
+    assert result.nfev > 0
+    assert result.njev >= 0
+    assert result.nlu >= 0
+    assert result.nni >= 0
+    assert result.ncfn >= 0
+    assert result.netf >= 0
 
 
 def test_result_dict_access():
@@ -319,7 +298,8 @@ def test_result_dict_access():
     result = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
     np.testing.assert_array_equal(result['t'], result.t)
     np.testing.assert_array_equal(result['y'], result.y)
-    assert result['stats'] is result.stats
+    assert result['nfev'] == result.nfev
+    assert result['nlu'] == result.nlu
 
 
 # ---------------------------------------------------------------------------

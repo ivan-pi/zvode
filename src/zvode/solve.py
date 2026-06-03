@@ -35,76 +35,10 @@ from .zvode_impl import (
 ZVODE_LOCK = Lock()
 
 
-class ZVODEStats(dict):
-    """Integration statistics from the ZVODE solver.
-
-    Subclasses :class:`dict`; fields are also accessible as attributes.
-
-    Attributes
-    ----------
-    nsteps : int    Total number of steps taken.
-    nfev   : int    Number of right-hand side evaluations.
-    njev   : int    Number of Jacobian evaluations.
-    nlu    : int    Number of LU decompositions.
-    nni    : int    Number of nonlinear (Newton) iterations.
-    ncfn   : int    Number of corrector convergence failures.
-    netf   : int    Number of error test failures.
-    nqu    : int    Integration order used on the last step.
-    hu     : float  Step size used on the last step.
-    tcur   : float  Current internal time reached by the solver.
-    """
-
-    def __getattr__(self, name):
-        try:
-            return self[name]
-        except KeyError:
-            raise AttributeError(name) from None
-
-    def __repr__(self):
-        items = ', '.join(f'{k}={v!r}' for k, v in self.items())
-        return f"ZVODEStats({items})"
-
-
-def _make_stats(iwork, rwork):
-    """Extract solver diagnostics from the ZVODE workspace arrays.
-
-    Indices follow the ZVODE user documentation (Fortran 1-based → Python 0-based):
-      IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE, IWORK(14)=NQU,
-      IWORK(20)=NLU, IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF,
-      RWORK(11)=HU, RWORK(13)=TCUR.
-    """
-    return ZVODEStats({
-        'nsteps': int(iwork[10]),
-        'nfev':   int(iwork[11]),
-        'njev':   int(iwork[12]),
-        'nlu':    int(iwork[19]),
-        'nni':    int(iwork[20]),
-        'ncfn':   int(iwork[21]),
-        'netf':   int(iwork[22]),
-        'nqu':    int(iwork[13]),
-        'hu':     float(rwork[10]),
-        'tcur':   float(rwork[12]),
-    })
-
-
 class ZVODEResult(dict):
-    """Result object returned by :func:`solve_complex_ivp`.
+    """Result of :func:`solve_complex_ivp`; a dict with attribute access.
 
-    Subclasses :class:`dict`; fields are also accessible as attributes.
-    The three primary attributes are always present regardless of how the
-    solver was called.
-
-    Attributes
-    ----------
-    t : float or ndarray, shape (m,)
-        Output time(s).  Scalar in endpoint-only mode
-        (``len(tspan)==2`` and ``save_steps=False``); 1-D array otherwise.
-    y : ndarray, shape (n,) or (n, m), complex128
-        Solution state(s).  1-D in endpoint-only mode; 2-D Fortran-order
-        with ``y[:, k]`` the state at ``t[k]`` otherwise.
-    stats : ZVODEStats
-        Integration statistics (nsteps, nfev, njev, nlu, nni, ncfn, netf,
-        nqu, hu, tcur).
+    All fields are accessible both as ``result['key']`` and ``result.key``.
     """
 
     def __getattr__(self, name):
@@ -120,7 +54,9 @@ class ZVODEResult(dict):
                else repr(t))
         y_s = (f"ndarray(shape={y.shape}, dtype={y.dtype})"
                if isinstance(y, np.ndarray) else repr(y))
-        return f"ZVODEResult(t={t_s}, y={y_s}, stats={self.get('stats')!r})"
+        return (f"ZVODEResult(t={t_s}, y={y_s}, "
+                f"nfev={self.get('nfev')}, njev={self.get('njev')}, "
+                f"nlu={self.get('nlu')})")
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +285,6 @@ def solve_complex_ivp(fun, tspan, y0, *,
                       lband=None,
                       uband=None,
                       in_place=False,
-                      ret_stats=False,
                       save_steps=True,
                       refine=1,
                       allow_overshoot=False,
@@ -448,15 +383,11 @@ def solve_complex_ivp(fun, tspan, y0, *,
         Default ``False`` (SciPy-compatible return-value form).
         Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
         use the in-place convention; ``in_place=True`` is required for them.
-    ret_stats : bool, optional
-        Deprecated no-op.  Statistics are now always available as
-        ``result.stats`` on the returned :class:`ZVODEResult` object.
-        Passing ``True`` emits a :exc:`DeprecationWarning`.
 
     Returns
     -------
-    result : ZVODEResult
-        A dict-like object with attribute access.  Always contains:
+    result : dict-like with attribute access
+        Always contains:
 
         result.t : float or ndarray, shape (m,)
             Output time(s).  A scalar float in endpoint-only mode
@@ -466,10 +397,12 @@ def solve_complex_ivp(fun, tspan, y0, *,
             Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
             Fortran-order array with ``result.y[:, k]`` the state at
             ``result.t[k]`` otherwise.
-        result.stats : ZVODEStats
-            Integration statistics: ``nsteps``, ``nfev``, ``njev``,
-            ``nlu``, ``nni``, ``ncfn``, ``netf``, ``nqu``, ``hu``,
-            ``tcur``.
+        result.nfev : int
+            Number of right-hand side evaluations.
+        result.njev : int
+            Number of Jacobian evaluations.
+        result.nlu : int
+            Number of LU decompositions.
 
     Other Parameters
     ----------------
@@ -702,13 +635,17 @@ def solve_complex_ivp(fun, tspan, y0, *,
             f"ZVODE ISTATE={istate}: {_msg}"
         )
 
-    if ret_stats:
-        warnings.warn(
-            "ret_stats is deprecated and has no effect; integration statistics "
-            "are now always available as result.stats on the returned "
-            "ZVODEResult object.  Remove ret_stats=True from your call.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    return ZVODEResult({'t': t_out, 'y': y_out, 'stats': _make_stats(iwork, rwork)})
+    # Indices follow the ZVODE user documentation (Fortran 1-based → Python 0-based):
+    #   IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE,
+    #   IWORK(20)=NLU, IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF.
+    return ZVODEResult({
+        't':      t_out,
+        'y':      y_out,
+        'nsteps': int(iwork[10]),
+        'nfev':   int(iwork[11]),
+        'njev':   int(iwork[12]),
+        'nlu':    int(iwork[19]),
+        'nni':    int(iwork[20]),
+        'ncfn':   int(iwork[21]),
+        'netf':   int(iwork[22]),
+    })
