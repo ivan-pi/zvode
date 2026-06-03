@@ -1345,6 +1345,65 @@ def test_tight_binding_chain():
 
 
 # ---------------------------------------------------------------------------
+# Jacobian shape semantics: scalar-like forms for a single-equation system
+#
+# Problem: dy/dt = -1j*y,  y(0) = 1+0j,  exact solution y(t) = exp(-1j*t).
+# For neq=1, miter=1 requires shape (1, 1).  The table below lists the five
+# natural ways a user might write "the scalar -1j" and what np.asarray() makes
+# of each:
+#
+#   Form               np.asarray(...)   shape    ZVODE    SciPy Radau/BDF
+#   -----------------  ----------------  -------  -------  ---------------
+#   -1j                complex scalar    ()       Error    Error (same msg)
+#   [-1j]              1-D list          (1,)     Error    Error
+#   [[-1j]]            nested list       (1, 1)   OK       OK
+#   np.array(-1j)      0-D ndarray       ()       Error    Error
+#   np.array([-1j])    1-D ndarray       (1,)     Error    Error
+#
+# SciPy's own implicit solvers (Radau, BDF) apply the same check and produce
+# the same error: "`jac` is expected to have shape (1, 1), but actually has …".
+# ZVODE raises via _validate_jac_shape before any Fortran call, matching that
+# behaviour exactly.
+# ---------------------------------------------------------------------------
+
+_SJ_FUN = lambda t, y: -1j * y
+_SJ_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
+_SJ_T_SPAN = (0.0, 1.0)
+_SJ_EXACT_FINAL = np.exp(-1j * 1.0)
+
+
+@pytest.mark.parametrize(
+    "jac,label",
+    [
+        (lambda t, y: -1j,             "scalar complex"),
+        (lambda t, y: [-1j],           "1-D list"),
+        (lambda t, y: np.array(-1j),   "0-D ndarray"),
+        (lambda t, y: np.array([-1j]), "1-D ndarray"),
+    ],
+)
+def test_scalar_jac_shape_raises(jac, label):
+    """Jacobians that don't return a (1,1) array raise ValueError naming 'shape'."""
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(_SJ_FUN, _SJ_T_SPAN, _SJ_Y0, method=ZVODE, jac=jac, miter=1)
+
+
+def test_nested_list_jac_accepted():
+    """[[item]] produces shape (1,1) after np.asarray() and is the correct form."""
+    sol = solve_ivp(
+        _SJ_FUN,
+        _SJ_T_SPAN,
+        _SJ_Y0,
+        method=ZVODE,
+        jac=lambda t, y: [[-1j]],
+        miter=1,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    assert sol.success, f"solve_ivp failed: {sol.message}"
+    assert_allclose(sol.y[0, -1], _SJ_EXACT_FINAL, rtol=1e-5, atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
