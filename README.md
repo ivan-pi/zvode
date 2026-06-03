@@ -14,53 +14,12 @@ a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
 This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
 so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
-argument.
+argument. It uses a modified version of the original Fortran package; see
+[`extern/README.md`](extern/README.md) for the changes made.
 
 > [!WARNING]
 > This integrator is not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
-
-## Fortran source
-
-This package uses a modified version of the Fortran ZVODE library. See [`extern/README.md`](extern/README.md) for the changes made.
-
-## Installation
-
-```bash
-pip install .
-```
-
-### Building from source
-
-Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
-The code has been tested with **gfortran** (passing `-std=f2003`); **nvfortran**,
-**ifx**, and **flang** are also known to work.
-
-A BLAS library is required at link time (located by CMake's
-`find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
-or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
-Accelerate framework is picked up automatically.
-
-```bash
-# Example: Ubuntu / Debian
-sudo apt update
-sudo apt install gfortran libopenblas-dev
-pip install -v ".[test]"
-```
-
-```bash
-# Example: macOS (Homebrew)
-brew update
-brew install gfortran
-pip install -v ".[test]"
-```
-
-To control which BLAS library is used, add the option,
-```
-pip install ... \
-  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
-```
-The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
 
 ## Quick start
 
@@ -94,6 +53,13 @@ sol = solve_ivp(
 ```
 
 Complete usage examples can be found in the [`docs/`](docs/) folder.
+
+## Installation
+
+```bash
+pip install zvode          # once available on PyPI
+pip install .              # install locally from source
+```
 
 ## Solver options
 
@@ -168,6 +134,37 @@ For a broader perspective on the history and design philosophy behind ODEPACK an
 |---|---|
 | `scipy.integrate.OdeSolver` (base class) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html> |
 | R wrappers — deSolve `zvode` | <https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode> |
+
+## Building from source
+
+Building requires a C compiler and a Fortran compiler with Fortran 2003 support.
+The code has been tested with **gfortran** (passing `-std=f2003`).
+
+A BLAS library is required at link time (located by CMake's
+`find_package(BLAS)`). On Linux, [OpenBLAS](https://www.openblas.net/)
+or a vendor BLAS (MKL, BLIS, …) should all work. On macOS, the system
+Accelerate framework is picked up automatically.
+
+```bash
+# Example: Ubuntu / Debian
+sudo apt update
+sudo apt install gfortran libopenblas-dev
+pip install -v ".[test]"
+```
+
+```bash
+# Example: macOS (Homebrew)
+brew update
+brew install gfortran
+pip install -v ".[test]"
+```
+
+To control which BLAS library is used, add the option,
+```
+pip install ... \
+  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
+```
+The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
 
 ## License
 
