@@ -104,7 +104,7 @@ t_out = np.linspace(0.0, 4.0, 401)
 # Integrate with solve_complex_ivp (BDF, user-supplied banded Jacobian)
 # ---------------------------------------------------------------------------
 
-t, y, stats = solve_complex_ivp(
+sol = solve_complex_ivp(
     fun,
     t_out,
     y0,
@@ -113,8 +113,8 @@ t, y, stats = solve_complex_ivp(
     uband=uband,
     rtol=1e-10,
     atol=1e-12,
-    ret_stats=True,
 )
+t, y = sol.t, sol.y
 
 # ---------------------------------------------------------------------------
 # Exact solution via matrix exponential
@@ -123,7 +123,7 @@ t, y, stats = solve_complex_ivp(
 y_exact = np.array([expm(A * ti) @ y0 for ti in t]).T
 
 max_err = np.max(np.abs(y - y_exact))
-print(f"nsteps={stats.nsteps}, nfev={stats.nfev}, njev={stats.njev}, nlu={stats.nlu}")
+print(f"nsteps={sol.nsteps}, nfev={sol.nfev}, njev={sol.njev}, nlu={sol.nlu}")
 print(f"Max absolute error vs expm: {max_err:.2e}")
 
 # ---------------------------------------------------------------------------
