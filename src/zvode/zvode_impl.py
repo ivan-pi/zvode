@@ -313,10 +313,10 @@ class ZVODE(OdeSolver):
         * 5 – chord with internally generated banded Jacobian
     jsv : {1, -1}, optional
         Jacobian-saving flag.  ``1`` (default) saves and reuses the Jacobian;
-        ``-1`` recomputes it every step.  Only meaningful when ``miter`` is
-        1, 2, 4, or 5 (i.e. when a Jacobian matrix is used); ignored for
-        functional iteration (``miter=0``) and the diagonal approximation
-        (``miter=3``).
+        ``-1`` recomputes it every step.  Ignored when no full Jacobian matrix
+        is stored, i.e. for functional iteration (``miter=0``) and the
+        diagonal approximation (``miter=3``); both are normally selected
+        automatically when `jac` is not supplied.
 
     Attributes
     ----------

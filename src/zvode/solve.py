@@ -444,9 +444,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
         in the corrector iteration across multiple steps, trading extra
         memory for fewer Jacobian evaluations.  Set to ``False`` to
         discard the saved copy and recompute the Jacobian at each step.
-        Only meaningful when a Jacobian matrix is used (``miter`` 1, 2, 4,
-        or 5); ignored for functional iteration (``miter=0``) and the
-        diagonal approximation (``miter=3``).
+        Ignored when no full Jacobian matrix is stored, i.e. for functional
+        iteration (``miter=0``) and the diagonal approximation (``miter=3``);
+        both are normally selected automatically when ``jac`` is not supplied.
 
     Raises
     ------
