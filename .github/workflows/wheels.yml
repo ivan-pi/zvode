@@ -84,7 +84,7 @@ jobs:
             -v
 
       - name: Install wheel and pytest
-        run: pip install wheelhouse/*.whl pytest
+        run: pip install wheelhouse/*.whl pytest scipy
 
       - name: Run tests
         run: python -m pytest zvode-*/test/ -v
