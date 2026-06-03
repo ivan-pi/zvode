@@ -55,7 +55,7 @@ is deferred to 0.4.0.
 - [DONE] Add a solve_complex_ivp quick-start section to the README (example + key
   parameters); it is the headline feature of 0.2.0 and currently invisible to
   anyone reading the project page
-- Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
+- [DONE] Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
 - [DONE] Replace the bare (t, y[, stats]) tuple return from solve_complex_ivp with a
   result object (t, y, stats attributes always present); eliminates the variable-
   arity ret_stats=True pattern and keeps the return type stable for future fields
