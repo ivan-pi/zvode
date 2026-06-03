@@ -14,7 +14,8 @@ a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
 This package wraps ZVODE as a [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass,
 so it can be passed directly to [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) via the `method`
-argument.
+argument. It uses a modified version of the upstream Fortran source; see
+[`extern/README.md`](extern/README.md) for the changes made.
 
 > [!WARNING]
 > This integrator is not thread-safe. You cannot have two threads
@@ -164,10 +165,6 @@ pip install ... \
   -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
 ```
 The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
-
-## Fortran source
-
-This package uses a modified version of the Fortran ZVODE library. See [`extern/README.md`](extern/README.md) for the changes made.
 
 ## License
 
