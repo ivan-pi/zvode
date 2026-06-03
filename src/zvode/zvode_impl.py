@@ -420,30 +420,9 @@ class ZVODE(OdeSolver):
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
-        if jac is not None and self.miter in (1, 4):
-            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp)
-
-        if jsv not in (1, -1):
-            raise ValueError(
-                "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
-            )
-        self.jsv = jsv
-
-        # Method Flag (MF)
-        self.mf = self.jsv * (10 * self.meth + self.miter)
-
-        if abs(self.mf) not in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25):
-            # TODO: we may be able to get rid of this check if
-            #       jsv, meth and miter have been checked before-hand
-            raise RuntimeError("Error setting the method flag")
-
-        # Complex workspace size
-        #
-        # The Fortran source computes LENWM = (1+JCO)*N*N and LENP = N*N using
-        # int32 (LP64 calling convention).  For N >= 46341, N*N overflows int32,
-        # which would corrupt internal array offsets even though Python allocates
-        # the arrays correctly (Python integers are arbitrary-precision).
-        # Detect this before calling into Fortran.
+        # Check for int32 overflow in Fortran workspace arithmetic before
+        # doing anything that allocates memory proportional to neq (including
+        # the jac shape probe below).
         _INT32_MAX = 2**31 - 1
         if self.miter in (1, 2):
             # worst case: LENWM = 2*N*N  (JSV=1, JCO=1)
@@ -461,6 +440,23 @@ class ZVODE(OdeSolver):
                     f"Banded workspace size ({_lenwm_max:,}) overflows the "
                     f"32-bit integer arithmetic used internally by the Fortran library."
                 )
+
+        if jac is not None and self.miter in (1, 4):
+            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp)
+
+        if jsv not in (1, -1):
+            raise ValueError(
+                "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
+            )
+        self.jsv = jsv
+
+        # Method Flag (MF)
+        self.mf = self.jsv * (10 * self.meth + self.miter)
+
+        if abs(self.mf) not in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25):
+            # TODO: we may be able to get rid of this check if
+            #       jsv, meth and miter have been checked before-hand
+            raise RuntimeError("Error setting the method flag")
 
         if self.miter == 0:
             lwm = 0
