@@ -389,6 +389,12 @@ class ZVODE(OdeSolver):
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
         if jac is not None and self.miter in (1, 4):
+            # FIXME: this evaluation should be counted toward the Jacobian
+            # evaluation counter (njev).  Currently the Fortran library
+            # maintains its own internal counter in iwork and we can only
+            # read it indirectly at the end of each accepted step, so there
+            # is no way to increment it here without duplicating the counter
+            # in Python.
             _jac_trial = np.asarray(jac(t0, self._ytmp))
             if self.miter == 4:
                 expected = (self.ml + self.mu + 1, self.n)
