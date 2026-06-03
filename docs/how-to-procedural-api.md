@@ -78,7 +78,7 @@ sol = solve_complex_ivp(rhs, tspan=(0.0, 5.0),
 ```
 
 **Banded** — pass `lband` and `uband`; return a `(lband + uband + 1, n)` array
-packed so that `pd[uband + i - j, j] = J[i, j]`:
+where entry `[uband + i - j, j]` holds ∂f[i]/∂y[j]:
 
 ```python
 sol = solve_complex_ivp(rhs, tspan=(0.0, 5.0), y0=y0,
@@ -102,12 +102,6 @@ sol = solve_complex_ivp(rhs, tspan=(10.0, 0.0), y0=y_at_t10)
 
 Set `in_place=True` to avoid a NumPy allocation per step. The RHS signature
 becomes `fun(t, y, dy)` (fills `dy` in place); the Jacobian signature becomes
-`jac(t, y, pd)` for dense or `jac(t, y, pd, ml, mu)` for banded.
+`jac(t, y, pd)` for dense or `jac(t, y, pd, ml, mu)` for banded, where `pd`,
+the array of partial derivatives, is modified in place.
 
----
-
-## Thread safety
-
-ZVODE uses process-global Fortran COMMON blocks. `solve_complex_ivp` holds a
-process-wide lock for the duration of the integration, so concurrent calls from
-different threads will serialize. Use `multiprocessing` for true parallelism.

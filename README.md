@@ -56,9 +56,7 @@ sol = solve_complex_ivp(
     jac=jac,
 )
 
-print(sol.t.shape)   # (m,)   — every accepted step
-print(sol.y.shape)   # (2, m)
-print(sol.nfev)      # RHS evaluations
+print(sol)
 ```
 
 See [`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md) for output
@@ -121,32 +119,20 @@ pip install .              # install locally from source
 | `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
 | `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
 | `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
-| `refine` | int | `1` | Insert `refine − 1` interpolated points between each pair of accepted steps using ZVINDY dense output. |
-| `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
-| `first_step` | float | auto | Initial step size. |
-| `max_step` | float | `np.inf` | Maximum step size. |
-| `min_step` | float | `0` | Minimum step size. |
-| `max_num_steps` | int | `1 000 000` | Maximum internal steps between output points; raises `RuntimeError` if exceeded. |
 
 ### OdeSolver API options
 
-Pass these as keyword arguments to `solve_ivp` (forwarded to the solver
-constructor) or directly when constructing `ZVODE` / `ZVODE_BDF` /
-`ZVODE_Adams`.
+Keyword arguments accepted by `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`; passed
+through unchanged when supplied via `solve_ivp`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed by the `ZVODE_BDF` and `ZVODE_Adams` subclasses. |
 | `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
 | `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. For a full Jacobian return an `(n, n)` array; for a banded Jacobian return an `(lband + uband + 1, n)` array. Estimated by finite differences if not provided. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths of the Jacobian band. Setting either activates the banded solver path; the other defaults to 0. |
-| `max_order` | int | `5` / `12` | Maximum integration order (capped by method). |
-| `first_step` | float | auto | Initial step size. |
-| `max_step` | float | `np.inf` | Maximum step size. |
-| `min_step` | float | 0 | Minimum step-size. |
+| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: `(n, n)` array; banded: `(lband + uband + 1, n)` array. Estimated by finite differences if omitted. |
+| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
 | `jsv` | `1` or `-1` | `1` | `1` saves and reuses the Jacobian; `-1` recomputes every step. |
-| `miter` | int | None | Iteration method; normally inferred from  `jac` and `lband`/`uband`. |
 
 > **Note** — For stiff problems, `f` must be analytic (each component must be
 > an analytic function of each state variable). For stiff systems where `f` is
