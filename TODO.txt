@@ -47,14 +47,16 @@ is deferred to 0.4.0.
   [Deferred to 0.4.0 — compiled cfunc path raises NotImplementedError for now]
 - Document the ZVINDY COMMON block constraint: ZVINDY is only valid immediately
   after a step on the same ZVODE instance; make this explicit in the API
+  (N/A for the Python bindings — the C/Python ZVINDY does not share this
+  Fortran COMMON block design constraint)
 - [DONE] Add SUNDIALS link to README Links table (currently missing)
-- Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
+- [DONE] Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
   that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html)
-- Add a solve_complex_ivp quick-start section to the README (example + key
+- [DONE] Add a solve_complex_ivp quick-start section to the README (example + key
   parameters); it is the headline feature of 0.2.0 and currently invisible to
   anyone reading the project page
 - Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
-- Replace the bare (t, y[, stats]) tuple return from solve_complex_ivp with a
+- [DONE] Replace the bare (t, y[, stats]) tuple return from solve_complex_ivp with a
   result object (t, y, stats attributes always present); eliminates the variable-
   arity ret_stats=True pattern and keeps the return type stable for future fields
   (e.g. dense_output).  ret_stats keyword can be removed or kept as a no-op for
