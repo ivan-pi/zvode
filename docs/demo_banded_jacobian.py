@@ -65,15 +65,11 @@ A += np.diag([beta]  * (n - 1), -1)   # first subdiagonal
 A += np.diag([gamma] * (n - 2), -2)   # second subdiagonal
 
 # ---------------------------------------------------------------------------
-# Right-hand side  f(t, y) = A y  (vectorized, no temporary matrix multiply)
+# Right-hand side  f(t, y) = A y
 # ---------------------------------------------------------------------------
 
 def fun(t, y):
-    dy = alpha * y
-    dy[:-1] += delta * y[1:]    # coupling from y_{k+1}
-    dy[1:]  += beta  * y[:-1]   # coupling from y_{k-1}
-    dy[2:]  += gamma * y[:-2]   # coupling from y_{k-2}
-    return dy
+    return A @ y
 
 # ---------------------------------------------------------------------------
 # Banded Jacobian:  return pd of shape (lband + uband + 1, n)
