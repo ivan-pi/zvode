@@ -263,7 +263,9 @@ class ZVODE(OdeSolver):
 
         self.wrap_fun = _wrapped_fun(fun)
 
-        self.miter, self.ml, self.mu = _determine_miter(jac, lband, uband, self.meth, miter)
+        self.miter, self.ml, self.mu = _determine_miter(
+            jac, lband, uband, self.meth, miter
+        )
 
         if self.miter in (4, 5):
             bandwidth = self.ml + self.mu + 1
@@ -299,7 +301,9 @@ class ZVODE(OdeSolver):
                 )
 
         if jac is not None and self.miter in (1, 4):
-            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp)
+            _validate_jac_shape(
+                jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp
+            )
 
         if jsv not in (1, -1):
             raise ValueError(

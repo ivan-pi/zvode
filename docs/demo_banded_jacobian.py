@@ -47,10 +47,10 @@ from zvode import solve_complex_ivp
 # ---------------------------------------------------------------------------
 
 n = 5
-alpha = -1.0 + 2j    # main diagonal
-beta  =  0.5 + 0j    # first subdiagonal   (lband = 1)
-gamma =  0.25 + 0j   # second subdiagonal  (lband = 2)
-delta =  0.0 + 0.5j  # superdiagonal       (uband = 1)
+alpha = -1.0 + 2j  # main diagonal
+beta = 0.5 + 0j  # first subdiagonal   (lband = 1)
+gamma = 0.25 + 0j  # second subdiagonal  (lband = 2)
+delta = 0.0 + 0.5j  # superdiagonal       (uband = 1)
 
 lband = 2
 uband = 1
@@ -60,17 +60,19 @@ uband = 1
 # ---------------------------------------------------------------------------
 
 A = np.diag([alpha] * n)
-A += np.diag([delta] * (n - 1),  1)   # superdiagonal
-A += np.diag([beta]  * (n - 1), -1)   # first subdiagonal
-A += np.diag([gamma] * (n - 2), -2)   # second subdiagonal
+A += np.diag([delta] * (n - 1), 1)  # superdiagonal
+A += np.diag([beta] * (n - 1), -1)  # first subdiagonal
+A += np.diag([gamma] * (n - 2), -2)  # second subdiagonal
 
 # ---------------------------------------------------------------------------
 # Right-hand side  f(t, y) = A y
 # ---------------------------------------------------------------------------
 
+
 def fun(t, y):
     # Dense matrix-vector product for convenience; the Jacobian is banded.
     return A @ y
+
 
 # ---------------------------------------------------------------------------
 # Banded Jacobian:  return pd of shape (lband + uband + 1, n)
@@ -80,13 +82,15 @@ def fun(t, y):
 # For this problem J = A is constant, so pd does not depend on t or y.
 # ---------------------------------------------------------------------------
 
+
 def jac_banded(t, y):
     pd = np.zeros((lband + uband + 1, n), dtype=complex)
-    pd[0, 1:]  = delta    # J[j-1, j] = delta,  j = 1 .. n-1  (superdiag)
-    pd[1, :]   = alpha    # J[j,   j] = alpha,  j = 0 .. n-1  (main diag)
-    pd[2, :-1] = beta     # J[j+1, j] = beta,   j = 0 .. n-2  (subdiag 1)
-    pd[3, :-2] = gamma    # J[j+2, j] = gamma,  j = 0 .. n-3  (subdiag 2)
+    pd[0, 1:] = delta  # J[j-1, j] = delta,  j = 1 .. n-1  (superdiag)
+    pd[1, :] = alpha  # J[j,   j] = alpha,  j = 0 .. n-1  (main diag)
+    pd[2, :-1] = beta  # J[j+1, j] = beta,   j = 0 .. n-2  (subdiag 1)
+    pd[3, :-2] = gamma  # J[j+2, j] = gamma,  j = 0 .. n-3  (subdiag 2)
     return pd
+
 
 # ---------------------------------------------------------------------------
 # Initial conditions and output grid
@@ -142,6 +146,8 @@ ax_im.set_xlabel("$t$")
 ax_im.legend()
 ax_im.grid(True, alpha=0.3)
 
-plt.suptitle(r"$y' = Ay$,  banded $A$ with $\ell_b = 2$, $u_b = 1$  ($n = 5$)", fontsize=12)
+plt.suptitle(
+    r"$y' = Ay$,  banded $A$ with $\ell_b = 2$, $u_b = 1$  ($n = 5$)", fontsize=12
+)
 plt.tight_layout()
 plt.show()

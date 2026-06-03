@@ -192,5 +192,7 @@ def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
     elif jac:
         miter = 1
     else:
-        miter = 0 if meth == 1 else 2   # Adams: functional; BDF: chord with generated Jacobian
+        miter = (
+            0 if meth == 1 else 2
+        )  # Adams: functional; BDF: chord with generated Jacobian
     return miter, lband, uband

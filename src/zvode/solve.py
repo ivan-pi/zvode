@@ -50,20 +50,25 @@ class ZVODEResult(dict):
             raise AttributeError(name) from None
 
     def __repr__(self):
-        t = self.get('t')
-        y = self.get('y')
-        t_s = (f"ndarray(shape={t.shape})" if isinstance(t, np.ndarray)
-               else repr(t))
-        y_s = (f"ndarray(shape={y.shape}, dtype={y.dtype})"
-               if isinstance(y, np.ndarray) else repr(y))
-        return (f"ZVODEResult(t={t_s}, y={y_s}, "
-                f"nfev={self.get('nfev')}, njev={self.get('njev')}, "
-                f"nlu={self.get('nlu')})")
+        t = self.get("t")
+        y = self.get("y")
+        t_s = f"ndarray(shape={t.shape})" if isinstance(t, np.ndarray) else repr(t)
+        y_s = (
+            f"ndarray(shape={y.shape}, dtype={y.dtype})"
+            if isinstance(y, np.ndarray)
+            else repr(y)
+        )
+        return (
+            f"ZVODEResult(t={t_s}, y={y_s}, "
+            f"nfev={self.get('nfev')}, njev={self.get('njev')}, "
+            f"nlu={self.get('nlu')})"
+        )
 
 
 # ---------------------------------------------------------------------------
 # C function-pointer detection
 # ---------------------------------------------------------------------------
+
 
 def _cfunc_address(fun):
     """Return the C function pointer address (int) for compiled callbacks.
@@ -75,9 +80,9 @@ def _cfunc_address(fun):
 
     Returns ``None`` for ordinary Python callables.
     """
-    if hasattr(fun, 'address'):                 # numba @cfunc
+    if hasattr(fun, "address"):  # numba @cfunc
         return int(fun.address)
-    if isinstance(fun, ctypes._CFuncPtr):       # ctypes CFUNCTYPE
+    if isinstance(fun, ctypes._CFuncPtr):  # ctypes CFUNCTYPE
         return ctypes.cast(fun, ctypes.c_void_p).value
     return None
 
@@ -86,9 +91,22 @@ def _cfunc_address(fun):
 # Workspace allocation
 # ---------------------------------------------------------------------------
 
-def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
-                    first_step, min_step, max_step, max_order, max_num_steps,
-                    t0, t_bound):
+
+def _make_workspace(
+    n,
+    miter,
+    ml,
+    mu,
+    mf,
+    maxord_allowed,
+    first_step,
+    min_step,
+    max_step,
+    max_order,
+    max_num_steps,
+    t0,
+    t_bound,
+):
     """Allocate and initialise ZVODE's three workspace arrays.
 
     Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
@@ -100,12 +118,14 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
     if miter in (1, 2) and n**2 > _INT32_MAX:
         raise ValueError(
             f"neq={n} exceeds the maximum of 46340 for dense Jacobian methods: "
-            "neq**2 overflows the 32-bit integer arithmetic used internally.")
+            "neq**2 overflows the 32-bit integer arithmetic used internally."
+        )
     if miter in (4, 5):
         _lenwm_max = (3 * ml + mu + 1) * n
         if _lenwm_max > _INT32_MAX:
             raise ValueError(
-                f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic.")
+                f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
+            )
 
     if miter == 0:
         lwm = 0
@@ -114,7 +134,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
     elif miter == 3:
         lwm = n
     elif miter in (4, 5):
-        lwm = (3*ml + 2*mu + 2)*n if mf > 0 else (2*ml + mu + 1)*n
+        lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
     else:
         raise RuntimeError(f"Unhandled miter={miter}")
 
@@ -131,7 +151,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
         iwork[0] = ml
         iwork[1] = mu
 
-    rwork[0] = float(t_bound)          # TCRIT; required when ITASK=4 or 5
+    rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
         # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
@@ -141,7 +161,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
         rwork[6] = float(min_step)
     if max_order is not None:
         iwork[4] = int(max_order)
-    iwork[5] = int(max_num_steps)           # MXSTEP: max internal steps per output point
+    iwork[5] = int(max_num_steps)  # MXSTEP: max internal steps per output point
 
     return zwork, rwork, iwork
 
@@ -150,10 +170,24 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 # Integration drivers
 # ---------------------------------------------------------------------------
 
-def _zvode_adaptive(fun, jac, y0, t0, t_bound,
-                    itol, rtol, atol, mf, iopt,
-                    zwork, rwork, iwork,
-                    refine=1, allow_overshoot=False):
+
+def _zvode_adaptive(
+    fun,
+    jac,
+    y0,
+    t0,
+    t_bound,
+    itol,
+    rtol,
+    atol,
+    mf,
+    iopt,
+    zwork,
+    rwork,
+    iwork,
+    refine=1,
+    allow_overshoot=False,
+):
     """Drive ZVODE in single-step mode, collecting every accepted step.
 
     Uses ITASK=5 by default (step must not overshoot TCRIT = rwork[0] = t_bound).
@@ -190,12 +224,22 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
         while direction * (float(t_bound) - t) > 0:
             t_old = t
             t, istate = _zvode.zvode(
-                fun, ytmp,
-                t, t_bound,
-                itol, rtol, atol,
-                ITASK, istate, iopt,
-                zwork, rwork, iwork,
-                jac, mf)
+                fun,
+                ytmp,
+                t,
+                t_bound,
+                itol,
+                rtol,
+                atol,
+                ITASK,
+                istate,
+                iopt,
+                zwork,
+                rwork,
+                iwork,
+                jac,
+                mf,
+            )
 
             if istate < 0:
                 break
@@ -204,9 +248,9 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
                 # After an accepted step the Nordsieck array in zwork[0:n*(nq+1)]
                 # is valid for interpolation over [t_old, t].  ZVINDY is called
                 # before the next zvode call overwrites zwork.
-                nq  = int(iwork[14])         # NQCUR: current order
-                hu  = float(rwork[10])       # HU: step size just used
-                yh  = zwork[:n * (nq + 1)].reshape((n, nq + 1), order='F')
+                nq = int(iwork[14])  # NQCUR: current order
+                hu = float(rwork[10])  # HU: step size just used
+                yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F")
                 dky = np.empty(n, dtype=np.complex128)
                 for i in range(1, refine):
                     t_i = t_old + i * (t - t_old) / refine
@@ -223,9 +267,7 @@ def _zvode_adaptive(fun, jac, y0, t0, t_bound,
     return ts, ys, istate
 
 
-def _zvode_knots(fun, jac, y0, tspan,
-                 itol, rtol, atol, mf, iopt,
-                 zwork, rwork, iwork):
+def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
     """Drive ZVODE to each requested output knot using ITASK=1.
 
     ZVODE takes as many internal steps as needed to reach each knot and
@@ -242,13 +284,13 @@ def _zvode_knots(fun, jac, y0, tspan,
     ys    : ndarray, shape (n, m), complex128, Fortran order
     istate : int
     """
-    ITASK = 1   # normal: step to tout, taking as many steps as needed
+    ITASK = 1  # normal: step to tout, taking as many steps as needed
     istate = 1  # initial call
 
     n = len(y0)
     ytmp = y0.copy()
 
-    ys = np.empty((n, len(tspan)), dtype=np.complex128, order='F')
+    ys = np.empty((n, len(tspan)), dtype=np.complex128, order="F")
     ys[:, 0] = ytmp
     t = float(tspan[0])
 
@@ -257,12 +299,22 @@ def _zvode_knots(fun, jac, y0, tspan,
     with ZVODE_LOCK:
         for i in range(1, len(tspan)):
             t, istate = _zvode.zvode(
-                fun, ytmp,
-                t, float(tspan[i]),
-                itol, rtol, atol,
-                ITASK, istate, iopt,
-                zwork, rwork, iwork,
-                jac, mf)
+                fun,
+                ytmp,
+                t,
+                float(tspan[i]),
+                itol,
+                rtol,
+                atol,
+                ITASK,
+                istate,
+                iopt,
+                zwork,
+                rwork,
+                iwork,
+                jac,
+                mf,
+            )
 
             if istate < 0:
                 # Do not store ytmp: ZVODE's output is not meaningful on error.
@@ -280,24 +332,30 @@ def _zvode_knots(fun, jac, y0, tspan,
 # Public API
 # ---------------------------------------------------------------------------
 
-def solve_complex_ivp(fun, tspan, y0, *,
-                      rtol=1.0e-3,
-                      atol=1.0e-6,
-                      jac=None,
-                      method="BDF",
-                      lband=None,
-                      uband=None,
-                      in_place=False,
-                      save_steps=True,
-                      refine=1,
-                      allow_overshoot=False,
-                      first_step=None,
-                      min_step=0.0,
-                      max_step=np.inf,
-                      max_num_steps=1_000_000,
-                      max_order=None,
-                      miter=None,
-                      save_jac=True):
+
+def solve_complex_ivp(
+    fun,
+    tspan,
+    y0,
+    *,
+    rtol=1.0e-3,
+    atol=1.0e-6,
+    jac=None,
+    method="BDF",
+    lband=None,
+    uband=None,
+    in_place=False,
+    save_steps=True,
+    refine=1,
+    allow_overshoot=False,
+    first_step=None,
+    min_step=0.0,
+    max_step=np.inf,
+    max_num_steps=1_000_000,
+    max_order=None,
+    miter=None,
+    save_jac=True,
+):
     """Integrate a complex-valued ODE initial value problem.
 
     Solves::
@@ -493,7 +551,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
     diffs = np.diff(tspan)
     # Python `or` short-circuits: the second np.all is skipped when the first is True.
     if not (np.all(diffs > 0) or np.all(diffs < 0)):
-        raise ValueError("`tspan` must be strictly monotonic (all increasing or all decreasing).")
+        raise ValueError(
+            "`tspan` must be strictly monotonic (all increasing or all decreasing)."
+        )
 
     if np.isrealobj(y0):
         warnings.warn(
@@ -542,9 +602,20 @@ def solve_complex_ivp(fun, tspan, y0, *,
     _max_interval = float(np.max(np.abs(diffs)))
     _effective_max_step = min(_max_interval, max_step)
     zwork, rwork, iwork = _make_workspace(
-        n, _miter, ml, mu, mf, maxord_allowed,
-        first_step, min_step, _effective_max_step, max_order, max_num_steps,
-        t0=float(tspan[0]), t_bound=float(tspan[-1]))
+        n,
+        _miter,
+        ml,
+        mu,
+        mf,
+        maxord_allowed,
+        first_step,
+        min_step,
+        _effective_max_step,
+        max_order,
+        max_num_steps,
+        t0=float(tspan[0]),
+        t_bound=float(tspan[-1]),
+    )
 
     # ------------------------------------------------------------------
     # 5.  Normalize callbacks
@@ -565,7 +636,9 @@ def solve_complex_ivp(fun, tspan, y0, *,
     #   raises NotImplementedError.
 
     fun_addr = _cfunc_address(fun)
-    jac_addr = _cfunc_address(jac) if jac is not None else None  # reserved for _zvode.drive()
+    jac_addr = (
+        _cfunc_address(jac) if jac is not None else None
+    )  # reserved for _zvode.drive()
 
     if fun_addr is not None and not in_place:
         raise ValueError(
@@ -604,32 +677,41 @@ def solve_complex_ivp(fun, tspan, y0, *,
     if len(tspan) == 2 and save_steps:
         # Collect every accepted step (optionally with ZVINDY interpolation).
         t_out, y_out, istate = _zvode_adaptive(
-            _fun, _jac, y0, tspan[0], tspan[1],
-            itol, rtol, atol, mf, iopt,
-            zwork, rwork, iwork,
+            _fun,
+            _jac,
+            y0,
+            tspan[0],
+            tspan[1],
+            itol,
+            rtol,
+            atol,
+            mf,
+            iopt,
+            zwork,
+            rwork,
+            iwork,
             refine=refine,
-            allow_overshoot=allow_overshoot)
+            allow_overshoot=allow_overshoot,
+        )
     elif len(tspan) == 2:
         # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
         # and 1-D y — no intermediate storage.
         t_out, y_out, istate = _zvode_knots(
-            _fun, _jac, y0, tspan,
-            itol, rtol, atol, mf, iopt,
-            zwork, rwork, iwork)
+            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+        )
         t_out = float(t_out[-1])
         y_out = y_out[:, -1]
     else:
         # Knots: output at each element of tspan.
         t_out, y_out, istate = _zvode_knots(
-            _fun, _jac, y0, tspan,
-            itol, rtol, atol, mf, iopt,
-            zwork, rwork, iwork)
+            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+        )
 
     # ------------------------------------------------------------------
     # 8.  Error reporting
     # ------------------------------------------------------------------
     if istate < 0:
-        _msg = MESSAGES.get(istate, 'Unknown error.')
+        _msg = MESSAGES.get(istate, "Unknown error.")
         _where = (
             f"at t={t_out[-1]}, before reaching t={tspan[-1]}"
             if len(tspan) == 2 and save_steps
@@ -645,14 +727,16 @@ def solve_complex_ivp(fun, tspan, y0, *,
     # Indices follow the ZVODE user documentation (Fortran 1-based → Python 0-based):
     #   IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE,
     #   IWORK(20)=NLU, IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF.
-    return ZVODEResult({
-        't':      t_out,
-        'y':      y_out,
-        'nsteps': int(iwork[10]),
-        'nfev':   int(iwork[11]),
-        'njev':   int(iwork[12]),
-        'nlu':    int(iwork[19]),
-        'nni':    int(iwork[20]),
-        'ncfn':   int(iwork[21]),
-        'netf':   int(iwork[22]),
-    })
+    return ZVODEResult(
+        {
+            "t": t_out,
+            "y": y_out,
+            "nsteps": int(iwork[10]),
+            "nfev": int(iwork[11]),
+            "njev": int(iwork[12]),
+            "nlu": int(iwork[19]),
+            "nni": int(iwork[20]),
+            "ncfn": int(iwork[21]),
+            "netf": int(iwork[22]),
+        }
+    )

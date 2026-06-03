@@ -656,8 +656,7 @@ def test_miter4_without_band_params_raises():
     """
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="lband"):
-        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE,
-                  jac=jac_decay_dense, miter=4)
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, jac=jac_decay_dense, miter=4)
 
 
 def test_miter5_without_band_params_raises():
@@ -703,16 +702,25 @@ def test_miter4_dense_jac_shape_raises():
     """
     y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="shape"):
-        ZVODE(_fun_decay2, 0.0, y0, 1.0,
-              jac=_jac_decay2_dense, miter=4, lband=0, uband=0)
+        ZVODE(
+            _fun_decay2, 0.0, y0, 1.0, jac=_jac_decay2_dense, miter=4, lband=0, uband=0
+        )
 
 
 def test_miter4_dense_jac_shape_raises_via_solve_ivp():
     """Same shape mismatch detected when ZVODE is used through solve_ivp."""
     y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="shape"):
-        solve_ivp(_fun_decay2, (0.0, 1.0), y0, method=ZVODE,
-                  jac=_jac_decay2_dense, miter=4, lband=0, uband=0)
+        solve_ivp(
+            _fun_decay2,
+            (0.0, 1.0),
+            y0,
+            method=ZVODE,
+            jac=_jac_decay2_dense,
+            miter=4,
+            lband=0,
+            uband=0,
+        )
 
 
 def test_miter1_banded_jac_shape_raises():
@@ -730,8 +738,9 @@ def test_miter1_banded_jac_shape_raises_via_solve_ivp():
     """Same miter=1 shape mismatch detected through solve_ivp."""
     y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
     with pytest.raises(ValueError, match="shape"):
-        solve_ivp(_fun_decay2, (0.0, 1.0), y0, method=ZVODE,
-                  jac=_jac_decay2_banded, miter=1)
+        solve_ivp(
+            _fun_decay2, (0.0, 1.0), y0, method=ZVODE, jac=_jac_decay2_banded, miter=1
+        )
 
 
 def test_negative_rtol_raises():
@@ -940,18 +949,34 @@ def test_complex_rotation_norm_conservation():
         return 1j * omega * y
 
     sol = solve_ivp(
-        fun, t_span, y0, method=ZVODE, lmm="Adams",
-        t_eval=t_eval, rtol=1e-10, atol=1e-12,
+        fun,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="Adams",
+        t_eval=t_eval,
+        rtol=1e-10,
+        atol=1e-12,
     )
     assert sol.success, f"Complex rotation: {sol.message}"
 
     expected = y0[0] * np.exp(1j * omega * t_eval)
-    assert_allclose(sol.y[0], expected, rtol=1e-8, atol=1e-10,
-                    err_msg="Complex rotation: pointwise error")
+    assert_allclose(
+        sol.y[0],
+        expected,
+        rtol=1e-8,
+        atol=1e-10,
+        err_msg="Complex rotation: pointwise error",
+    )
 
     norms = np.abs(sol.y[0])
-    assert_allclose(norms, abs(y0[0]), rtol=1e-8, atol=1e-10,
-                    err_msg="Complex rotation: |y(t)| drifts — amplitude error")
+    assert_allclose(
+        norms,
+        abs(y0[0]),
+        rtol=1e-8,
+        atol=1e-10,
+        err_msg="Complex rotation: |y(t)| drifts — amplitude error",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -989,13 +1014,24 @@ def test_stiff_prothero_robinson_bdf():
     t_span = (0.0, 10.0)
 
     sol = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
-        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=_jac_pr,
+        rtol=1e-8,
+        atol=1e-10,
     )
 
     assert sol.success, f"BDF failed on Prothero-Robinson: {sol.message}"
-    assert_allclose(sol.y[0], _pr_exact(sol.t), rtol=1e-5, atol=1e-8,
-                    err_msg="Prothero-Robinson: BDF solution mismatch")
+    assert_allclose(
+        sol.y[0],
+        _pr_exact(sol.t),
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Prothero-Robinson: BDF solution mismatch",
+    )
 
 
 def test_stiff_prothero_robinson_bdf_vs_adams():
@@ -1007,14 +1043,25 @@ def test_stiff_prothero_robinson_bdf_vs_adams():
     t_span = (0.0, 10.0)
 
     sol_bdf = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
-        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=_jac_pr,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol_bdf.success
 
     sol_adams = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="Adams",
-        rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="Adams",
+        rtol=1e-8,
+        atol=1e-10,
     )
 
     if sol_adams.success:
@@ -1051,13 +1098,21 @@ def test_nonlinear_analytic_ivp():
 
     for lmm in ("Adams", "BDF"):
         sol = solve_ivp(
-            fun, t_span, y0, method=ZVODE, lmm=lmm,
-            jac=jac, rtol=1e-9, atol=1e-11,
+            fun,
+            t_span,
+            y0,
+            method=ZVODE,
+            lmm=lmm,
+            jac=jac,
+            rtol=1e-9,
+            atol=1e-11,
         )
         assert sol.success, f"Nonlinear analytic ({lmm}): {sol.message}"
         assert_allclose(
-            sol.y[0, -1], exact_final,
-            rtol=1e-6, atol=1e-9,
+            sol.y[0, -1],
+            exact_final,
+            rtol=1e-6,
+            atol=1e-9,
             err_msg=f"Nonlinear analytic: {lmm} mismatch",
         )
 
@@ -1097,21 +1152,43 @@ def test_schrodinger_rabi_oscillations():
     t_eval = np.linspace(*t_span, 201)
 
     sol = solve_ivp(
-        fun, t_span, psi0, method=ZVODE, lmm="BDF",
-        jac=jac, dense_output=True, rtol=1e-10, atol=1e-12,
+        fun,
+        t_span,
+        psi0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac,
+        dense_output=True,
+        rtol=1e-10,
+        atol=1e-12,
     )
     assert sol.success, f"Rabi oscillations: {sol.message}"
 
     psi = sol.sol(t_eval)
 
-    assert_allclose(psi[0], np.cos(t_eval),
-                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₁ = cos(t) mismatch")
-    assert_allclose(psi[1], -1j * np.sin(t_eval),
-                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₂ = -i·sin(t) mismatch")
+    assert_allclose(
+        psi[0],
+        np.cos(t_eval),
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: ψ₁ = cos(t) mismatch",
+    )
+    assert_allclose(
+        psi[1],
+        -1j * np.sin(t_eval),
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: ψ₂ = -i·sin(t) mismatch",
+    )
 
     norms_sq = np.abs(psi[0]) ** 2 + np.abs(psi[1]) ** 2
-    assert_allclose(norms_sq, 1.0, rtol=1e-7, atol=1e-9,
-                    err_msg="Rabi: unitarity violated — ‖ψ(t)‖² ≠ 1")
+    assert_allclose(
+        norms_sq,
+        1.0,
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: unitarity violated — ‖ψ(t)‖² ≠ 1",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1146,9 +1223,8 @@ def test_coupled_stiff_two_component():
 
     def exact(t):
         y2 = y0[1] * np.exp(lam2 * t)
-        y1 = (
-            y0[0] * np.exp(lam1 * t)
-            + y0[1] / (lam2 - lam1) * (np.exp(lam2 * t) - np.exp(lam1 * t))
+        y1 = y0[0] * np.exp(lam1 * t) + y0[1] / (lam2 - lam1) * (
+            np.exp(lam2 * t) - np.exp(lam1 * t)
         )
         return np.array([y1, y2])
 
@@ -1156,15 +1232,24 @@ def test_coupled_stiff_two_component():
     t_check = np.array([1e-3, 5e-3, 0.01, 0.1, 1.0, 5.0])
 
     sol = solve_ivp(
-        fun, (0.0, 5.0), y0, method=ZVODE, lmm="BDF",
-        jac=jac, t_eval=t_check, rtol=1e-8, atol=1e-10,
+        fun,
+        (0.0, 5.0),
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac,
+        t_eval=t_check,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol.success, f"Coupled stiff system: {sol.message}"
 
     for k, t in enumerate(t_check):
         assert_allclose(
-            sol.y[:, k], exact(t),
-            rtol=1e-5, atol=1e-8,
+            sol.y[:, k],
+            exact(t),
+            rtol=1e-5,
+            atol=1e-8,
             err_msg=f"Coupled stiff system: mismatch at t={t}",
         )
 
@@ -1199,8 +1284,7 @@ def test_tight_binding_chain():
     kappa = 1.0
 
     H = (
-        np.diag(np.full(N - 1, kappa), k=1)
-        + np.diag(np.full(N - 1, kappa), k=-1)
+        np.diag(np.full(N - 1, kappa), k=1) + np.diag(np.full(N - 1, kappa), k=-1)
     ).astype(np.complex128)
 
     def fun(t, a):
@@ -1226,20 +1310,38 @@ def test_tight_binding_chain():
     a_ref = expm(-1j * H * t_end) @ a0
 
     sol = solve_ivp(
-        fun, t_span, a0, method=ZVODE, lmm="BDF",
-        jac=jac_banded, lband=1, uband=1,
-        t_eval=t_eval, rtol=1e-8, atol=1e-10,
+        fun,
+        t_span,
+        a0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac_banded,
+        lband=1,
+        uband=1,
+        t_eval=t_eval,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol.success, f"Tight-binding chain: {sol.message}"
 
     # Unitarity at every output point
     total_prob = np.sum(np.abs(sol.y) ** 2, axis=0)
-    assert_allclose(total_prob, 1.0, rtol=1e-5, atol=1e-8,
-                    err_msg="Tight-binding chain: Σ|a_n|² ≠ 1 (norm not conserved)")
+    assert_allclose(
+        total_prob,
+        1.0,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Tight-binding chain: Σ|a_n|² ≠ 1 (norm not conserved)",
+    )
 
     # Accuracy at final time (reference via matrix exponential)
-    assert_allclose(sol.y[:, -1], a_ref, rtol=1e-5, atol=1e-8,
-                    err_msg="Tight-binding chain: final-state mismatch vs expm")
+    assert_allclose(
+        sol.y[:, -1],
+        a_ref,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Tight-binding chain: final-state mismatch vs expm",
+    )
 
 
 # ---------------------------------------------------------------------------

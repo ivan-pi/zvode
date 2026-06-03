@@ -54,7 +54,9 @@ def osc_exact(t):
 def test_damped_oscillator_accuracy(method):
     """Both Adams and BDF track the underdamped oscillator to within 1e-5 relative error."""
     y0 = np.array([1.0 + 0j, 0.0 + 0j])
-    sol = solve_complex_ivp(osc_fun, [0.0, 10.0], y0, method=method, rtol=1e-10, atol=1e-12)
+    sol = solve_complex_ivp(
+        osc_fun, [0.0, 10.0], y0, method=method, rtol=1e-10, atol=1e-12
+    )
 
     ref = osc_exact(sol.t)
     # rtol=1e-5 accommodates global error accumulation over t=[0,10];
@@ -68,6 +70,7 @@ def test_damped_oscillator_accuracy(method):
 #    dw/dt = -i w² z          z(0) = 1        z(t) = exp(it)
 #    dz/dt =  i z             w(0) = 1/2.1    w(t) = 1/(exp(it) + 1.1)
 # ---------------------------------------------------------------------------
+
 
 def nl_osc_fun(t, y):
     w, z = y[0], y[1]
@@ -97,10 +100,13 @@ FUN_1D = lambda t, y: -y  # noqa: E731
 Y0_1D = np.array([1.0 + 0j])
 
 
-@pytest.mark.parametrize("tspan,kwargs,match", [
-    ([0.0, 1.0], {"atol": -1e-10}, "positive"),    # negative atol
-    ([0.0],      {},               "two elements"), # tspan too short
-])
+@pytest.mark.parametrize(
+    "tspan,kwargs,match",
+    [
+        ([0.0, 1.0], {"atol": -1e-10}, "positive"),  # negative atol
+        ([0.0], {}, "two elements"),  # tspan too short
+    ],
+)
 def test_error_paths(tspan, kwargs, match):
     """Invalid arguments raise ValueError with a descriptive message."""
     with pytest.raises(ValueError, match=match):
@@ -124,7 +130,9 @@ CROSS_C = 0.5j
 
 
 def coupled_complex_fun(t, y):
-    return np.array([CROSS_LAM1 * y[0] + CROSS_C * y[1], CROSS_LAM2 * y[1]], dtype=complex)
+    return np.array(
+        [CROSS_LAM1 * y[0] + CROSS_C * y[1], CROSS_LAM2 * y[1]], dtype=complex
+    )
 
 
 def test_scipy_bdf_comparison():
@@ -132,7 +140,9 @@ def test_scipy_bdf_comparison():
     y0 = np.array([1.0 + 0j, 0.0 + 1j])
     tols = dict(rtol=1e-8, atol=1e-10)
 
-    sol_zvode = solve_complex_ivp(coupled_complex_fun, [0.0, 2.0], y0, save_steps=False, **tols)
+    sol_zvode = solve_complex_ivp(
+        coupled_complex_fun, [0.0, 2.0], y0, save_steps=False, **tols
+    )
     sol_scipy = solve_ivp(coupled_complex_fun, [0.0, 2.0], y0, method="BDF", **tols)
 
     assert sol_scipy.success, f"SciPy BDF failed: {sol_scipy.message}"
@@ -143,17 +153,24 @@ def test_scipy_bdf_comparison():
 # 5. Edge case: single-element (n=1) system
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("lam", [
-    pytest.param(-1.0 + 0j, id="decay"),
-    pytest.param(-1.0 + 2j, id="damped_osc"),
-    pytest.param(1j,         id="rotation"),
-])
+
+@pytest.mark.parametrize(
+    "lam",
+    [
+        pytest.param(-1.0 + 0j, id="decay"),
+        pytest.param(-1.0 + 2j, id="damped_osc"),
+        pytest.param(1j, id="rotation"),
+    ],
+)
 def test_single_element_system(lam):
     """n=1 scalar complex ODE y'=lam*y integrates correctly for three qualitatively different lam."""
     y0 = np.array([1.0 + 0j])
     sol = solve_complex_ivp(
         lambda t, y: np.array([lam * y[0]]),
-        [0.0, 2.0], y0, rtol=1e-10, atol=1e-12,
+        [0.0, 2.0],
+        y0,
+        rtol=1e-10,
+        atol=1e-12,
     )
     assert_allclose(sol.y[0], y0[0] * np.exp(lam * sol.t), rtol=1e-7)
 
@@ -178,7 +195,9 @@ def rabi_exact(t):
 def test_refine_interpolation_accuracy(refine):
     """ZVINDY-interpolated points match the Rabi exact solution for refine=2 and refine=5."""
     y0 = np.array([1.0 + 0j, 0.0 + 0j])
-    sol = solve_complex_ivp(rabi_fun, [0.0, 2.0], y0, rtol=1e-10, atol=1e-12, refine=refine)
+    sol = solve_complex_ivp(
+        rabi_fun, [0.0, 2.0], y0, rtol=1e-10, atol=1e-12, refine=refine
+    )
 
     ref = rabi_exact(sol.t)
     # atol=1e-9 guards the zero-crossing where the exact value is ~1e-16.
@@ -206,7 +225,9 @@ def test_max_order_constraint():
     kw = dict(method="Adams", rtol=1e-8, atol=1e-10, save_steps=False)
 
     sol_default = solve_complex_ivp(max_order_fun, [0.0, MAX_ORDER_T], y0, **kw)
-    sol_order1 = solve_complex_ivp(max_order_fun, [0.0, MAX_ORDER_T], y0, max_order=1, **kw)
+    sol_order1 = solve_complex_ivp(
+        max_order_fun, [0.0, MAX_ORDER_T], y0, max_order=1, **kw
+    )
 
     exact_end = y0 * np.exp(MAX_ORDER_LAM * MAX_ORDER_T)
     assert_allclose(sol_default.y, exact_end, rtol=1e-6)
