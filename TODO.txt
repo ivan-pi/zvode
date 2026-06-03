@@ -26,29 +26,39 @@ Release plan
    process-wide Lock is required — one instance per thread is not sufficient)
 
 
-## [NEXT] 0.2.0 — Procedural interface (Python / C layer)
+## [NEXT] 0.2.0 — Procedural interface (Python layer)
 
-The goal of this release is to provide a standalone `zvode()` function that
-drives the entire integration loop in compiled code, avoiding repeated
-round-trips through the Python interpreter on every accepted step.
-Most work lives in the Python and C glue layers.
+The goal of this release is to provide a standalone `solve_complex_ivp()` function.
+Note: the integration loop is implemented in Python rather than compiled C, so
+there is still a round-trip through the Python interpreter on every accepted step.
+Pushing the loop into C (and enabling fully compiled runs with cfunc callbacks)
+is deferred to 0.4.0.
 
-- Add a procedural `zvode()` function:
-  - Version A: driver stores the automatically chosen step times
-  - Version B: uses ZVINDY to interpolate the solution at caller-supplied t_eval pointa
+- [DONE] Add a procedural `solve_complex_ivp()` function:
+  - [DONE] Version A: driver stores every automatically chosen step (save_steps=True)
+  - [DONE] Version B: uses ZVINDY to insert interpolated points per step (refine=N)
   - Consider tcrit support (ITASK=4): lets users specify intermediate times
     the solver must not overshoot, e.g. at discontinuities in a forcing
     function.  Related to allow_overshoot but distinct — tcrit is a set of
     critical times, not a global on/off switch.  Needs design and testing
-    before 1.0.
+    before 1.0.  [Deferred to a future version]
 - Ensure that when the RHS callback (and Jacobian) are compiled (e.g. via
   numba @cfunc, ctypes, or Cython), no Python frames are entered during integration
+  [Deferred to 0.4.0 — compiled cfunc path raises NotImplementedError for now]
 - Document the ZVINDY COMMON block constraint: ZVINDY is only valid immediately
   after a step on the same ZVODE instance; make this explicit in the API
-- Add SUNDIALS link to README Links table (currently missing)
+- [DONE] Add SUNDIALS link to README Links table (currently missing)
 - Mention the ZVODE rewrite in C and point to the (older) scipy ode integrator
   that wraps ZVODE (https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html)
+- Add a solve_complex_ivp quick-start section to the README (example + key
+  parameters); it is the headline feature of 0.2.0 and currently invisible to
+  anyone reading the project page
 - Start a CHANGELOG (keep-a-changelog format); backfill 0.1.0 entry
+- Replace the bare (t, y[, stats]) tuple return from solve_complex_ivp with a
+  result object (t, y, stats attributes always present); eliminates the variable-
+  arity ret_stats=True pattern and keeps the return type stable for future fields
+  (e.g. dense_output).  ret_stats keyword can be removed or kept as a no-op for
+  one release for backwards compatibility.
 
 
 ## 0.3.0 — Fortran, build system, and developer sugar
@@ -70,6 +80,8 @@ system, and developer-facing conveniences such as type stubs and validation.
 - Ensure implicit none is used and all variables are strictly typed
   (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
 - Add Python typing hints (the .pyi files)
+- Add short docstring Examples sections to ZVODE and solve_complex_ivp
+  (a few ``>>>`` lines each; enough for ``help()`` to be useful in a REPL)
 - Check older SciPy versions for any bug fixes not yet incorporated, and verify
   original licenses are properly attributed
 - Note on NEQ reset: when NEQ is reset during integration (ISTATE = 3), we must
@@ -77,20 +89,24 @@ system, and developer-facing conveniences such as type stubs and validation.
   the SciPy interface as neq can't change during integration — document this
 
 
-## 0.4.0 — Performance: C-layer time-stepping and API hardening
+## 0.4.0 — Performance: C-layer time-stepping, compiled callbacks, and API hardening
 
-The procedural interface from 0.2.0 still calls back into Python once per
-accepted step.  This release pushes the integration loop itself down into the
-C extension, so that when the callbacks are compiled the entire run — stepping,
-error control, output collection — executes without touching the Python
-interpreter.
+The procedural interface from 0.2.0 calls back into Python once per accepted
+step.  This release pushes the integration loop into the C extension and
+completes the compiled-callback path (originally planned for 0.2.0), so that
+when RHS/Jacobian are compiled the entire run executes without touching the
+Python interpreter.
 
-- Lower the time-stepping loop from Python into the C extension layer:
+- Lower the time-stepping loop from Python into the C extension layer
+  (implement _zvode.drive()):
   - C driver calls c_zvode in a loop, collecting output into pre-allocated
     buffers, and only returns to Python when the endpoint is reached or an
     error occurs
   - When RHS / Jacobian are pure C function pointers (ctypes, cfunc), no GIL
     acquisition is needed during the loop
+- Enable compiled callbacks (numba @cfunc, ctypes CFUNCTYPE): wire up the
+  fun_addr / jac_addr path in solve_complex_ivp through _zvode.drive(), removing
+  the NotImplementedError stub added in 0.2.0
 - API hardening: review and stabilise the procedural interface signatures,
   return types, and error reporting ahead of the 1.0.0 API freeze
 - Benchmarks: add a small benchmark suite to quantify the overhead reduction
