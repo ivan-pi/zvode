@@ -9,3 +9,12 @@ try:
     __all__ += ["ZVODE", "ZVODE_Adams", "ZVODE_BDF"]
 except ImportError:
     pass
+
+
+def __getattr__(name):
+    if name in ("ZVODE", "ZVODE_Adams", "ZVODE_BDF"):
+        raise ImportError(
+            f"{name!r} requires SciPy. "
+            "Install it with: pip install 'zvode[scipy]'"
+        )
+    raise AttributeError(f"module 'zvode' has no attribute {name!r}")
