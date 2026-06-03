@@ -136,6 +136,71 @@ through unchanged when supplied via `solve_ivp`.
 > an analytic function of each state variable). For stiff systems where `f` is
 > not analytic, use a real-valued solver on the equivalent doubled real system.
 
+## Banded Jacobians
+
+When the Jacobian is banded — that is, `J[i,j] = dF_i/dy_j` is zero whenever
+`|i-j| > max(lband, uband)` — set `lband` and/or `uband` and return a compact
+array from `jac` instead of the full `(n, n)` matrix.  This can substantially
+reduce memory and work for large systems.
+
+### Storage layout
+
+The compact array `pd` has shape `(lband + uband + 1, n)` and satisfies:
+
+```
+pd[i - j + uband, j]  =  J[i, j]
+```
+
+Each **column** of `pd` corresponds to a column of `J`, keeping only the entries
+inside the band.  Entries that fall outside the band (marked `*` below) are unused.
+
+**Example** — 5-component system with `lband=2`, `uband=1`:
+
+Full Jacobian `J`:
+
+```
+a  d  .  .  .
+b  a  d  .  .
+c  b  a  d  .
+.  c  b  a  d
+.  .  c  b  a
+```
+
+Compact storage `pd` (shape `4 × 5`):
+
+```
+*  d  d  d  d       row 0: J[j-1, j]   superdiagonal
+a  a  a  a  a       row 1: J[j,   j]   main diagonal
+b  b  b  b  *       row 2: J[j+1, j]   first subdiagonal
+c  c  c  *  *       row 3: J[j+2, j]   second subdiagonal
+```
+
+The corresponding `jac` function:
+
+```python
+def jac_banded(t, y):
+    pd = np.zeros((lband + uband + 1, n), dtype=complex)
+    pd[0, 1:]  = delta    # J[j-1, j],  j = 1 .. n-1  (superdiag)
+    pd[1, :]   = alpha    # J[j,   j],  j = 0 .. n-1  (main diag)
+    pd[2, :-1] = beta     # J[j+1, j],  j = 0 .. n-2  (subdiag 1)
+    pd[3, :-2] = gamma    # J[j+2, j],  j = 0 .. n-3  (subdiag 2)
+    return pd
+```
+
+Pass it to `solve_ivp` alongside `lband` and `uband`:
+
+```python
+sol = solve_ivp(
+    fun, t_span, y0,
+    method=ZVODE,
+    jac=jac_banded,
+    lband=2,
+    uband=1,
+)
+```
+
+A complete runnable example is in [`docs/demo_banded_jacobian.py`](docs/demo_banded_jacobian.py).
+
 ## Limitations
 
 - complex floats (fp64) only

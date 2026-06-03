@@ -45,6 +45,11 @@ The examples require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), a
    The 2×2 density matrix is vectorized to a 4-component complex array to interface with
    `solve_ivp`.
 
+7. **[`demo_banded_jacobian.py`](demo_banded_jacobian.py)** — Banded Jacobian interface.
+   Solves a 5-component chain system `y' = Ay` with a constant complex banded matrix
+   (lower bandwidth `lband=2`, upper bandwidth `uband=1`).  Shows the compact
+   column-oriented storage layout required by ZVODE and verifies against `scipy.linalg.expm`.
+
 ---
 
 Have you solved an interesting ODE system with `zvode` and are willing to share it?
