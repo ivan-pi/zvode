@@ -25,6 +25,7 @@ from ._helpers import (
     MESSAGES,
     _check_tolerances,
     _determine_miter,
+    _validate_max_step,
     _validate_first_step,
     _validate_jac_shape,
     _wrapped_fun,
@@ -132,7 +133,7 @@ def _make_workspace(n, miter, ml, mu, mf, maxord_allowed,
 
     rwork[0] = float(t_bound)          # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
-        # ZVODE (zvode.F:1328) requires H0 to carry the direction sign.
+        # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
     if max_step > 0:
         rwork[5] = float(max_step)
@@ -528,6 +529,7 @@ def solve_complex_ivp(fun, tspan, y0, *,
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
+    _validate_max_step(max_step)
     if first_step is not None:
         _validate_first_step(first_step, tspan[0], tspan[-1])
 

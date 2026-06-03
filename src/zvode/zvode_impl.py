@@ -6,6 +6,7 @@ from scipy.integrate import OdeSolver, DenseOutput
 from . import _zvode
 from ._helpers import (
     MESSAGES,
+    _validate_max_step,
     _validate_first_step,
     _wrapped_fun,
     _wrapped_jac,
@@ -24,12 +25,6 @@ def _warn_extraneous(extraneous):
             ),
             stacklevel=3,
         )
-
-
-def _validate_max_step(max_step):
-    if max_step <= 0:
-        raise ValueError("`max_step` must be positive.")
-    return max_step
 
 
 class ZVODEDenseOutput(DenseOutput):
@@ -368,7 +363,7 @@ class ZVODE(OdeSolver):
 
         if first_step is not None:
             self.h0 = _validate_first_step(first_step, t0, t_bound)
-            # ZVODE (zvode.F:1328) requires H0 to carry the direction sign.
+            # ZVODE requires H0 to carry the sign of the integration direction.
             self.rwork[4] = self.h0 * np.sign(t_bound - t0)
 
         if max_step is not None:

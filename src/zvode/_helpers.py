@@ -15,6 +15,12 @@ MESSAGES = {
 }
 
 
+def _validate_max_step(max_step):
+    if max_step <= 0:
+        raise ValueError("`max_step` must be positive.")
+    return max_step
+
+
 def _validate_first_step(first_step, t0, t_bound):
     """Validate the user-supplied initial step size.
 
