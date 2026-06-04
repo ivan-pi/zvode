@@ -231,7 +231,8 @@ class ZVODE(OdeSolver):
                 stacklevel=2,
             )
         self._ytmp = np.array(y0, dtype=np.complex128, order="C", copy=True)
-        self.y = self._ytmp.copy()
+        # Direct copy of y0, not a copy-of-a-copy through _ytmp.
+        self.y = np.array(y0, dtype=np.complex128)
 
         self.istate = 1  # start integration
         self.itask = 5  # take one step, without passing t_bound, then return
@@ -416,9 +417,13 @@ class ZVODE(OdeSolver):
             description = MESSAGES.get(self.istate, "Unknown error.")
             return False, f"zvode: istate = {self.istate}: {description}"
 
+        # Must be a fresh array each step: scipy.integrate.solve_ivp accumulates
+        # references to solver.y after each step.  If self.y were the same buffer
+        # as self._ytmp, every accumulated reference would alias the same array
+        # and end up holding the final state only.
         self.y = self._ytmp.copy()
 
-        # Succesful step
+        # Successful step
         return True, None
 
     def _dense_output_impl(self):

@@ -212,10 +212,13 @@ def _zvode_adaptive(
     n = len(y0)
     t = float(t0)
     direction = np.sign(float(t_bound) - t)
+    # y0 is a caller-owned complex128 array that is never passed to Fortran;
+    # only ytmp (the mutable work buffer) is.  Use y0 directly as the initial
+    # output snapshot instead of copying it a second time through ytmp.
     ytmp = y0.copy()
 
     ts = [t]
-    ys = [ytmp.copy()]
+    ys = [y0]
 
     # TODO: replace this Python loop with a call to _zvode.drive() once the
     # C entry point is implemented.  Moving the loop into compiled code drops
@@ -294,10 +297,10 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     istate = 1  # initial call
 
     n = len(y0)
-    ytmp = y0.copy()
+    ytmp = y0.copy()  # mutable work buffer; only this is passed to Fortran
 
     ys = np.empty((n, len(tspan)), dtype=np.complex128, order="F")
-    ys[:, 0] = ytmp
+    ys[:, 0] = y0  # initial state; read from y0 directly, not through ytmp
     t = float(tspan[0])
 
     # TODO: same as _zvode_adaptive — replace with _zvode.drive() to move the
