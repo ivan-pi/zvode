@@ -51,12 +51,10 @@ integration statistics (`sol.nfev`, `sol.njev`, …) as attributes.
 from zvode import solve_complex_ivp
 
 def rhs(t, y):
-    return [-100j * y[0] + y[1],
-            -1j   * y[1]]
+    return [-100j * y[0] + y[1], -1j * y[1]]
 
 def jac(t, y):
-    return [[-100j, 1.0],
-            [ 0.0, -1j]]
+    return [[-100j, 1.0], [0.0, -1j]]
 
 sol = solve_complex_ivp(
     fun=rhs,
