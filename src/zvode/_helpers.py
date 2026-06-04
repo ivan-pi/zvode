@@ -128,6 +128,22 @@ def _check_tolerances(rtol, atol, n):
     return itol, rtol, atol
 
 
+def _validate_fun_shape(fun, n, t0, y0):
+    """Evaluate *fun* once at ``(t0, y0)`` and verify its return shape.
+
+    The right-hand side must return a 1-D array of shape ``(neq,)``.  Common
+    mistakes — returning a Python scalar, a 0-D ndarray, or a 2-D array —
+    are caught here before any Fortran call is made.
+    """
+    trial = np.asarray(fun(t0, y0))
+    expected = (n,)
+    if trial.shape != expected:
+        raise ValueError(
+            f"'fun' must return a 1-D array of shape (neq,) = {expected}; "
+            f"got shape {trial.shape}."
+        )
+
+
 def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
     """Evaluate *jac* once at ``(t0, y0)`` and verify its return shape.
 

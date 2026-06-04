@@ -524,3 +524,49 @@ def test_nested_list_jac_accepted():
         atol=1e-10,
     )
     np.testing.assert_allclose(sol.y[0, -1], _S_EXACT_FINAL, rtol=1e-5, atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# RHS shape semantics: scalar-like forms for a single-equation system
+#
+# Problem: dy/dt = -1j*y,  y(0) = 1,  exact solution y(t) = exp(-1j*t).
+# For neq=1, fun must return shape (1,).  The table below contrasts with the
+# Jacobian convention (which requires (1, 1)):
+#
+#   Form                    np.asarray(...)   shape    result
+#   ----------------------  ----------------  -------  --------
+#   -1j*y[0]  scalar        complex scalar    ()       ValueError
+#   np.array(-1j*y[0]) 0-D  0-D ndarray       ()       ValueError
+#   [[-1j*y[0]]] 2-D list   nested list       (1, 1)   ValueError
+#   [-1j*y[0]]  1-D list    1-D list          (1,)     accepted  ← correct form
+# ---------------------------------------------------------------------------
+
+_F_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
+_F_TSPAN = [0.0, 1.0]
+_F_EXACT_FINAL = np.exp(-1j * 1.0)
+
+
+@pytest.mark.parametrize(
+    "fun,label",
+    [
+        (lambda t, y: -1j * y[0],               "scalar"),
+        (lambda t, y: np.array(-1j * y[0]),      "0-D ndarray"),
+        (lambda t, y: [[-1j * y[0]]],            "2-D list"),
+    ],
+)
+def test_wrong_fun_shape_raises(fun, label):
+    """RHS functions that don't return a (1,) array must raise ValueError naming 'fun'."""
+    with pytest.raises(ValueError, match="fun"):
+        solve_complex_ivp(fun, _F_TSPAN, _F_Y0)
+
+
+def test_1d_list_fun_accepted():
+    """[-1j*y[0]] produces shape (1,) after np.asarray() and is the correct scalar form."""
+    sol = solve_complex_ivp(
+        lambda t, y: [-1j * y[0]],
+        _F_TSPAN,
+        _F_Y0,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(sol.y[0, -1], _F_EXACT_FINAL, rtol=1e-5, atol=1e-8)
