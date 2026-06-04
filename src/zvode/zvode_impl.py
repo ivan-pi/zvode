@@ -256,7 +256,9 @@ class ZVODE(OdeSolver):
                 stacklevel=2,
             )
         self._ytmp = np.array(y0, dtype=np.complex128, order="C", copy=True)
-        # Direct copy of y0, not a copy-of-a-copy through _ytmp.
+        # np.array always allocates a fresh array (unlike np.asarray which returns
+        # the input unchanged when dtype already matches), so self.y is guaranteed
+        # to be independent of whatever the caller passed as y0.
         self.y = np.array(y0, dtype=np.complex128)
 
         self.istate = 1  # start integration
