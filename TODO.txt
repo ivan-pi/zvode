@@ -80,6 +80,12 @@ system, and developer-facing conveniences such as type stubs and validation.
   how to cover checks that only become relevant inside _step_impl — one idea is
   to call ZVODE once with the same t and tout (a no-op step) to let ZVODE raise
   ISTATE errors early, but the exact mechanics are still TBD.
+- Fix nfev/njev evaluation counters: _validate_fun_shape and _validate_jac_shape
+  each call the user callback once at construction time (to probe the return
+  shape), but neither call is counted toward nfev / njev.  The Fortran library
+  owns those counters inside iwork and they are only readable after an accepted
+  step, so incrementing them here would require duplicating the counters in
+  Python.  Both probe calls are marked FIXME in _helpers.py.
 - Add option to expose ZEWSET and ZWNORM as callback functions
 - Provide CMake option to use external BLAS; if not available, fallback to
   vendored procedures
