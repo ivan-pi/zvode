@@ -469,7 +469,6 @@ class ZVODE_Adams(ZVODE):
     """
 
     def __init__(self, fun, t0, y0, t_bound, **kwargs):
-        """Initialise ZVODE with lmm='Adams'; all other arguments forwarded to ZVODE."""
         super().__init__(fun, t0, y0, t_bound, lmm="Adams", **kwargs)
 
 
@@ -485,5 +484,4 @@ class ZVODE_BDF(ZVODE):
     """
 
     def __init__(self, fun, t0, y0, t_bound, **kwargs):
-        """Initialise ZVODE with lmm='BDF'; all other arguments forwarded to ZVODE."""
         super().__init__(fun, t0, y0, t_bound, lmm="BDF", **kwargs)

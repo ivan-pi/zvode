@@ -41,7 +41,6 @@ def _wrapped_fun(fun):
     """Adapt a SciPy-compatible ``f(t, y) -> array`` callable to the in-place ZVODE signature."""
 
     def _zvode_fun(t, y, dy):
-        """Fill dy in place by calling fun(t, y) and copying the result."""
         dy[:] = fun(t, y)
 
     return _zvode_fun
@@ -68,12 +67,10 @@ def _wrapped_jac(jac, banded=False):
     """
 
     def _zvode_jac(t, y, pd):
-        """Fill the dense square Jacobian block pd[:n, :n] from jac(t, y)."""
         n = y.shape[0]
         pd[:n, :n] = jac(t, y)
 
     def _zvode_banded_jac(t, y, pd, ml, mu):
-        """Fill the banded Jacobian rows pd[:ml+mu+1, :n] from jac(t, y)."""
         n = y.shape[0]
         pd[: ml + mu + 1, :n] = jac(t, y)
 
