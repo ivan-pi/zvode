@@ -475,6 +475,17 @@ def test_compiled_callback_requires_in_place():
         solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
 
 
+def test_compiled_callback_not_yet_implemented():
+    """in_place=True with a compiled callback raises NotImplementedError (stub path)."""
+    import ctypes
+
+    prototype = ctypes.CFUNCTYPE(None)
+    dummy = prototype(lambda: None)
+
+    with pytest.raises(NotImplementedError):
+        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=True)
+
+
 # ---------------------------------------------------------------------------
 # Jacobian shape semantics: scalar-like forms for a single-equation system
 #
@@ -492,7 +503,8 @@ def test_compiled_callback_requires_in_place():
 #   np.array([-1j])    1-D ndarray       (1,)     ValueError
 # ---------------------------------------------------------------------------
 
-_S_FUN = lambda t, y: -1j * y
+def _S_FUN(t, y):
+    return -1j * y
 _S_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
 _S_TSPAN = [0.0, 1.0]
 _S_EXACT_FINAL = np.exp(-1j * 1.0)
