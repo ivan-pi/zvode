@@ -9,7 +9,7 @@ Python bindings to the classic ZVODE ODE solver.
 
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
 first-order ordinary differential equations with complex-valued state, written
-by G. D. Byrne and A. C. Hindmarsh [[2]](#2). It is part of ODEPACK and uses
+by P. N. Brown, G. D. Byrne, and A. C. Hindmarsh [[2]](#2). It is part of ODEPACK and uses
 a fixed-leading-coefficient Adams or BDF method, selectable by the user.
 
 This package exposes two interfaces to ZVODE:
