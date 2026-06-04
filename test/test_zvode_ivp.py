@@ -1375,9 +1375,9 @@ _SJ_EXACT_FINAL = np.exp(-1j * 1.0)
 @pytest.mark.parametrize(
     "jac,label",
     [
-        (lambda t, y: -1j,             "scalar complex"),
-        (lambda t, y: [-1j],           "1-D list"),
-        (lambda t, y: np.array(-1j),   "0-D ndarray"),
+        (lambda t, y: -1j, "scalar complex"),
+        (lambda t, y: [-1j], "1-D list"),
+        (lambda t, y: np.array(-1j), "0-D ndarray"),
         (lambda t, y: np.array([-1j]), "1-D ndarray"),
     ],
 )
@@ -1425,9 +1425,9 @@ _SF_EXACT_FINAL = np.exp(-1j * 1.0)
 @pytest.mark.parametrize(
     "fun,label",
     [
-        (lambda t, y: -1j * y[0],              "scalar"),
-        (lambda t, y: np.array(-1j * y[0]),    "0-D ndarray"),
-        (lambda t, y: [[-1j * y[0]]],          "2-D list"),
+        (lambda t, y: -1j * y[0], "scalar"),
+        (lambda t, y: np.array(-1j * y[0]), "0-D ndarray"),
+        (lambda t, y: [[-1j * y[0]]], "2-D list"),
     ],
 )
 def test_wrong_fun_shape_raises(fun, label):
