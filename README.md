@@ -43,8 +43,8 @@ The underlying Fortran source has been modified; [`extern/README.md`](extern/REA
 
 ### Procedural API — `solve_complex_ivp` (new in 0.2.0)
 
-`solve_complex_ivp` is the recommended entry point. Pass the RHS, a time span,
-and an initial condition; get back a `ZVODEResult` with `sol.t`, `sol.y`, and
+`solve_complex_ivp` is the recommended entry point. Pass the RHS function, a time span,
+and an initial condition; get back a result object with `sol.t`, `sol.y`, and
 integration statistics (`sol.nfev`, `sol.njev`, …) as attributes.
 
 ```python
