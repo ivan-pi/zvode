@@ -67,10 +67,10 @@ stiff problems.
 
 ```python
 def rhs(t, y):
-    return np.array([-100j * y[0] + y[1], -1j * y[1]])
+    return [-100j * y[0] + y[1], -1j * y[1]]
 
 def jac(t, y):
-    return np.array([[-100j, 1.0], [0.0, -1j]])
+    return [[-100j, 1.0], [0.0, -1j]]
 
 sol = solve_complex_ivp(rhs, tspan=(0.0, 5.0),
                         y0=[1.0 + 0j, 0.0 + 1j],

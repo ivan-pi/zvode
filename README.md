@@ -48,16 +48,15 @@ and an initial condition; get back a `ZVODEResult` with `sol.t`, `sol.y`, and
 integration statistics (`sol.nfev`, `sol.njev`, …) as attributes.
 
 ```python
-import numpy as np
 from zvode import solve_complex_ivp
 
 def rhs(t, y):
-    return np.array([-100j * y[0] + y[1],
-                     -1j   * y[1]])
+    return [-100j * y[0] + y[1],
+            -1j   * y[1]]
 
 def jac(t, y):
-    return np.array([[-100j, 1.0],
-                     [ 0.0, -1j]])
+    return [[-100j, 1.0],
+            [ 0.0, -1j]]
 
 sol = solve_complex_ivp(
     fun=rhs,
@@ -100,9 +99,9 @@ from zvode import ZVODE_BDF
 sol = solve_ivp(
     fun=lambda t, y: -1j * y,
     t_span=(0.0, 10.0),
-    y0=np.array([1.0 + 0.0j]),
+    y0=[1.0 + 0.0j],
     method=ZVODE_BDF,
-    jac=lambda t, y: np.array([[-1j]]),
+    jac=lambda t, y: [[-1j]],
 )
 ```
 
