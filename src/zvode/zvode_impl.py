@@ -230,7 +230,6 @@ class ZVODE(OdeSolver):
                 "Pass a complex array to suppress this warning.",
                 stacklevel=2,
             )
-        self._ytmp = np.array(y0, dtype=np.complex128, order="C", copy=True)
         # np.array always allocates a fresh array (unlike np.asarray which returns
         # the input unchanged when dtype already matches), so self.y is guaranteed
         # to be independent of whatever the caller passed as y0.
@@ -255,7 +254,7 @@ class ZVODE(OdeSolver):
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
         self.wrap_fun = _wrapped_fun(fun)
-        _validate_fun_shape(fun, self.n, t0, self._ytmp)
+        _validate_fun_shape(fun, self.n, t0, self.y)
 
         self.miter, self.ml, self.mu = _determine_miter(
             jac, lband, uband, self.meth, miter
@@ -296,7 +295,7 @@ class ZVODE(OdeSolver):
 
         if jac is not None and self.miter in (1, 4):
             _validate_jac_shape(
-                jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp
+                jac, self.miter, self.ml, self.mu, self.n, t0, self.y
             )
 
         if jsv not in (1, -1):
@@ -390,9 +389,18 @@ class ZVODE(OdeSolver):
     def _step_impl(self):
         """Advance one step; return (success, message)"""
 
-        t, istate = _zvode.zvode(
+        # Allocate a fresh output buffer.  Fortran writes the new state into it;
+        # self.y keeps the last accepted state untouched on failure.
+        # A distinct object is also required on success: scipy.integrate.solve_ivp
+        # accumulates references to solver.y, so reusing the same buffer would make
+        # every accumulated entry alias the final state.
+        y_new = self.y.copy()
+
+        # Python evaluates the full RHS before any assignment, so the current
+        # self.t and self.istate are safely read as inputs before being overwritten.
+        self.t, self.istate = _zvode.zvode(
             self.wrap_fun,
-            self._ytmp,
+            y_new,
             self.t,
             self.t_bound,
             self.itol,
@@ -408,9 +416,6 @@ class ZVODE(OdeSolver):
             self.mf,
         )
 
-        self.istate = istate
-        self.t = t
-
         self.nfev = self.iwork[11]
         self.njev = self.iwork[12]
         self.nlu = self.iwork[19]
@@ -419,13 +424,7 @@ class ZVODE(OdeSolver):
             description = MESSAGES.get(self.istate, "Unknown error.")
             return False, f"zvode: istate = {self.istate}: {description}"
 
-        # Must be a fresh array each step: scipy.integrate.solve_ivp accumulates
-        # references to solver.y after each step.  If self.y were the same buffer
-        # as self._ytmp, every accumulated reference would alias the same array
-        # and end up holding the final state only.
-        self.y = self._ytmp.copy()
-
-        # Successful step
+        self.y = y_new  # y_new is already a fresh array; no further copy needed
         return True, None
 
     def _dense_output_impl(self):
