@@ -82,10 +82,10 @@ system, and developer-facing conveniences such as type stubs and validation.
   ISTATE errors early, but the exact mechanics are still TBD.
 - Fix nfev/njev evaluation counters: _validate_fun_shape and _validate_jac_shape
   each call the user callback once at construction time (to probe the return
-  shape), but neither call is counted toward nfev / njev.  The Fortran library
-  owns those counters inside iwork and they are only readable after an accepted
-  step, so incrementing them here would require duplicating the counters in
-  Python.  Both probe calls are marked FIXME in _helpers.py.
+  shape), but neither call is counted toward nfev / njev.  The counters live in
+  a global Fortran COMMON block and are only copied into iwork on return from
+  ZVODE, so incrementing them from Python would require maintaining duplicate
+  Python-side counters.  Both probe calls are marked FIXME in _helpers.py.
 - Add option to expose ZEWSET and ZWNORM as callback functions
 - Provide CMake option to use external BLAS; if not available, fallback to
   vendored procedures

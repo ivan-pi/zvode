@@ -674,8 +674,8 @@ def solve_complex_ivp(
         _jac = jac
     else:
         # Path A — SciPy-compatible; wrap to in-place
-        _fun = _wrapped_fun(fun)
         _validate_fun_shape(fun, n, tspan[0], y0)
+        _fun = _wrapped_fun(fun)
         _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
 
     # ------------------------------------------------------------------
