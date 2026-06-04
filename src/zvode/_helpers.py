@@ -135,6 +135,10 @@ def _validate_fun_shape(fun, n, t0, y0):
     mistakes — returning a Python scalar, a 0-D ndarray, or a 2-D array —
     are caught here before any Fortran call is made.
     """
+    # FIXME: this evaluation should be counted toward nfev, but the Fortran
+    # library owns that counter inside iwork and it is only readable after
+    # each accepted step, so incrementing it here would require duplicating
+    # the counter in Python.
     trial = np.asarray(fun(t0, y0))
     expected = (n,)
     if trial.shape != expected:
