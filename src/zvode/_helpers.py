@@ -16,6 +16,7 @@ MESSAGES = {
 
 
 def _validate_max_step(max_step):
+    """Validate that max_step is a positive number."""
     if max_step <= 0:
         raise ValueError("`max_step` must be positive.")
     return max_step

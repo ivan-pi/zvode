@@ -59,6 +59,7 @@ class ZVODEDenseOutput(DenseOutput):
     """
 
     def __init__(self, t_old, t, yh, h):
+        """Capture a Nordsieck array snapshot for later polynomial evaluation."""
         super().__init__(t_old, t)
 
         # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(t)
@@ -243,7 +244,7 @@ class ZVODE(OdeSolver):
         jsv=1,
         **extraneous,
     ):
-
+        """Validate arguments, allocate ZVODE workspaces, and prepare the initial state."""
         _warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound, vectorized=False, support_complex=True)
 
