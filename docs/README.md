@@ -50,14 +50,6 @@ They require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matp
    The 2×2 density matrix is vectorized to a 4-component complex array to interface with
    `solve_ivp`.
 
-7. **[`demo_stuart_landau.py`](demo_stuart_landau.py)** — Stuart-Landau equation
-   `dA/dt = (μ + iω₀)A − (1 + iγ)|A|²A`, the normal form of a supercritical Hopf
-   bifurcation.  Five trajectories (inside and outside the limit cycle) are integrated and
-   checked against a closed-form exact solution derived from the logistic equation for |A|².
-   Demonstrates non-holomorphic (amplitude-dependent) nonlinearity and the non-isochronous
-   effect: trajectories that start far outside the limit cycle initially rotate at a
-   frequency lower than — or even opposite in sign to — the limit-cycle frequency.
-
 ---
 
 Have you solved an interesting ODE system with `zvode` and are willing to share it?
