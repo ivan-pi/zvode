@@ -27,6 +27,7 @@ from ._helpers import (
     _determine_miter,
     _validate_max_step,
     _validate_first_step,
+    _validate_fun_shape,
     _validate_jac_shape,
     _wrapped_fun,
     _wrapped_jac,
@@ -673,6 +674,7 @@ def solve_complex_ivp(
         _jac = jac
     else:
         # Path A — SciPy-compatible; wrap to in-place
+        _validate_fun_shape(fun, n, tspan[0], y0)
         _fun = _wrapped_fun(fun)
         _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
 

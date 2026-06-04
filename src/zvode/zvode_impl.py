@@ -11,6 +11,7 @@ from ._helpers import (
     _wrapped_fun,
     _wrapped_jac,
     _check_tolerances,
+    _validate_fun_shape,
     _validate_jac_shape,
     _determine_miter,
 )
@@ -275,6 +276,7 @@ class ZVODE(OdeSolver):
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
         self.wrap_fun = _wrapped_fun(fun)
+        _validate_fun_shape(fun, self.n, t0, self._ytmp)
 
         self.miter, self.ml, self.mu = _determine_miter(
             jac, lband, uband, self.meth, miter
