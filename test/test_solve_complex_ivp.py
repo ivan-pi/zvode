@@ -503,8 +503,11 @@ def test_compiled_callback_not_yet_implemented():
 #   np.array([-1j])    1-D ndarray       (1,)     ValueError
 # ---------------------------------------------------------------------------
 
+
 def _S_FUN(t, y):
     return -1j * y
+
+
 _S_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
 _S_TSPAN = [0.0, 1.0]
 _S_EXACT_FINAL = np.exp(-1j * 1.0)
