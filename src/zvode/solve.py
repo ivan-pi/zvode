@@ -45,12 +45,14 @@ class ZVODEResult(dict):
     """
 
     def __getattr__(self, name):
+        """Return self[name], raising AttributeError if the key is absent."""
         try:
             return self[name]
         except KeyError:
             raise AttributeError(name) from None
 
     def __repr__(self):
+        """Return a concise string showing t/y shapes and solver counters."""
         t = self.get("t")
         y = self.get("y")
         t_s = f"ndarray(shape={t.shape})" if isinstance(t, np.ndarray) else repr(t)
