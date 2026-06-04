@@ -1366,7 +1366,8 @@ def test_tight_binding_chain():
 # behaviour exactly.
 # ---------------------------------------------------------------------------
 
-_SJ_FUN = lambda t, y: -1j * y
+def _SJ_FUN(t, y):
+    return -1j * y
 _SJ_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
 _SJ_T_SPAN = (0.0, 1.0)
 _SJ_EXACT_FINAL = np.exp(-1j * 1.0)

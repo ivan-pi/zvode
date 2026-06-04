@@ -34,6 +34,7 @@ module c_zvode_mod
         end subroutine
         subroutine c_zvode_jac(neq,t,y,ml,mu,pd,nrowpd,ctx) bind(c)
            import c_int, c_double, c_double_complex, c_ptr
+           implicit none
            integer(c_int), value :: neq, ml, mu, nrowpd
            real(c_double), value :: t
            complex(c_double_complex), intent(in) :: y(neq)
