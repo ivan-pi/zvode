@@ -251,7 +251,7 @@ def _zvode_adaptive(
                 # After an accepted step the Nordsieck array in zwork[0:n*(nq+1)]
                 # is valid for interpolation over [t_old, t].  ZVINDY is called
                 # before the next zvode call overwrites zwork.
-                nq = int(iwork[14])  # NQCUR: current order
+                nq = int(iwork[13])  # IWORK(14) = NQU: order last used
                 hu = float(rwork[10])  # HU: step size just used
                 yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F")
                 dky = np.empty(n, dtype=np.complex128)

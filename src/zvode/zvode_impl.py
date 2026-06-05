@@ -449,7 +449,11 @@ class ZVODE(OdeSolver):
     def _dense_output_impl(self):
         """Capture the current Nordsieck array and return a dense interpolant."""
 
-        nq = int(self.iwork[14])  # IWORK(15) = NQCUR
+        # IWORK(14) = NQU: the order last used (successfully).
+        # IWORK(15) = NEWQ: the order proposed for the *next* step — may differ from
+        # NQU when an order change is pending.  The YH array contains NQU+1 valid
+        # columns (scaled to the step just taken), so NQU is the correct size.
+        nq = int(self.iwork[13])  # IWORK(14) = NQU: order last used
         h = float(self.rwork[10])  # RWORK(11) = HU: step size last used
 
         # YH occupies zwork[0 : n*(nq+1)] in Fortran column-major order.

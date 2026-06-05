@@ -380,6 +380,43 @@ def test_dense_output_oscillator():
         )
 
 
+def test_dense_output_at_order_increase_step():
+    """Dense output must be correct at the exact step where the order increases.
+
+    When ZVODE proposes an order increase (NEWQ = NQU + 1), IWORK(15) = NEWQ
+    while IWORK(14) = NQU.  The YH array still contains only NQU+1 valid
+    columns.  Reading NEWQ+1 columns would include a populated (but stale)
+    column from a prior integration at that higher order, corrupting the
+    interpolant.  This test verifies that evaluation at a fine grid — which
+    may land inside such a transition step — remains accurate.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 0.5)
+    t_eval = np.linspace(t_span[0], t_span[1], 500)
+
+    sol = solve_ivp(
+        lambda t, y: -y,
+        t_span,
+        y0,
+        method=ZVODE,
+        miter=2,
+        dense_output=True,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+    assert sol.success
+    y_interp = sol.sol(t_eval)
+    expected = np.exp(-t_eval)
+    assert_allclose(
+        y_interp[0],
+        expected,
+        rtol=1e-7,
+        atol=1e-10,
+        err_msg="Dense output failed at order-increase transition step",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers shared by the linear complex ODE system tests below
 # (adapted from scipy/integrate/tests/test_banded_ode_solvers.py)
@@ -1366,8 +1403,11 @@ def test_tight_binding_chain():
 # behaviour exactly.
 # ---------------------------------------------------------------------------
 
+
 def _SJ_FUN(t, y):
     return -1j * y
+
+
 _SJ_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
 _SJ_T_SPAN = (0.0, 1.0)
 _SJ_EXACT_FINAL = np.exp(-1j * 1.0)
