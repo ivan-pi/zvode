@@ -35,10 +35,10 @@ from zvode import ZVODE, solve_complex_ivp
 #   Exact: y_i(t) = y0_i * exp(lam_i * t)
 # ---------------------------------------------------------------------------
 
-_LAM = np.array([-1.0 + 0j, -2.0 + 0j])
-_Y0 = np.array([1.0 + 0j, 0.5 + 0j])
-_TSPAN = [0.0, 2.0]
-_TOLS = dict(rtol=1e-8, atol=1e-10)
+LAM = np.array([-1.0 + 0j, -2.0 + 0j])
+Y0 = np.array([1.0 + 0j, 0.5 + 0j])
+TSPAN = [0.0, 2.0]
+TOLS = dict(rtol=1e-8, atol=1e-10)
 
 
 def _make_fun():
@@ -47,7 +47,7 @@ def _make_fun():
 
     def fun(t, y):
         counter[0] += 1
-        return _LAM * y
+        return LAM * y
 
     return fun, counter
 
@@ -58,7 +58,7 @@ def _make_jac():
 
     def jac(t, y):
         counter[0] += 1
-        return np.diag(_LAM)
+        return np.diag(LAM)
 
     return jac, counter
 
@@ -69,7 +69,7 @@ def _make_inplace_fun():
 
     def fun(t, y, dy):
         counter[0] += 1
-        dy[:] = _LAM * y
+        dy[:] = LAM * y
 
     return fun, counter
 
@@ -86,21 +86,21 @@ def _make_inplace_fun():
 def test_nfev_includes_probe_out_of_place():
     """result.nfev equals total fun calls including the shape-probe (in_place=False)."""
     fun, counter = _make_fun()
-    result = solve_complex_ivp(fun, _TSPAN, _Y0, **_TOLS)
+    result = solve_complex_ivp(fun, TSPAN, Y0, **TOLS)
     assert result.nfev == counter[0]
 
 
 def test_nfev_accurate_when_in_place():
     """result.nfev matches fun call count exactly when in_place=True (no probe)."""
     fun, counter = _make_inplace_fun()
-    result = solve_complex_ivp(fun, _TSPAN, _Y0, in_place=True, **_TOLS)
+    result = solve_complex_ivp(fun, TSPAN, Y0, in_place=True, **TOLS)
     assert result.nfev == counter[0]
 
 
 def test_nfev_probe_offset_is_one():
     """Out-of-place shape probe adds exactly one uncounted call to the manual counter."""
     fun, counter = _make_fun()
-    result = solve_complex_ivp(fun, _TSPAN, _Y0, **_TOLS)
+    result = solve_complex_ivp(fun, TSPAN, Y0, **TOLS)
     assert counter[0] == result.nfev + 1
 
 
@@ -117,7 +117,7 @@ def test_njev_includes_probe_out_of_place():
     """result.njev equals total jac calls including the shape-probe (in_place=False)."""
     fun, _ = _make_fun()
     jac, jac_counter = _make_jac()
-    result = solve_complex_ivp(fun, _TSPAN, _Y0, jac=jac, **_TOLS)
+    result = solve_complex_ivp(fun, TSPAN, Y0, jac=jac, **TOLS)
     assert result.njev == jac_counter[0]
 
 
@@ -125,7 +125,7 @@ def test_njev_probe_offset_is_one():
     """Out-of-place Jacobian shape probe adds exactly one uncounted call."""
     fun, _ = _make_fun()
     jac, jac_counter = _make_jac()
-    result = solve_complex_ivp(fun, _TSPAN, _Y0, jac=jac, **_TOLS)
+    result = solve_complex_ivp(fun, TSPAN, Y0, jac=jac, **TOLS)
     assert jac_counter[0] == result.njev + 1
 
 
@@ -136,7 +136,7 @@ def test_njev_probe_offset_is_one():
 
 def _run_zvode(fun, jac=None):
     """Construct a ZVODE solver and step it to t_bound; return the solver."""
-    solver = ZVODE(fun, _TSPAN[0], _Y0, _TSPAN[1], jac=jac, **_TOLS)
+    solver = ZVODE(fun, TSPAN[0], Y0, TSPAN[1], jac=jac, **TOLS)
     while solver.status == "running":
         solver.step()
     assert solver.status == "finished", f"solver failed: {solver.status}"
