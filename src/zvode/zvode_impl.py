@@ -230,8 +230,11 @@ class ZVODE(OdeSolver):
                 "Pass a complex array to suppress this warning.",
                 stacklevel=2,
             )
-        self._ytmp = np.array(y0, dtype=np.complex128, order="C", copy=True)
-        self.y = self._ytmp.copy()
+        # super().__init__ may leave self.y as float if y0 is real; override to
+        # complex128.  np.array always allocates a fresh array regardless of input
+        # dtype, so self.y is independent of whatever the caller passed.
+        self.y = np.array(y0, dtype=np.complex128)
+        self._ytmp = self.y.copy()  # mutable Fortran work buffer
 
         self.istate = 1  # start integration
         self.itask = 5  # take one step, without passing t_bound, then return
@@ -252,7 +255,7 @@ class ZVODE(OdeSolver):
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
         self.wrap_fun = _wrapped_fun(fun)
-        _validate_fun_shape(fun, self.n, t0, self._ytmp)
+        _validate_fun_shape(fun, self.n, t0, self.y)
 
         self.miter, self.ml, self.mu = _determine_miter(
             jac, lband, uband, self.meth, miter
@@ -293,7 +296,7 @@ class ZVODE(OdeSolver):
 
         if jac is not None and self.miter in (1, 4):
             _validate_jac_shape(
-                jac, self.miter, self.ml, self.mu, self.n, t0, self._ytmp
+                jac, self.miter, self.ml, self.mu, self.n, t0, self.y
             )
 
         if jsv not in (1, -1):
@@ -387,7 +390,9 @@ class ZVODE(OdeSolver):
     def _step_impl(self):
         """Advance one step; return (success, message)"""
 
-        t, istate = _zvode.zvode(
+        # Python evaluates the full RHS before any assignment, so the current
+        # self.t and self.istate are safely read as inputs before being overwritten.
+        self.t, self.istate = _zvode.zvode(
             self.wrap_fun,
             self._ytmp,
             self.t,
@@ -405,20 +410,15 @@ class ZVODE(OdeSolver):
             self.mf,
         )
 
-        self.istate = istate
-        self.t = t
-
-        self.nfev = self.iwork[11]
-        self.njev = self.iwork[12]
-        self.nlu = self.iwork[19]
+        self.nfev = self.iwork[11]  # NFE  IWORK(12): f evaluations
+        self.njev = self.iwork[12]  # NJE  IWORK(13): Jacobian evaluations
+        self.nlu = self.iwork[19]   # NLU  IWORK(20): LU decompositions
 
         if self.istate != 2:
             description = MESSAGES.get(self.istate, "Unknown error.")
             return False, f"zvode: istate = {self.istate}: {description}"
 
         self.y = self._ytmp.copy()
-
-        # Succesful step
         return True, None
 
     def _dense_output_impl(self):
