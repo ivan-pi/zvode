@@ -26,7 +26,7 @@ Release plan
    process-wide Lock is required — one instance per thread is not sufficient)
 
 
-## [NEXT] 0.2.0 — Procedural interface (Python layer)
+## [RELEASED] 0.2.0 — Procedural interface (Python layer)
 
 The goal of this release is to provide a standalone `solve_complex_ivp()` function.
 Note: the integration loop is implemented in Python rather than compiled C, so
@@ -68,10 +68,12 @@ is deferred to 0.4.0.
 Work in this release is concentrated on the Fortran layer, the CMake build
 system, and developer-facing conveniences such as type stubs and validation.
 
-- Add a test that asserts NotImplementedError is raised when in_place=True is
+- [DONE] Add a test that asserts NotImplementedError is raised when in_place=True is
   used with a ctypes or numba cfunc function pointer, so the current compiled-
   callback stub is covered and a regression will fire automatically when 0.4.0
   enables the path.
+  (test_compiled_callback_not_yet_implemented in test_solve_complex_ivp.py;
+   test_compiled_callback_requires_in_place covers the in_place=False guard)
 - Domain checking of arguments in Python; there is some duplication of
   responsibilities, as ZVODE does some checks internally too; doing the checks
   in Python beforehand allows to raise a proper exception.
@@ -86,14 +88,19 @@ system, and developer-facing conveniences such as type stubs and validation.
   a global Fortran COMMON block and are only copied into iwork on return from
   ZVODE, so incrementing them from Python would require maintaining duplicate
   Python-side counters.  Both probe calls are marked FIXME in _helpers.py.
+  test_counters.py documents the expected correct behaviour with xfail tests
+  and pins the current off-by-one discrepancy so a regression is detectable.
 - Add option to expose ZEWSET and ZWNORM as callback functions
 - Provide CMake option to use external BLAS; if not available, fallback to
   vendored procedures
-- Ensure implicit none is used and all variables are strictly typed
+- [DONE] Ensure implicit none is used and all variables are strictly typed
   (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
 - Add Python typing hints (the .pyi files)
-- Add short docstring Examples sections to ZVODE and solve_complex_ivp
+- [DONE] Add short docstring Examples sections to ZVODE and solve_complex_ivp
   (a few ``>>>`` lines each; enough for ``help()`` to be useful in a REPL)
+- [DONE] Add See Also section to ZVODE linking to scipy.integrate.OdeSolver
+  (the base class) and scipy.integrate.solve_ivp (the driver that accepts
+  method=ZVODE); section sits between Attributes and Notes per numpydoc order
 - Check older SciPy versions for any bug fixes not yet incorporated, and verify
   original licenses are properly attributed
 - Note on NEQ reset: when NEQ is reset during integration (ISTATE = 3), we must
@@ -136,8 +143,15 @@ compiled code without GIL round-trips.
 - Minimalistic documentation in .rst format, hosted on GitHub Pages
   - Sphinx build configured, GitHub Actions workflow to deploy on each release
   - API reference, user guide, and at least one worked example
+  - Enable intersphinx_mapping for scipy (and numpy) in conf.py so that
+    See Also references such as scipy.integrate.OdeSolver and
+    scipy.integrate.solve_ivp resolve to live hyperlinks automatically
 - Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
   and macOS wheels to PyPI on each release tag
+  (wheels.yml exists and builds Linux x86-64 and macOS arm64 wheels; the
+   PyPI publish job and trusted publishing are not yet functional — more
+   work needed to harden the cibuildwheel configuration before this is
+   considered done)
 - Windows wheel builds: add a windows-latest runner to the CI matrix,
   document the required Fortran toolchain (gfortran via MSYS2/mingw-w64 or
   Intel ifx), and add "Operating System :: Microsoft :: Windows" to the
