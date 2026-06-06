@@ -181,39 +181,6 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
             )
 
 
-def _capture_nordsieck(zwork, iwork, rwork, n):
-    """Capture the current Nordsieck history array from the ZVODE workspace.
-
-    Must be called immediately after a successful ZVODE step (ISTATE = 2),
-    before the next step overwrites *zwork*.
-
-    ZVODE workspace layout (relevant slots, 0-indexed Python / 1-indexed Fortran):
-
-    * ``iwork[13]`` = IWORK(14) = NQU — the method order of the **step just
-      completed**.  This is the correct order for interpolation: the YH array
-      holds NQU+1 valid columns scaled to the completed step.
-
-    * ``iwork[14]`` = IWORK(15) = NEWQ — the order **proposed for the next
-      step**.  NEWQ may equal NQU+1 when an order increase is pending.  Using
-      NEWQ here would read one extra, stale Nordsieck column and corrupt the
-      interpolating polynomial.
-
-    * ``rwork[10]`` = RWORK(11) = HU — the step size of the step just used.
-      YH is scaled to this value, so the normalised time is ``s = (t - TN)/HU``.
-
-    Returns
-    -------
-    h : float
-        HU, the step size last used.
-    yh : ndarray, shape ``(n, nq+1)``, complex128, Fortran-order copy
-        Nordsieck history array, column *j* holding ``HU**j / j! * y^(j)(TN)``.
-    """
-    nq = int(iwork[13])  # IWORK(14) = NQU: order last used
-    h = float(rwork[10])  # RWORK(11) = HU: step size last used
-    yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F").copy(order="F")
-    return h, yh
-
-
 def _eval_nordsieck(yh, h, t, tn):
     """Evaluate the Nordsieck interpolating polynomial at time(s) *t*.
 
