@@ -6,7 +6,6 @@ from scipy.integrate import OdeSolver, DenseOutput
 from . import _zvode
 from ._helpers import (
     MESSAGES,
-    _capture_nordsieck,
     _eval_nordsieck,
     _validate_max_step,
     _validate_first_step,
@@ -423,9 +422,11 @@ class ZVODE(OdeSolver):
         return True, None
 
     def _dense_output_impl(self):
-        """Capture the current Nordsieck array and return a dense interpolant."""
-        h, yh = _capture_nordsieck(self.zwork, self.iwork, self.rwork, self.n)
-        return ZVODEDenseOutput(self.t_old, self.t, yh, h)
+        nq = int(self.iwork[13])  # IWORK(14) = NQU: order last used
+        hu = float(self.rwork[10])  # RWORK(11) = HU: step size last used
+        # Copy with order='F': the interpolant outlives this step's zwork.
+        yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy(order="F")
+        return ZVODEDenseOutput(self.t_old, self.t, yh, hu)
 
 
 class ZVODE_Adams(ZVODE):
