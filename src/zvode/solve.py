@@ -23,6 +23,7 @@ import numpy as np
 from . import _zvode
 from ._helpers import (
     MESSAGES,
+    _capture_nordsieck,
     _check_tolerances,
     _determine_miter,
     _validate_max_step,
@@ -251,9 +252,7 @@ def _zvode_adaptive(
                 # After an accepted step the Nordsieck array in zwork[0:n*(nq+1)]
                 # is valid for interpolation over [t_old, t].  ZVINDY is called
                 # before the next zvode call overwrites zwork.
-                nq = int(iwork[13])  # IWORK(14) = NQU: order last used
-                hu = float(rwork[10])  # HU: step size just used
-                yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F")
+                hu, yh = _capture_nordsieck(zwork, iwork, rwork, n)
                 dky = np.empty(n, dtype=np.complex128)
                 for i in range(1, refine):
                     t_i = t_old + i * (t - t_old) / refine

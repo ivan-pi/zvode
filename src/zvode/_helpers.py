@@ -181,6 +181,83 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
             )
 
 
+def _capture_nordsieck(zwork, iwork, rwork, n):
+    """Capture the current Nordsieck history array from the ZVODE workspace.
+
+    Must be called immediately after a successful ZVODE step (ISTATE = 2),
+    before the next step overwrites *zwork*.
+
+    ZVODE workspace layout (relevant slots, 0-indexed Python / 1-indexed Fortran):
+
+    * ``iwork[13]`` = IWORK(14) = NQU — the method order of the **step just
+      completed**.  This is the correct order for interpolation: the YH array
+      holds NQU+1 valid columns scaled to the completed step.
+
+    * ``iwork[14]`` = IWORK(15) = NEWQ — the order **proposed for the next
+      step**.  NEWQ may equal NQU+1 when an order increase is pending.  Using
+      NEWQ here would read one extra, stale Nordsieck column and corrupt the
+      interpolating polynomial.
+
+    * ``rwork[10]`` = RWORK(11) = HU — the step size of the step just used.
+      YH is scaled to this value, so the normalised time is ``s = (t - TN)/HU``.
+
+    Returns
+    -------
+    h : float
+        HU, the step size last used.
+    yh : ndarray, shape ``(n, nq+1)``, complex128, Fortran-order copy
+        Nordsieck history array, column *j* holding ``HU**j / j! * y^(j)(TN)``.
+    """
+    nq = int(iwork[13])  # IWORK(14) = NQU: order last used
+    h = float(rwork[10])  # RWORK(11) = HU: step size last used
+    yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F").copy(order="F")
+    return h, yh
+
+
+def _eval_nordsieck(yh, h, t, tn):
+    """Evaluate the Nordsieck interpolating polynomial at time(s) *t*.
+
+    Implements the Horner recurrence for k=0 (plain interpolation):
+
+    .. math::
+
+        p(t) = \\sum_{j=0}^{nq} s^j \\, yh_j, \\quad s = (t - t_n) / h
+
+    where column *j* of *yh* holds ``h^j / j! * y^(j)(t_n)``.
+
+    Parameters
+    ----------
+    yh : ndarray, shape ``(n, nq+1)``, complex128
+        Nordsieck history array captured at the end of the step.
+    h : float
+        Step size the array is scaled to (HU).
+    t : float or ndarray
+        Evaluation time(s).  A scalar returns shape ``(n,)``; an array of
+        shape ``(m,)`` returns shape ``(n, m)``.
+    tn : float
+        Current solver time (end of step, TN/TCUR).
+
+    Returns
+    -------
+    ndarray, shape ``(n,)`` or ``(n, m)``
+    """
+    scalar = np.ndim(t) == 0
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+
+    s = (t - tn) / h  # normalised position, shape (m,)
+
+    nq = yh.shape[1] - 1
+    n = yh.shape[0]
+    # Allocate one (n, m) buffer; iterate in-place — no temporaries.
+    dky = np.empty((n, len(t)), dtype=yh.dtype)
+    dky[:] = yh[:, nq, np.newaxis]
+    for j in range(nq - 1, -1, -1):
+        dky *= s
+        dky += yh[:, j, np.newaxis]
+
+    return dky[:, 0] if scalar else dky
+
+
 def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band/meth arguments."""
 
