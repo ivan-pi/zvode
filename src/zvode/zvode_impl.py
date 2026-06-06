@@ -6,6 +6,7 @@ from scipy.integrate import OdeSolver, DenseOutput
 from . import _zvode
 from ._helpers import (
     MESSAGES,
+    _eval_nordsieck,
     _validate_max_step,
     _validate_first_step,
     _wrapped_fun,
@@ -38,10 +39,8 @@ class ZVODEDenseOutput(DenseOutput):
 
     .. math::
 
-        p(t) = \\sum_{j=0}^{nq} \\binom{s}{j} \\, yh_j,
-        \\quad s = (t - t_n) / h
+        p(t) = \\sum_{j=0}^{nq} s^j \\, yh_j, \\quad s = (t - t_n) / h
 
-    where the binomial weights collapse to 1 for plain interpolation (k=0),
     giving a simple Horner evaluation.  No internal Fortran state is required
     after construction.
 
@@ -55,42 +54,18 @@ class ZVODEDenseOutput(DenseOutput):
         Nordsieck history array, column-major copy taken at the end of the
         step and scaled to step size `h`.
     h : float
-        Step size the Nordsieck array is scaled to (``HCUR`` in ZVODE).
+        Step size the Nordsieck array is scaled to (HU in ZVODE).
     """
 
     def __init__(self, t_old, t, yh, h):
         """Capture a Nordsieck array snapshot for later polynomial evaluation."""
         super().__init__(t_old, t)
-
-        # yh : (n, nq+1) complex128, column j holds H^j/j! * y^(j)(t)
         self.yh = yh
-        self.nq = yh.shape[1] - 1
         self.h = h
 
     def _call_impl(self, t):
         """Evaluate the interpolant at time(s) `t`; returns shape ``(n,)`` or ``(n, m)``."""
-
-        scalar = t.ndim == 0
-        t = np.atleast_1d(t)
-
-        # normalised position, shape (m,)
-        s = (t - self.t) / self.h
-
-        # Horner's method along the Nordsieck columns; for plain interpolation
-        # all falling-factorial weights are 1, so the recurrence simplifies to:
-        #   p = yh[:,nq]; for j = nq-1 ... 0: p = yh[:,j] + s*p
-        # One (n, m) buffer is allocated upfront; each iteration is then two
-        # in-place operations with no temporaries: dky *= s; dky += yh[:,j].
-        # Starting from a view of yh would corrupt the stored Nordsieck array.
-
-        n = self.yh.shape[0]
-        dky = np.empty((n, len(t)), dtype=self.yh.dtype)
-        dky[:] = self.yh[:, self.nq, np.newaxis]  # seed: broadcast (n,1) -> (n,m)
-        for j in range(self.nq - 1, -1, -1):
-            dky *= s  # dky = s * dky  (broadcasts m)
-            dky += self.yh[:, j, np.newaxis]  # dky = yh[:,j] + s * dky
-
-        return dky[:, 0] if scalar else dky
+        return _eval_nordsieck(self.yh, self.h, t, self.t)
 
 
 class ZVODE(OdeSolver):
@@ -447,15 +422,11 @@ class ZVODE(OdeSolver):
         return True, None
 
     def _dense_output_impl(self):
-        """Capture the current Nordsieck array and return a dense interpolant."""
-
-        nq = int(self.iwork[14])  # IWORK(15) = NQCUR
-        h = float(self.rwork[10])  # RWORK(11) = HU: step size last used
-
-        # YH occupies zwork[0 : n*(nq+1)] in Fortran column-major order.
-        yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy()
-
-        return ZVODEDenseOutput(self.t_old, self.t, yh, h)
+        nq = int(self.iwork[13])  # IWORK(14) = NQU: order last used
+        hu = float(self.rwork[10])  # RWORK(11) = HU: step size last used
+        # Copy with order='F': the interpolant outlives this step's zwork.
+        yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy(order="F")
+        return ZVODEDenseOutput(self.t_old, self.t, yh, hu)
 
 
 class ZVODE_Adams(ZVODE):

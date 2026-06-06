@@ -181,6 +181,55 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
             )
 
 
+def _eval_nordsieck(yh, h, t, tn):
+    """Evaluate the Nordsieck interpolating polynomial at time(s) *t*.
+
+    Implements the Horner recurrence for k=0 (plain interpolation):
+
+    .. math::
+
+        p(t) = \\sum_{j=0}^{nq} s^j \\, yh_j, \\quad s = (t - t_n) / h
+
+    where column *j* of *yh* holds ``h^j / j! * y^(j)(t_n)``.
+
+    Parameters
+    ----------
+    yh : ndarray, shape ``(n, nq+1)``, complex128
+        Nordsieck history array captured at the end of the step.
+    h : float
+        Step size the array is scaled to (HU).
+    t : float or ndarray
+        Evaluation time(s).  A scalar returns shape ``(n,)``; an array of
+        shape ``(m,)`` returns shape ``(n, m)``.
+    tn : float
+        Current solver time (end of step, TN/TCUR).
+
+    Returns
+    -------
+    ndarray, shape ``(n,)`` or ``(n, m)``
+    """
+    scalar = np.ndim(t) == 0
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+
+    s = (t - tn) / h  # normalised position, shape (m,)
+
+    nq = yh.shape[1] - 1
+    n = yh.shape[0]
+    # For plain interpolation (k=0) all falling-factorial weights are 1, so
+    # the recurrence simplifies to:
+    #   p = yh[:,nq]; for j = nq-1 ... 0: p = yh[:,j] + s*p
+    # Allocate one (n, m) buffer upfront; each iteration is two in-place
+    # operations with no temporaries: dky *= s; dky += yh[:,j].
+    # Initialising from a view of yh would corrupt the stored Nordsieck array.
+    dky = np.empty((n, len(t)), dtype=yh.dtype)
+    dky[:] = yh[:, nq, np.newaxis]
+    for j in range(nq - 1, -1, -1):
+        dky *= s
+        dky += yh[:, j, np.newaxis]
+
+    return dky[:, 0] if scalar else dky
+
+
 def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
     """Determine the MITER iteration-method flag from the supplied jac/band/meth arguments."""
 
