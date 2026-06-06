@@ -255,10 +255,11 @@ class ZVODE(OdeSolver):
                 "Pass a complex array to suppress this warning.",
                 stacklevel=2,
             )
-        # np.array always allocates a fresh array (unlike np.asarray which returns
-        # the input unchanged when dtype already matches), so self.y is guaranteed
-        # to be independent of whatever the caller passed as y0.
+        # super().__init__ may leave self.y as float if y0 is real; override to
+        # complex128.  np.array always allocates a fresh array regardless of input
+        # dtype, so self.y is independent of whatever the caller passed.
         self.y = np.array(y0, dtype=np.complex128)
+        self._ytmp = self.y.copy()  # mutable Fortran work buffer
 
         self.istate = 1  # start integration
         self.itask = 5  # take one step, without passing t_bound, then return
@@ -414,18 +415,11 @@ class ZVODE(OdeSolver):
     def _step_impl(self):
         """Advance one step; return (success, message)"""
 
-        # Allocate a fresh output buffer.  Fortran writes the new state into it;
-        # self.y keeps the last accepted state untouched on failure.
-        # A distinct object is also required on success: scipy.integrate.solve_ivp
-        # accumulates references to solver.y, so reusing the same buffer would make
-        # every accumulated entry alias the final state.
-        y_new = self.y.copy()
-
         # Python evaluates the full RHS before any assignment, so the current
         # self.t and self.istate are safely read as inputs before being overwritten.
         self.t, self.istate = _zvode.zvode(
             self.wrap_fun,
-            y_new,
+            self._ytmp,
             self.t,
             self.t_bound,
             self.itol,
@@ -441,15 +435,15 @@ class ZVODE(OdeSolver):
             self.mf,
         )
 
-        self.nfev = self.iwork[11]
-        self.njev = self.iwork[12]
-        self.nlu = self.iwork[19]
+        self.nfev = self.iwork[11]  # NFE  IWORK(12): f evaluations
+        self.njev = self.iwork[12]  # NJE  IWORK(13): Jacobian evaluations
+        self.nlu = self.iwork[19]   # NLU  IWORK(20): LU decompositions
 
         if self.istate != 2:
             description = MESSAGES.get(self.istate, "Unknown error.")
             return False, f"zvode: istate = {self.istate}: {description}"
 
-        self.y = y_new  # y_new is already a fresh array; no further copy needed
+        self.y = self._ytmp.copy()
         return True, None
 
     def _dense_output_impl(self):
