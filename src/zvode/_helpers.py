@@ -215,7 +215,12 @@ def _eval_nordsieck(yh, h, t, tn):
 
     nq = yh.shape[1] - 1
     n = yh.shape[0]
-    # Allocate one (n, m) buffer; iterate in-place — no temporaries.
+    # For plain interpolation (k=0) all falling-factorial weights are 1, so
+    # the recurrence simplifies to:
+    #   p = yh[:,nq]; for j = nq-1 ... 0: p = yh[:,j] + s*p
+    # Allocate one (n, m) buffer upfront; each iteration is two in-place
+    # operations with no temporaries: dky *= s; dky += yh[:,j].
+    # Initialising from a view of yh would corrupt the stored Nordsieck array.
     dky = np.empty((n, len(t)), dtype=yh.dtype)
     dky[:] = yh[:, nq, np.newaxis]
     for j in range(nq - 1, -1, -1):
