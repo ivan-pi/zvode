@@ -14,11 +14,15 @@ solve_complex_ivp
     Adams or BDF multistep methods.
 """
 
+from __future__ import annotations
+
 import ctypes
 import warnings
 from threading import Lock
+from typing import Any, Callable, Literal
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from . import _zvode
 from ._helpers import (
@@ -340,28 +344,28 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
 
 
 def solve_complex_ivp(
-    fun,
-    tspan,
-    y0,
+    fun: Callable[..., Any],
+    tspan: ArrayLike,
+    y0: ArrayLike,
     *,
-    rtol=1.0e-3,
-    atol=1.0e-6,
-    jac=None,
-    method="BDF",
-    lband=None,
-    uband=None,
-    in_place=False,
-    save_steps=True,
-    refine=1,
-    allow_overshoot=False,
-    first_step=None,
-    min_step=0.0,
-    max_step=np.inf,
-    max_num_steps=1_000_000,
-    max_order=None,
-    miter=None,
-    save_jac=True,
-):
+    rtol: float | ArrayLike = 1.0e-3,
+    atol: float | ArrayLike = 1.0e-6,
+    jac: Callable[..., Any] | None = None,
+    method: Literal["BDF", "Adams"] = "BDF",
+    lband: int | None = None,
+    uband: int | None = None,
+    in_place: bool = False,
+    save_steps: bool = True,
+    refine: int = 1,
+    allow_overshoot: bool = False,
+    first_step: float | None = None,
+    min_step: float = 0.0,
+    max_step: float = np.inf,
+    max_num_steps: int = 1_000_000,
+    max_order: int | None = None,
+    miter: int | None = None,
+    save_jac: bool = True,
+) -> ZVODEResult:
     """Integrate a complex-valued ODE initial value problem.
 
     Solves::
@@ -453,8 +457,8 @@ def solve_complex_ivp(
 
     Returns
     -------
-    result : dict-like with attribute access
-        Always contains:
+    result : ZVODEResult
+        Dict-like object with attribute access.  Always contains:
 
         result.t : float or ndarray, shape (m,)
             Output time(s).  A scalar float in endpoint-only mode
@@ -493,8 +497,12 @@ def solve_complex_ivp(
         freely, which can occasionally be more efficient, but the last output
         point may lie slightly beyond ``tspan[1]``.  Ignored when
         ``save_steps=False`` or ``len(tspan) > 2``.
-    first_step, min_step, max_step : float, optional
-        Step-size controls.
+    first_step : float or None, optional
+        Initial step size.  Chosen automatically if not given.
+    min_step : float, optional
+        Minimum allowed step size.  Default 0.
+    max_step : float, optional
+        Maximum allowed step size.  Default ``np.inf``.
     max_num_steps : int, optional
         Maximum number of internal steps between two consecutive output
         points.  Default 1 000 000.  Lower this to cap computational work
