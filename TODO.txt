@@ -143,6 +143,9 @@ compiled code without GIL round-trips.
 - Minimalistic documentation in .rst format, hosted on GitHub Pages
   - Sphinx build configured, GitHub Actions workflow to deploy on each release
   - API reference, user guide, and at least one worked example
+  - Enable intersphinx_mapping for scipy (and numpy) in conf.py so that
+    See Also references such as scipy.integrate.OdeSolver and
+    scipy.integrate.solve_ivp resolve to live hyperlinks automatically
 - Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
   and macOS wheels to PyPI on each release tag
   (wheels.yml exists and builds Linux x86-64 and macOS arm64 wheels; the
