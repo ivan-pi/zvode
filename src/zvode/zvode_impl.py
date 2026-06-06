@@ -168,6 +168,12 @@ class ZVODE(OdeSolver):
     nlu : int
         Number of LU decompositions.
 
+    See Also
+    --------
+    scipy.integrate.OdeSolver : Abstract base class implemented by this solver.
+    scipy.integrate.solve_ivp : Driver function that accepts ``method=ZVODE``
+        (or ``method=ZVODE_BDF`` / ``method=ZVODE_Adams``) to use this solver.
+
     Notes
     -----
     **Thread safety:** ``ZVODE`` is *not* thread-safe.  The underlying Fortran
