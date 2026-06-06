@@ -141,10 +141,12 @@ compiled code without GIL round-trips.
 - Minimalistic documentation in .rst format, hosted on GitHub Pages
   - Sphinx build configured, GitHub Actions workflow to deploy on each release
   - API reference, user guide, and at least one worked example
-- [DONE] Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
+- Binary wheel distribution: set up cibuildwheel in CI to publish manylinux
   and macOS wheels to PyPI on each release tag
-  (wheels.yml builds Linux x86-64 and macOS arm64 wheels; publishes to PyPI
-   on each GitHub release via trusted publishing)
+  (wheels.yml exists and builds Linux x86-64 and macOS arm64 wheels; the
+   PyPI publish job and trusted publishing are not yet functional — more
+   work needed to harden the cibuildwheel configuration before this is
+   considered done)
 - Windows wheel builds: add a windows-latest runner to the CI matrix,
   document the required Fortran toolchain (gfortran via MSYS2/mingw-w64 or
   Intel ifx), and add "Operating System :: Microsoft :: Windows" to the
