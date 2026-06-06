@@ -130,6 +130,37 @@ def test_njev_probe_offset_is_one():
 
 
 # ---------------------------------------------------------------------------
+# FD Jacobian nfev accounting (miter=2)
+# ---------------------------------------------------------------------------
+#
+# When no jac is supplied, BDF defaults to miter=2: internally generated
+# finite-difference Jacobian.  Each Jacobian assembly perturbs each of the n
+# components in turn, so it costs exactly n extra function evaluations that
+# are counted in nfev, not in a separate counter.  njev still counts the
+# number of Jacobian assemblies, just as it does for an analytic Jacobian.
+#
+# Empirically (see probe above): nfev_FD - nfev_analytic == n * njev for runs
+# with the same step sequence.  We verify this by solving the same problem
+# twice at identical tolerances and comparing.
+
+
+def test_fd_jacobian_nfev_overhead():
+    """FD Jacobian (miter=2) costs exactly n extra nfev per assembly vs analytic."""
+    n = len(Y0)
+    fun, _ = _make_fun()
+    jac, _ = _make_jac()
+
+    result_fd = solve_complex_ivp(fun, TSPAN, Y0, method="BDF", **TOLS)
+    result_analytic = solve_complex_ivp(fun, TSPAN, Y0, method="BDF", jac=jac, **TOLS)
+
+    assert result_fd.njev == result_analytic.njev, (
+        "both paths should assemble the Jacobian the same number of times "
+        f"(FD: {result_fd.njev}, analytic: {result_analytic.njev})"
+    )
+    assert result_fd.nfev - result_analytic.nfev == n * result_fd.njev
+
+
+# ---------------------------------------------------------------------------
 # ZVODE class — nfev / njev
 # ---------------------------------------------------------------------------
 
