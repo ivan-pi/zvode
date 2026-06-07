@@ -17,6 +17,7 @@ solve_complex_ivp
 from __future__ import annotations
 
 import ctypes
+import os
 import warnings
 from threading import Lock
 from typing import Any, Callable, Literal
@@ -40,6 +41,10 @@ from ._helpers import (
 # ZVODE stores solver state in Fortran COMMON blocks that are global to the
 # process.  Only one integration can be active at a time across all threads.
 ZVODE_LOCK = Lock()
+
+# Set ZVODE_BACKEND=C to route knot-output integrations through the C-level
+# drive_knots entry point instead of the Python loop.  Experimental.
+_USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "").upper() == "C"
 
 
 class ZVODEResult(dict):
@@ -336,6 +341,34 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
             # segment; do not reset to 1.
 
     return tspan, ys, istate
+
+
+def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
+    """Drive ZVODE knots using the C-level _zvode.drive_knots entry point.
+
+    Allocates output buffers, acquires the process lock, and delegates the
+    entire knot loop to C.  _zvode.drive_knots raises RuntimeError on failure;
+    on success this function returns the same (tspan, ys, istate) tuple as
+    _zvode_knots so both paths are interchangeable at the call sites.
+    """
+    n = len(y0)
+    nknots = len(tspan)
+    ytmp = y0.copy()
+    ts_out = np.empty(nknots, dtype=np.float64)
+    ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
+
+    with ZVODE_LOCK:
+        _zvode.drive_knots(
+            fun, jac, mf,
+            tspan, ytmp,
+            ts_out, ys_out,
+            itol, rtol, atol,
+            iopt, zwork, rwork, iwork,
+        )
+
+    # drive_knots raises RuntimeError on ZVODE failure; reaching here means
+    # istate == 2 (success) for every knot.
+    return ts_out, ys_out, 2
 
 
 # ---------------------------------------------------------------------------
@@ -722,14 +755,16 @@ def solve_complex_ivp(
     elif len(tspan) == 2:
         # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
         # and 1-D y — no intermediate storage.
-        t_out, y_out, istate = _zvode_knots(
+        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
+        t_out, y_out, istate = _knots_fn(
             _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
         )
         t_out = float(t_out[-1])
         y_out = y_out[:, -1]
     else:
         # Knots: output at each element of tspan.
-        t_out, y_out, istate = _zvode_knots(
+        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
+        t_out, y_out, istate = _knots_fn(
             _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
         )
 
