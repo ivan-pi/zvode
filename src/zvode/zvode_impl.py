@@ -15,7 +15,7 @@ from ._helpers import (
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
-    _determine_miter,
+    _resolve_miter,
 )
 
 
@@ -264,15 +264,11 @@ class ZVODE(OdeSolver):
         self.wrap_fun = _wrapped_fun(fun)
         _validate_fun_shape(fun, self.n, t0, self.y)
 
-        self.miter, self.ml, self.mu = _determine_miter(
-            jac, lband, uband, self.meth, miter
+        self.miter, self.ml, self.mu = _resolve_miter(
+            jac, lband, uband, self.meth, self.n, miter
         )
 
         if self.miter in (4, 5):
-            if self.ml >= self.n:
-                raise ValueError(f"'lband' ({self.ml}) must be less than neq ({self.n}).")
-            if self.mu >= self.n:
-                raise ValueError(f"'uband' ({self.mu}) must be less than neq ({self.n}).")
             bandwidth = self.ml + self.mu + 1
             if bandwidth * 2 > self.n:
                 warnings.warn(
