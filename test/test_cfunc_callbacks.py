@@ -26,7 +26,7 @@ import ctypes
 import numpy as np
 import pytest
 
-from zvode import solve_complex_ivp
+from zvode import solve_complex_ivp, ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE, check_cfunc_signature
 
 # ---------------------------------------------------------------------------
 # Problem parameters  (same values as test_solve_complex_ivp.py)
@@ -513,3 +513,167 @@ def test_numba_dense_jac_all_modes(numba_fun, numba_jac_dense, mode):
         assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
         _check(sol.t, sol.y)
+
+
+# ===========================================================================
+# 10. ZVODE_FUN_CTYPE / ZVODE_JAC_CTYPE — canonical prototype objects
+# ===========================================================================
+
+
+def test_zvode_fun_ctype_produces_working_callback():
+    """Using ZVODE_FUN_CTYPE directly produces a callback solve_complex_ivp accepts."""
+
+    @ZVODE_FUN_CTYPE
+    def fun(neq, t, y_ptr, dy_ptr, ctx):
+        # rotation: dy/dt = i*y
+        buf_y  = (ctypes.c_double * (2 * neq)).from_address(y_ptr)
+        buf_dy = (ctypes.c_double * (2 * neq)).from_address(dy_ptr)
+        for i in range(neq):
+            yr, yi = buf_y[2 * i], buf_y[2 * i + 1]
+            buf_dy[2 * i]     = -yi
+            buf_dy[2 * i + 1] =  yr
+
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    sol = solve_complex_ivp(fun, [0.0, np.pi], y0, in_place=True,
+                            rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(sol.y[0, -1], np.exp(1j * np.pi), atol=1e-6)
+
+
+def test_zvode_jac_ctype_attribute():
+    """ZVODE_JAC_CTYPE is a ctypes function type with 8 arguments."""
+
+    @ZVODE_JAC_CTYPE
+    def dummy_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
+        pass
+
+    assert len(dummy_jac._argtypes_) == 8
+    assert dummy_jac._restype_ is None
+
+
+# ===========================================================================
+# 11. check_cfunc_signature — validation helper
+# ===========================================================================
+
+
+def test_check_cfunc_signature_valid_fun():
+    """check_cfunc_signature does not raise for a correctly typed RHS."""
+    check_cfunc_signature(_fun_ctypes, kind="fun")  # must not raise
+
+
+def test_check_cfunc_signature_valid_jac():
+    """check_cfunc_signature does not raise for a correctly typed Jacobian."""
+    check_cfunc_signature(_jac_dense_ctypes, kind="jac")  # must not raise
+
+
+def test_check_cfunc_signature_wrong_return_type():
+    """Non-void return type raises ValueError."""
+    bad_proto = ctypes.CFUNCTYPE(
+        ctypes.c_int,    # returns int, should be void
+        ctypes.c_int, ctypes.c_double,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    )
+
+    @bad_proto
+    def bad_fun(neq, t, y, dy, ctx):
+        return 0
+
+    with pytest.raises(ValueError, match="void"):
+        check_cfunc_signature(bad_fun)
+
+
+def test_check_cfunc_signature_missing_ctx():
+    """Wrong argument count (missing ctx) raises ValueError naming the count."""
+    bad_proto = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_int, ctypes.c_double,
+        ctypes.c_void_p, ctypes.c_void_p,  # 4 args, should be 5
+    )
+
+    @bad_proto
+    def bad_fun(neq, t, y, dy):
+        pass
+
+    with pytest.raises(ValueError, match="5"):
+        check_cfunc_signature(bad_fun)
+
+
+def test_check_cfunc_signature_neq_wrong_type():
+    """c_int64 for neq raises ValueError naming 'neq'."""
+    bad_proto = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_int64,  # neq should be c_int (int32)
+        ctypes.c_double,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    )
+
+    @bad_proto
+    def bad_fun(neq, t, y, dy, ctx):
+        pass
+
+    with pytest.raises(ValueError, match="neq"):
+        check_cfunc_signature(bad_fun)
+
+
+def test_check_cfunc_signature_t_wrong_type():
+    """c_float for t raises ValueError naming 't'."""
+    bad_proto = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_int,
+        ctypes.c_float,  # t should be c_double
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    )
+
+    @bad_proto
+    def bad_fun(neq, t, y, dy, ctx):
+        pass
+
+    with pytest.raises(ValueError, match="'t'"):
+        check_cfunc_signature(bad_fun)
+
+
+def test_check_cfunc_signature_jac_wrong_ml():
+    """c_int64 for ml in a jac callback raises ValueError naming 'ml'."""
+    bad_jac_proto = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_int, ctypes.c_double, ctypes.c_void_p,
+        ctypes.c_int64,  # ml should be c_int
+        ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p,
+    )
+
+    @bad_jac_proto
+    def bad_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
+        pass
+
+    with pytest.raises(ValueError, match="ml"):
+        check_cfunc_signature(bad_jac, kind="jac")
+
+
+def test_check_cfunc_signature_wrong_kind():
+    """Invalid kind argument raises ValueError."""
+    with pytest.raises(ValueError, match="kind"):
+        check_cfunc_signature(_fun_ctypes, kind="rhs")
+
+
+def test_check_cfunc_signature_non_cfunc_raises():
+    """Passing a plain Python callable raises TypeError."""
+    with pytest.raises(TypeError, match="ctypes"):
+        check_cfunc_signature(lambda t, y, dy: None)
+
+
+def test_check_cfunc_signature_numba_passes_through():
+    """numba @cfunc passes check_cfunc_signature without inspection."""
+    pytest.importorskip("numba", reason="numba not installed")
+    from numba import cfunc, types
+
+    @cfunc(
+        types.void(
+            types.int32, types.float64,
+            types.CPointer(types.complex128),
+            types.CPointer(types.complex128),
+            types.voidptr,
+        )
+    )
+    def nb_fun(neq, t, y, dy, ctx):
+        dy[0] = y[0]
+
+    check_cfunc_signature(nb_fun)  # must not raise

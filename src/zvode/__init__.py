@@ -1,8 +1,14 @@
 """Python bindings to the ZVODE ODE solver"""
 
 from .solve import solve_complex_ivp
+from ._helpers import ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE, check_cfunc_signature
 
-__all__ = ["solve_complex_ivp"]
+__all__ = [
+    "solve_complex_ivp",
+    "ZVODE_FUN_CTYPE",
+    "ZVODE_JAC_CTYPE",
+    "check_cfunc_signature",
+]
 
 try:
     from .zvode_impl import ZVODE, ZVODE_Adams, ZVODE_BDF

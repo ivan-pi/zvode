@@ -1,8 +1,173 @@
 """SciPy-free helpers shared by solve.py and zvode_impl.py."""
 
+import ctypes
 import warnings
 
 import numpy as np
+
+# ---------------------------------------------------------------------------
+# Pre-built ctypes prototype objects for compiled callbacks
+#
+# Using c_void_p for the complex128 pointer arguments is intentional:
+# the C ABI treats all pointers as the same size, so the type annotation
+# does not affect call semantics.  Users who prefer typed pointers (e.g.
+# POINTER(c_double) treating each complex as two doubles) may pass those
+# instead; check_cfunc_signature accepts any pointer-compatible type.
+# ---------------------------------------------------------------------------
+
+#: ctypes prototype for the ZVODE right-hand-side callback.
+#:
+#: Signature: ``void fun(int neq, double t,
+#:                       complex128 *y, complex128 *dy, void *ctx)``
+#:
+#: Usage example (ctypes)::
+#:
+#:     @ZVODE_FUN_CTYPE
+#:     def my_rhs(neq, t, y_ptr, dy_ptr, ctx):
+#:         ...
+#:
+#: The ``y_ptr`` and ``dy_ptr`` arguments arrive as integers (memory
+#: addresses).  To read element *i* of a complex128 array treat it as a
+#: pair of consecutive doubles::
+#:
+#:     buf = (ctypes.c_double * (2 * neq)).from_address(y_ptr)
+#:     y_i = complex(buf[2*i], buf[2*i+1])
+ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
+    None,            # return void
+    ctypes.c_int,    # neq
+    ctypes.c_double, # t
+    ctypes.c_void_p, # y   (complex128 *)
+    ctypes.c_void_p, # dy  (complex128 *)
+    ctypes.c_void_p, # ctx (pass NULL / 0)
+)
+
+#: ctypes prototype for the ZVODE Jacobian callback.
+#:
+#: Signature: ``void jac(int neq, double t, complex128 *y,
+#:                       int ml, int mu, complex128 *pd, int nrowpd,
+#:                       void *ctx)``
+#:
+#: ``pd`` is Fortran-order (column-major) with leading dimension ``nrowpd``.
+#: Element ``J[i, j] = df_i/dy_j`` goes to ``pd[i + j*nrowpd]`` (in
+#: complex128 units).  For a dense Jacobian ``nrowpd >= neq``; for a banded
+#: Jacobian the banded-storage convention applies (``pd[mu+i-j, j]``).
+ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
+    None,            # return void
+    ctypes.c_int,    # neq
+    ctypes.c_double, # t
+    ctypes.c_void_p, # y      (complex128 *)
+    ctypes.c_int,    # ml
+    ctypes.c_int,    # mu
+    ctypes.c_void_p, # pd     (complex128 *, F-order, ld=nrowpd)
+    ctypes.c_int,    # nrowpd
+    ctypes.c_void_p, # ctx
+)
+
+
+def check_cfunc_signature(fun, kind="fun"):
+    """Validate that a compiled callback matches the ZVODE calling convention.
+
+    For **ctypes** ``CFUNCTYPE`` instances the return type, argument count,
+    and types of the scalar arguments (``neq``, ``t``, and for ``kind='jac'``
+    also ``ml``, ``mu``, ``nrowpd``) are verified.  Pointer arguments
+    (``y``, ``dy``/``pd``, ``ctx``) may be ``c_void_p`` or any
+    ``ctypes.POINTER(...)`` subtype.
+
+    For **numba** ``@cfunc`` objects the function returns immediately:
+    numba validates the signature at decoration time, so there is nothing
+    additional to check here.
+
+    Parameters
+    ----------
+    fun : compiled callback
+        A ``ctypes.CFUNCTYPE`` instance or a numba ``@cfunc`` object.
+    kind : {'fun', 'jac'}
+        ``'fun'`` to check against the RHS prototype (5 arguments);
+        ``'jac'`` to check against the Jacobian prototype (8 arguments).
+
+    Raises
+    ------
+    TypeError
+        If *fun* is neither a ctypes function nor a numba cfunc.
+    ValueError
+        If the signature does not match the expected prototype.
+
+    Examples
+    --------
+    Catch a missing ``ctx`` argument::
+
+        import ctypes
+        from zvode import check_cfunc_signature
+
+        bad_proto = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_double,
+                                     ctypes.c_void_p, ctypes.c_void_p)
+        # Correct prototype has 5 args; this one has only 4.
+
+        @bad_proto
+        def my_rhs_missing_ctx(neq, t, y, dy): ...
+
+        check_cfunc_signature(my_rhs_missing_ctx)  # raises ValueError
+    """
+    if kind not in ("fun", "jac"):
+        raise ValueError(f"kind must be 'fun' or 'jac', got {kind!r}.")
+
+    # numba @cfunc: validated at decoration time, nothing more to do.
+    if hasattr(fun, "address") and not isinstance(fun, ctypes._CFuncPtr):
+        return
+
+    if not isinstance(fun, ctypes._CFuncPtr):
+        raise TypeError(
+            f"check_cfunc_signature expects a ctypes CFUNCTYPE instance or a "
+            f"numba @cfunc object; got {type(fun).__name__!r}."
+        )
+
+    _EXPECTED_NARGS = {"fun": 5, "jac": 8}
+    expected_nargs = _EXPECTED_NARGS[kind]
+    argtypes = fun._argtypes_ or ()
+    actual_nargs = len(argtypes)
+
+    # ---- return type ----
+    if fun._restype_ is not None:
+        raise ValueError(
+            f"Compiled {kind!r} callback must return void (restype=None); "
+            f"got restype={fun._restype_!r}."
+        )
+
+    # ---- argument count ----
+    _ARG_NAMES = {
+        "fun": "(neq, t, y, dy, ctx)",
+        "jac": "(neq, t, y, ml, mu, pd, nrowpd, ctx)",
+    }
+    if actual_nargs != expected_nargs:
+        raise ValueError(
+            f"Compiled {kind!r} callback must have {expected_nargs} arguments "
+            f"{_ARG_NAMES[kind]}; got {actual_nargs}."
+        )
+
+    # ---- scalar argument types ----
+    def _check_int(idx, name):
+        t = argtypes[idx]
+        if t not in (ctypes.c_int, ctypes.c_int32):
+            raise ValueError(
+                f"Compiled {kind!r} callback: argument {idx + 1} ({name!r}) "
+                f"must be ctypes.c_int (int32); got {t!r}."
+            )
+
+    def _check_double(idx, name):
+        t = argtypes[idx]
+        if t is not ctypes.c_double:
+            raise ValueError(
+                f"Compiled {kind!r} callback: argument {idx + 1} ({name!r}) "
+                f"must be ctypes.c_double (float64); got {t!r}."
+            )
+
+    _check_int(0, "neq")
+    _check_double(1, "t")
+
+    if kind == "jac":
+        _check_int(3, "ml")
+        _check_int(4, "mu")
+        _check_int(6, "nrowpd")
 
 # ZVODE ISTATE error codes and their human-readable descriptions.
 MESSAGES = {
