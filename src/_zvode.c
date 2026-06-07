@@ -590,7 +590,7 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
 PyDoc_STRVAR(drive_knots_doc,
 "drive_knots(fun, jac, mf, tspan, y, ts_out, ys_out,\n"
-"            itol, rtol, atol, iopt, zwork, rwork, iwork) -> None\n"
+"            itol, rtol, atol, iopt, zwork, rwork, iwork) -> (istate, knots_completed)\n"
 "\n"
 "Integrate a complex ODE system to a sequence of pre-specified output knots.\n"
 "\n"
@@ -609,7 +609,7 @@ PyDoc_STRVAR(drive_knots_doc,
 "         Must have at least 2 elements and be strictly monotone.\n"
 "y      : complex128 ndarray, 1-D, writable -- working state vector.\n"
 "         Must be initialised to ``y(tspan[0])`` by the caller on entry.\n"
-"         On return contains ``y(tspan[-1])``.\n"
+"         On return contains the last successfully reached state.\n"
 "ts_out : float64 ndarray, 1-D, writable -- receives the output times;\n"
 "         must have length ``len(tspan)``.\n"
 "ys_out : complex128 ndarray, shape (neq, len(tspan)), F-contiguous, writable\n"
@@ -626,13 +626,18 @@ PyDoc_STRVAR(drive_knots_doc,
 "\n"
 "Returns\n"
 "-------\n"
-"None on success.\n"
+"(istate, knots_completed) : (int, int)\n"
+"    ``istate`` is the final ZVODE istate (2 = success, negative = failure).\n"
+"    ``knots_completed`` is the number of columns written into ``ts_out`` and\n"
+"    ``ys_out``, including column 0 (the initial condition).  On success this\n"
+"    equals ``len(tspan)``; on failure it equals the number of knots reached\n"
+"    before ZVODE gave up, so the caller can truncate the output arrays.\n"
 "\n"
 "Raises\n"
 "------\n"
-"RuntimeError\n"
-"    If ZVODE returns a negative istate at any knot.  The message includes\n"
-"    the knot index, current time, target time, and istate value.\n");
+"Exception\n"
+"    If a Python callback (``fun`` or ``jac``) raises an exception, it is\n"
+"    propagated immediately; the output arrays may be partially filled.\n");
 
 static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 {
@@ -703,8 +708,9 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 
     /* ---- integration loop ---- */
 
-    const int itask = 1;   /* advance to tout, landing exactly on it */
-    int istate      = 1;   /* first call: initialise ZVODE            */
+    const int itask  = 1;   /* advance to tout, landing exactly on it */
+    int istate       = 1;   /* first call: initialise ZVODE            */
+    int knots_completed = 1; /* column 0 (initial condition) always filled */
 
     for (int knot = 1; knot < nknots; knot++) {
 
@@ -728,20 +734,17 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
             return NULL;
         }
 
-        if (istate != 2) {
-            PyErr_Format(PyExc_RuntimeError,
-                "ZVODE failed integrating toward knot %d "
-                "(t_stopped=%.17g, tout=%.17g): istate=%d",
-                knot, t, tspan[knot], istate);
-            return NULL;
-        }
+        /* On ZVODE failure, stop filling output and let the caller decide. */
+        if (istate != 2)
+            break;
 
         ts_out[knot] = t;
         memcpy(ys_out + (npy_intp) knot * neq, y,
                (size_t) neq * sizeof(double complex));
+        knots_completed++;
     }
 
-    Py_RETURN_NONE;
+    return Py_BuildValue("ii", istate, knots_completed);
 }
 
 

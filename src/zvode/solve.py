@@ -348,9 +348,9 @@ def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork
     """Drive ZVODE knots using the C-level _zvode.drive_knots entry point.
 
     Allocates output buffers, acquires the process lock, and delegates the
-    entire knot loop to C.  _zvode.drive_knots raises RuntimeError on failure;
-    on success this function returns the same (tspan, ys, istate) tuple as
-    _zvode_knots so both paths are interchangeable at the call sites.
+    entire knot loop to C.  Returns the same (tspan, ys, istate) tuple as
+    _zvode_knots, truncating the output arrays to the completed knots on
+    failure so that both paths are interchangeable at the call sites.
     """
     n = len(y0)
     nknots = len(tspan)
@@ -359,7 +359,7 @@ def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork
     ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
 
     with ZVODE_LOCK:
-        _zvode.drive_knots(
+        istate, knots_completed = _zvode.drive_knots(
             fun, jac, mf,
             tspan, ytmp,
             ts_out, ys_out,
@@ -367,9 +367,9 @@ def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork
             iopt, zwork, rwork, iwork,
         )
 
-    # drive_knots raises RuntimeError on ZVODE failure; reaching here means
-    # istate == 2 (success) for every knot.
-    return ts_out, ys_out, 2
+    if istate != 2:
+        return ts_out[:knots_completed], ys_out[:, :knots_completed], istate
+    return ts_out, ys_out, istate
 
 
 # ---------------------------------------------------------------------------
