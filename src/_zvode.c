@@ -730,7 +730,8 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 
         if (istate != 2) {
             PyErr_Format(PyExc_RuntimeError,
-                "ZVODE failed at knot %d (t=%.17g, tout=%.17g): istate=%d",
+                "ZVODE failed integrating toward knot %d "
+                "(t_stopped=%.17g, tout=%.17g): istate=%d",
                 knot, t, tspan[knot], istate);
             return NULL;
         }
