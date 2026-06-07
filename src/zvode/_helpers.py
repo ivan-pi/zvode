@@ -237,8 +237,12 @@ def _eval_nordsieck(yh, h, t, tn):
     return dky[:, 0] if scalar else dky
 
 
-def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
-    """Determine the MITER iteration-method flag from the supplied jac/band/meth arguments."""
+def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
+    """Validate Jacobian/band arguments and resolve the MITER iteration-method flag.
+
+    Raises TypeError or ValueError for inconsistent or out-of-range inputs,
+    then returns ``(miter, lband, uband)`` with ``None`` band values normalised to 0.
+    """
 
     if jac is not None and not callable(jac):
         raise TypeError("'jac' must be callable or None.")
@@ -262,14 +266,18 @@ def _determine_miter(jac, lband, uband, meth, explicit_miter=None):
             raise ValueError(
                 f"'lband' and 'uband' must be provided when 'miter' is {explicit_miter}."
             )
-        return explicit_miter, lband, uband
-
-    if is_banded:
+        miter = explicit_miter
+    elif is_banded:
         miter = 4 if jac else 5
     elif jac:
         miter = 1
     else:
-        miter = (
-            0 if meth == 1 else 2
-        )  # Adams: functional; BDF: chord with generated Jacobian
+        miter = 0 if meth == 1 else 2  # Adams: functional; BDF: chord with generated Jacobian
+
+    if miter in (4, 5):
+        if lband >= n:
+            raise ValueError(f"'lband' ({lband}) must be less than neq ({n}).")
+        if uband >= n:
+            raise ValueError(f"'uband' ({uband}) must be less than neq ({n}).")
+
     return miter, lband, uband

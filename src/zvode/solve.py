@@ -28,7 +28,7 @@ from . import _zvode
 from ._helpers import (
     MESSAGES,
     _check_tolerances,
-    _determine_miter,
+    _resolve_miter,
     _validate_max_step,
     _validate_min_step,
     _validate_first_step,
@@ -607,13 +607,7 @@ def solve_complex_ivp(
     else:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
-    _miter, ml, mu = _determine_miter(jac, lband, uband, meth, miter)
-
-    if _miter in (4, 5):
-        if ml >= n:
-            raise ValueError(f"'lband' ({ml}) must be less than neq ({n}).")
-        if mu >= n:
-            raise ValueError(f"'uband' ({mu}) must be less than neq ({n}).")
+    _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
     if jac is not None and _miter in (1, 4) and not in_place:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)

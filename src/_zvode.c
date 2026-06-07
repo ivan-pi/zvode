@@ -388,16 +388,8 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     }
 
     const int neq = (int) PyArray_DIM(ap_y, 0);
-    if (neq <= 0) {
-        PyErr_SetString(PyExc_ValueError, "zvode: y must be non-empty");
-        return NULL;
-    }
-
-    if (itask < 1 || itask > 5) {
-        PyErr_Format(PyExc_ValueError,
-            "zvode: itask must be between 1 and 5 (got %d)", itask);
-        return NULL;
-    }
+    assert(neq > 0);          /* Python guarantees y0 is non-empty */
+    assert(itask >= 1 && itask <= 5);  /* Python manages itask internally */
 
     const int miter = abs(mf) % 10;
     assert(miter <= 5);
@@ -405,12 +397,11 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     cb.jac_is_banded = (miter == 4);
 
-    // Upon initialization of ZVODE, do stringent type checks, but skip
-    // them otherwise, because they are expensive.
-    // The caller should not change any of the arrays when the integration
-    // is active.
-
-    if (istate == 1) {
+    /* Python validates all of the following before the first call and the
+     * arrays are not supposed to change between repeated calls.  Keep the
+     * checks compiled in but only run them when ZVODE_DEBUG is set so they
+     * can be re-enabled during development without rebuilding from scratch. */
+    if (ZVODE_DEBUG && istate == 1) {
 
         if (!PyCallable_Check(cb.fun)) {
             PyErr_SetString(PyExc_TypeError, "zvode: fun must be callable");
