@@ -663,64 +663,19 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
             &PyArray_Type, &ap_iwork))
         return NULL;
 
-    /* ---- validate callbacks ---- */
-
-    if (!PyCallable_Check(cb.fun)) {
-        PyErr_SetString(PyExc_TypeError, "drive_knots: fun must be callable");
-        return NULL;
-    }
-    if (cb.jac != Py_None && !PyCallable_Check(cb.jac)) {
-        PyErr_SetString(PyExc_TypeError,
-            "drive_knots: jac must be callable or None");
-        return NULL;
-    }
-
-    /* ---- validate arrays ---- */
-
-    if (!check_array_1d(ap_tspan,  "tspan",  NPY_FLOAT64))    return NULL;
-    if (!check_array_1d(ap_y,      "y",      NPY_COMPLEX128)) return NULL;
-    if (!check_writable(ap_y,      "y"))                       return NULL;
-    if (!check_array_1d(ap_ts_out, "ts_out", NPY_FLOAT64))    return NULL;
-    if (!check_writable(ap_ts_out, "ts_out"))                  return NULL;
-    if (!check_array(ap_ys_out, "ys_out", 2, NPY_COMPLEX128, 'F')) return NULL;
-    if (!check_writable(ap_ys_out, "ys_out"))                  return NULL;
-    if (!check_array_scalar_or_1d(ap_rtol, "rtol", NPY_FLOAT64)) return NULL;
-    if (!check_array_scalar_or_1d(ap_atol, "atol", NPY_FLOAT64)) return NULL;
-    if (!check_array_1d(ap_zwork,  "zwork",  NPY_COMPLEX128)) return NULL;
-    if (!check_writable(ap_zwork,  "zwork"))                   return NULL;
-    if (!check_array_1d(ap_rwork,  "rwork",  NPY_FLOAT64))    return NULL;
-    if (!check_writable(ap_rwork,  "rwork"))                   return NULL;
-    if (!check_array_1d(ap_iwork,  "iwork",  NPY_INT32))      return NULL;
-    if (!check_writable(ap_iwork,  "iwork"))                   return NULL;
+    /* Caller (Python) is responsible for correct dtypes, shapes, contiguity,
+     * and writability.  Assert the structural invariants in debug builds. */
+    assert(PyCallable_Check(cb.fun));
+    assert(cb.jac == Py_None || PyCallable_Check(cb.jac));
 
     const int neq    = (int) PyArray_DIM(ap_y,     0);
     const int nknots = (int) PyArray_DIM(ap_tspan,  0);
 
-    if (neq < 1) {
-        PyErr_SetString(PyExc_ValueError, "drive_knots: y must be non-empty");
-        return NULL;
-    }
-    if (nknots < 2) {
-        PyErr_SetString(PyExc_ValueError,
-            "drive_knots: tspan must have at least 2 elements");
-        return NULL;
-    }
-
-    /* Output buffer shapes must be consistent with neq and nknots. */
-    if ((int) PyArray_DIM(ap_ts_out, 0) != nknots) {
-        PyErr_Format(PyExc_ValueError,
-            "drive_knots: ts_out has length %d but len(tspan)=%d",
-            (int) PyArray_DIM(ap_ts_out, 0), nknots);
-        return NULL;
-    }
-    if ((int) PyArray_DIM(ap_ys_out, 0) != neq ||
-        (int) PyArray_DIM(ap_ys_out, 1) != nknots) {
-        PyErr_Format(PyExc_ValueError,
-            "drive_knots: ys_out has shape (%d, %d) but expected (%d, %d)",
-            (int) PyArray_DIM(ap_ys_out, 0), (int) PyArray_DIM(ap_ys_out, 1),
-            neq, nknots);
-        return NULL;
-    }
+    assert(neq    >= 1);
+    assert(nknots >= 2);
+    assert((int) PyArray_DIM(ap_ts_out, 0) == nknots);
+    assert((int) PyArray_DIM(ap_ys_out, 0) == neq &&
+           (int) PyArray_DIM(ap_ys_out, 1) == nknots);
 
     cb.jac_is_banded = (abs(mf) % 10 == 4);
 
