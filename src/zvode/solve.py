@@ -343,77 +343,6 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     return tspan, ys, istate
 
 
-def _zvode_adaptive_c(
-    fun,
-    jac,
-    y0,
-    t0,
-    t_bound,
-    itol,
-    rtol,
-    atol,
-    mf,
-    iopt,
-    zwork,
-    rwork,
-    iwork,
-    refine=1,
-    allow_overshoot=False,
-):
-    """Drive ZVODE adaptive stepping using the C-level _zvode.drive_adaptive entry point.
-
-    Acquires the process lock and delegates the entire step-collection loop to C.
-    Returns the same (ts, ys, istate) tuple as _zvode_adaptive.
-    """
-    ytmp = y0.copy()
-    with ZVODE_LOCK:
-        ts, ys, istate = _zvode.drive_adaptive(
-            fun,
-            jac,  # None maps to Py_None; jac_adaptor is only called when mf needs it
-            mf,
-            float(t0),
-            float(t_bound),
-            ytmp,
-            itol,
-            rtol,
-            atol,
-            iopt,
-            zwork,
-            rwork,
-            iwork,
-            int(refine),
-            int(allow_overshoot),
-        )
-    return ts, ys, istate
-
-
-def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
-    """Drive ZVODE knots using the C-level _zvode.drive_knots entry point.
-
-    Allocates output buffers, acquires the process lock, and delegates the
-    entire knot loop to C.  Returns the same (tspan, ys, istate) tuple as
-    _zvode_knots, truncating the output arrays to the completed knots on
-    failure so that both paths are interchangeable at the call sites.
-    """
-    n = len(y0)
-    nknots = len(tspan)
-    ytmp = y0.copy()
-    ts_out = np.empty(nknots, dtype=np.float64)
-    ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
-
-    with ZVODE_LOCK:
-        istate, knots_completed = _zvode.drive_knots(
-            fun, jac, mf,
-            tspan, ytmp,
-            ts_out, ys_out,
-            itol, rtol, atol,
-            iopt, zwork, rwork, iwork,
-        )
-
-    if istate != 2:
-        return ts_out[:knots_completed], ys_out[:, :knots_completed], istate
-    return ts_out, ys_out, istate
-
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -779,39 +708,65 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     if len(tspan) == 2 and save_steps:
         # Collect every accepted step (optionally with ZVINDY interpolation).
-        _adaptive_fn = _zvode_adaptive_c if _USE_C_KNOTS else _zvode_adaptive
-        t_out, y_out, istate = _adaptive_fn(
-            _fun,
-            _jac,
-            y0,
-            tspan[0],
-            tspan[1],
-            itol,
-            rtol,
-            atol,
-            mf,
-            iopt,
-            zwork,
-            rwork,
-            iwork,
-            refine=refine,
-            allow_overshoot=allow_overshoot,
-        )
+        if _USE_C_KNOTS:
+            ytmp = y0.copy()
+            with ZVODE_LOCK:
+                t_out, y_out, istate = _zvode.drive_adaptive(
+                    _fun, _jac, mf,
+                    float(tspan[0]), float(tspan[1]),
+                    ytmp,
+                    itol, rtol, atol,
+                    iopt, zwork, rwork, iwork,
+                    int(refine), int(allow_overshoot),
+                )
+        else:
+            t_out, y_out, istate = _zvode_adaptive(
+                _fun, _jac, y0, tspan[0], tspan[1],
+                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+                refine=refine, allow_overshoot=allow_overshoot,
+            )
     elif len(tspan) == 2:
         # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
         # and 1-D y — no intermediate storage.
-        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-        t_out, y_out, istate = _knots_fn(
-            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-        )
-        t_out = float(t_out[-1])
-        y_out = y_out[:, -1]
+        if _USE_C_KNOTS:
+            ytmp = y0.copy()
+            ts_out = np.empty(2, dtype=np.float64)
+            ys_out = np.empty((n, 2), dtype=np.complex128, order="F")
+            with ZVODE_LOCK:
+                istate, knots_completed = _zvode.drive_knots(
+                    _fun, _jac, mf, tspan, ytmp,
+                    ts_out, ys_out,
+                    itol, rtol, atol, iopt, zwork, rwork, iwork,
+                )
+            if istate != 2:
+                ts_out, ys_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
+            t_out, y_out = float(ts_out[-1]), ys_out[:, -1]
+        else:
+            t_out, y_out, istate = _zvode_knots(
+                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+            )
+            t_out = float(t_out[-1])
+            y_out = y_out[:, -1]
     else:
         # Knots: output at each element of tspan.
-        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-        t_out, y_out, istate = _knots_fn(
-            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-        )
+        if _USE_C_KNOTS:
+            ytmp = y0.copy()
+            ts_out = np.empty(len(tspan), dtype=np.float64)
+            ys_out = np.empty((n, len(tspan)), dtype=np.complex128, order="F")
+            with ZVODE_LOCK:
+                istate, knots_completed = _zvode.drive_knots(
+                    _fun, _jac, mf, tspan, ytmp,
+                    ts_out, ys_out,
+                    itol, rtol, atol, iopt, zwork, rwork, iwork,
+                )
+            if istate != 2:
+                t_out, y_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
+            else:
+                t_out, y_out = ts_out, ys_out
+        else:
+            t_out, y_out, istate = _zvode_knots(
+                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+            )
 
     # ------------------------------------------------------------------
     # 8.  Error reporting

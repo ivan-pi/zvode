@@ -749,7 +749,18 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 
 
 /* ------------------------------------------------------------------ */
-/* StepBuf: growable output buffer for adaptive stepping              */
+/* StepBuf: growable column buffer for adaptive stepping output       */
+/*                                                                    */
+/* Lifecycle:                                                         */
+/*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
+/*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
+/*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
+/*   stepbuf_free(&buf)                  -- release backing arrays   */
+/*                                                                    */
+/* ts is float64 shape (capacity,); ys is complex128 shape           */
+/* (capacity*neq,) in column-major order: column k occupies          */
+/* ys[k*neq .. (k+1)*neq-1].  Both are PyArrayObjects owned by the  */
+/* struct; stepbuf_free decrefs them.                                 */
 /* ------------------------------------------------------------------ */
 
 /* Initial column capacity.  Doubled on each overflow. */
@@ -796,24 +807,19 @@ stepbuf_free(StepBuf *buf)
 static int
 stepbuf_grow(StepBuf *buf)
 {
-    int new_cap = buf->capacity * 2;
-    npy_intp dt[1] = { new_cap };
-    npy_intp dy[1] = { (npy_intp)new_cap * buf->neq };
+    StepBuf tmp;
+    if (stepbuf_init(&tmp, buf->neq, buf->capacity * 2) < 0)
+        return -1;  /* buf unchanged */
 
-    PyArrayObject *new_ts = (PyArrayObject *) PyArray_EMPTY(1, dt, NPY_FLOAT64,   0);
-    if (!new_ts) return -1;
-
-    PyArrayObject *new_ys = (PyArrayObject *) PyArray_EMPTY(1, dy, NPY_COMPLEX128, 0);
-    if (!new_ys) { Py_DECREF(new_ts); return -1; }
-
-    memcpy(PyArray_DATA(new_ts), PyArray_DATA(buf->ts),
+    memcpy(PyArray_DATA(tmp.ts), PyArray_DATA(buf->ts),
            (size_t)buf->size * sizeof(double));
-    memcpy(PyArray_DATA(new_ys), PyArray_DATA(buf->ys),
+    memcpy(PyArray_DATA(tmp.ys), PyArray_DATA(buf->ys),
            (size_t)buf->size * buf->neq * sizeof(double complex));
+    tmp.size = buf->size;
 
-    Py_DECREF(buf->ts); buf->ts = new_ts;
-    Py_DECREF(buf->ys); buf->ys = new_ys;
-    buf->capacity = new_cap;
+    StepBuf old = *buf;
+    *buf = tmp;
+    stepbuf_free(&old);
     return 0;
 }
 
@@ -1042,13 +1048,8 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
     PyMem_Free(dky);
     stepbuf_free(&buf);
 
-    PyObject *result = Py_BuildValue("(OOi)",
-                                     (PyObject *)ts_out,
-                                     (PyObject *)ys_out,
-                                     istate);
-    Py_DECREF(ts_out);
-    Py_DECREF(ys_out);
-    return result;
+    /* "N" steals the references — no explicit Py_DECREF needed. */
+    return Py_BuildValue("(NNi)", ts_out, ys_out, istate);
 
 cleanup:
     PyMem_Free(dky);
