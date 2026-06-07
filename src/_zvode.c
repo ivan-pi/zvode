@@ -584,9 +584,215 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
     Py_RETURN_NONE;
 }
 
+/* ------------------------------------------------------------------ */
+/* drive_knots                                                        */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_knots_doc,
+"drive_knots(fun, jac, mf, tspan, y, ts_out, ys_out,\n"
+"            itol, rtol, atol, iopt, zwork, rwork, iwork) -> None\n"
+"\n"
+"Integrate a complex ODE system to a sequence of pre-specified output knots.\n"
+"\n"
+"Advances the ODE from ``tspan[0]`` to ``tspan[-1]``, evaluating the solution\n"
+"at each requested knot and writing the results into the pre-allocated output\n"
+"arrays ``ts_out`` and ``ys_out``.  The initial condition (``tspan[0]``, ``y``)\n"
+"is copied into column 0 of the output arrays before the first ZVODE call.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun    : callable -- RHS, called as ``fun(t, y, dy)``; must fill ``dy`` in place.\n"
+"jac    : callable or None -- Jacobian; called as ``jac(t, y, pd)`` (full) or\n"
+"         ``jac(t, y, pd, ml, mu)`` (banded).  Pass ``None`` when not used.\n"
+"mf     : int -- ZVODE method flag (encodes linear multistep method and miter).\n"
+"tspan  : float64 ndarray, 1-D -- output knot times; ``tspan[0]`` is t0.\n"
+"         Must have at least 2 elements and be strictly monotone.\n"
+"y      : complex128 ndarray, 1-D, writable -- working state vector.\n"
+"         Must be initialised to ``y(tspan[0])`` by the caller on entry.\n"
+"         On return contains ``y(tspan[-1])``.\n"
+"ts_out : float64 ndarray, 1-D, writable -- receives the output times;\n"
+"         must have length ``len(tspan)``.\n"
+"ys_out : complex128 ndarray, shape (neq, len(tspan)), F-contiguous, writable\n"
+"         -- receives the solution; column k holds the state at ``ts_out[k]``.\n"
+"itol   : int -- tolerance mode flag (1–4); controls scalar vs per-component\n"
+"         interpretation of ``rtol`` and ``atol``.\n"
+"rtol   : float64 scalar or 1-D ndarray -- relative tolerance.\n"
+"atol   : float64 scalar or 1-D ndarray -- absolute tolerance.\n"
+"iopt   : int -- optional-input flag: 0 = use ZVODE defaults,\n"
+"         1 = read optional inputs from the ``rwork``/``iwork`` slots.\n"
+"zwork  : complex128 ndarray, 1-D, writable -- ZVODE complex workspace.\n"
+"rwork  : float64 ndarray, 1-D, writable -- ZVODE real workspace.\n"
+"iwork  : int32 ndarray, 1-D, writable -- ZVODE integer workspace.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"None on success.\n"
+"\n"
+"Raises\n"
+"------\n"
+"RuntimeError\n"
+"    If ZVODE returns a negative istate at any knot.  The message includes\n"
+"    the knot index, current time, target time, and istate value.\n");
+
+static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_tspan  = NULL;
+    PyArrayObject *ap_y      = NULL;
+    PyArrayObject *ap_ts_out = NULL, *ap_ys_out = NULL;
+    PyArrayObject *ap_rtol   = NULL, *ap_atol   = NULL;
+    PyArrayObject *ap_zwork  = NULL, *ap_rwork  = NULL, *ap_iwork = NULL;
+    int mf, itol, iopt;
+
+    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL,
+                                  .jac_is_banded = 0, .error = 0 };
+
+    if (!PyArg_ParseTuple(args, "OOiO!O!O!O!iO!O!iO!O!O!:drive_knots",
+            &cb.fun,
+            &cb.jac,
+            &mf,
+            &PyArray_Type, &ap_tspan,
+            &PyArray_Type, &ap_y,
+            &PyArray_Type, &ap_ts_out,
+            &PyArray_Type, &ap_ys_out,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork))
+        return NULL;
+
+    /* ---- validate callbacks ---- */
+
+    if (!PyCallable_Check(cb.fun)) {
+        PyErr_SetString(PyExc_TypeError, "drive_knots: fun must be callable");
+        return NULL;
+    }
+    if (cb.jac != Py_None && !PyCallable_Check(cb.jac)) {
+        PyErr_SetString(PyExc_TypeError,
+            "drive_knots: jac must be callable or None");
+        return NULL;
+    }
+
+    /* ---- validate arrays ---- */
+
+    if (!check_array_1d(ap_tspan,  "tspan",  NPY_FLOAT64))    return NULL;
+    if (!check_array_1d(ap_y,      "y",      NPY_COMPLEX128)) return NULL;
+    if (!check_writable(ap_y,      "y"))                       return NULL;
+    if (!check_array_1d(ap_ts_out, "ts_out", NPY_FLOAT64))    return NULL;
+    if (!check_writable(ap_ts_out, "ts_out"))                  return NULL;
+    if (!check_array(ap_ys_out, "ys_out", 2, NPY_COMPLEX128, 'F')) return NULL;
+    if (!check_writable(ap_ys_out, "ys_out"))                  return NULL;
+    if (!check_array_scalar_or_1d(ap_rtol, "rtol", NPY_FLOAT64)) return NULL;
+    if (!check_array_scalar_or_1d(ap_atol, "atol", NPY_FLOAT64)) return NULL;
+    if (!check_array_1d(ap_zwork,  "zwork",  NPY_COMPLEX128)) return NULL;
+    if (!check_writable(ap_zwork,  "zwork"))                   return NULL;
+    if (!check_array_1d(ap_rwork,  "rwork",  NPY_FLOAT64))    return NULL;
+    if (!check_writable(ap_rwork,  "rwork"))                   return NULL;
+    if (!check_array_1d(ap_iwork,  "iwork",  NPY_INT32))      return NULL;
+    if (!check_writable(ap_iwork,  "iwork"))                   return NULL;
+
+    const int neq    = (int) PyArray_DIM(ap_y,     0);
+    const int nknots = (int) PyArray_DIM(ap_tspan,  0);
+
+    if (neq < 1) {
+        PyErr_SetString(PyExc_ValueError, "drive_knots: y must be non-empty");
+        return NULL;
+    }
+    if (nknots < 2) {
+        PyErr_SetString(PyExc_ValueError,
+            "drive_knots: tspan must have at least 2 elements");
+        return NULL;
+    }
+
+    /* Output buffer shapes must be consistent with neq and nknots. */
+    if ((int) PyArray_DIM(ap_ts_out, 0) != nknots) {
+        PyErr_Format(PyExc_ValueError,
+            "drive_knots: ts_out has length %d but len(tspan)=%d",
+            (int) PyArray_DIM(ap_ts_out, 0), nknots);
+        return NULL;
+    }
+    if ((int) PyArray_DIM(ap_ys_out, 0) != neq ||
+        (int) PyArray_DIM(ap_ys_out, 1) != nknots) {
+        PyErr_Format(PyExc_ValueError,
+            "drive_knots: ys_out has shape (%d, %d) but expected (%d, %d)",
+            (int) PyArray_DIM(ap_ys_out, 0), (int) PyArray_DIM(ap_ys_out, 1),
+            neq, nknots);
+        return NULL;
+    }
+
+    cb.jac_is_banded = (abs(mf) % 10 == 4);
+
+    /* ---- extract raw pointers ---- */
+
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
+
+    double complex       *y      = (double complex *) PyArray_DATA(ap_y);
+    const double         *tspan  = (const double *)   PyArray_DATA(ap_tspan);
+    double               *ts_out = (double *)         PyArray_DATA(ap_ts_out);
+    double complex       *ys_out = (double complex *) PyArray_DATA(ap_ys_out);
+    double complex       *zwork  = (double complex *) PyArray_DATA(ap_zwork);
+    double               *rwork  = (double *)         PyArray_DATA(ap_rwork);
+    int                  *iwork  = (int *)            PyArray_DATA(ap_iwork);
+    const double         *rtol   = (const double *)   PyArray_DATA(ap_rtol);
+    const double         *atol   = (const double *)   PyArray_DATA(ap_atol);
+
+    /* ---- store initial condition in output arrays ---- */
+
+    double t  = tspan[0];
+    ts_out[0] = t;
+    memcpy(ys_out, y, (size_t) neq * sizeof(double complex));  /* column 0 */
+
+    /* ---- integration loop ---- */
+
+    const int itask = 1;   /* advance to tout, landing exactly on it */
+    int istate      = 1;   /* first call: initialise ZVODE            */
+
+    for (int knot = 1; knot < nknots; knot++) {
+
+        c_zvode(
+            &fun_adaptor, neq, y,
+            &t, tspan[knot],
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            &jac_adaptor,
+            mf,
+            &cb
+        );
+
+        /* A Python callback raised an exception; it is already active. */
+        if (cb.error) {
+            assert(PyErr_Occurred());
+            return NULL;
+        }
+
+        if (istate != 2) {
+            PyErr_Format(PyExc_RuntimeError,
+                "ZVODE failed at knot %d (t=%.17g, tout=%.17g): istate=%d",
+                knot, t, tspan[knot], istate);
+            return NULL;
+        }
+
+        ts_out[knot] = t;
+        memcpy(ys_out + (npy_intp) knot * neq, y,
+               (size_t) neq * sizeof(double complex));
+    }
+
+    Py_RETURN_NONE;
+}
+
+
 static struct PyMethodDef zvode_module_methods[] = {
-    {"zvode", zvode_py, METH_VARARGS, zvode_doc},
-    {"zvindy", zvindy_py, METH_VARARGS, zvindy_doc},
+    {"zvode",       zvode_py,       METH_VARARGS, zvode_doc},
+    {"zvindy",      zvindy_py,      METH_VARARGS, zvindy_doc},
+    {"drive_knots", drive_knots_py, METH_VARARGS, drive_knots_doc},
     {NULL, NULL, 0, NULL}
 };
 
