@@ -584,9 +584,174 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
     Py_RETURN_NONE;
 }
 
+/* ------------------------------------------------------------------ */
+/* drive_knots                                                        */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_knots_doc,
+"drive_knots(fun, jac, mf, tspan, y, ts_out, ys_out,\n"
+"            itol, rtol, atol, iopt, zwork, rwork, iwork) -> (istate, knots_completed)\n"
+"\n"
+"Integrate a complex ODE system to a sequence of pre-specified output knots.\n"
+"\n"
+"Advances the ODE from ``tspan[0]`` to ``tspan[-1]``, evaluating the solution\n"
+"at each requested knot and writing the results into the pre-allocated output\n"
+"arrays ``ts_out`` and ``ys_out``.  The initial condition (``tspan[0]``, ``y``)\n"
+"is copied into column 0 of the output arrays before the first ZVODE call.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun    : callable -- RHS, called as ``fun(t, y, dy)``; must fill ``dy`` in place.\n"
+"jac    : callable or None -- Jacobian; called as ``jac(t, y, pd)`` (full) or\n"
+"         ``jac(t, y, pd, ml, mu)`` (banded).  Pass ``None`` when not used.\n"
+"mf     : int -- ZVODE method flag (encodes linear multistep method and miter).\n"
+"tspan  : float64 ndarray, 1-D -- output knot times; ``tspan[0]`` is t0.\n"
+"         Must have at least 2 elements and be strictly monotone.\n"
+"y      : complex128 ndarray, 1-D, writable -- working state vector.\n"
+"         Must be initialised to ``y(tspan[0])`` by the caller on entry.\n"
+"         On return contains the last successfully reached state.\n"
+"ts_out : float64 ndarray, 1-D, writable -- receives the output times;\n"
+"         must have length ``len(tspan)``.\n"
+"ys_out : complex128 ndarray, shape (neq, len(tspan)), F-contiguous, writable\n"
+"         -- receives the solution; column k holds the state at ``ts_out[k]``.\n"
+"itol   : int -- tolerance mode flag (1–4); controls scalar vs per-component\n"
+"         interpretation of ``rtol`` and ``atol``.\n"
+"rtol   : float64 scalar or 1-D ndarray -- relative tolerance.\n"
+"atol   : float64 scalar or 1-D ndarray -- absolute tolerance.\n"
+"iopt   : int -- optional-input flag: 0 = use ZVODE defaults,\n"
+"         1 = read optional inputs from the ``rwork``/``iwork`` slots.\n"
+"zwork  : complex128 ndarray, 1-D, writable -- ZVODE complex workspace.\n"
+"rwork  : float64 ndarray, 1-D, writable -- ZVODE real workspace.\n"
+"iwork  : int32 ndarray, 1-D, writable -- ZVODE integer workspace.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"(istate, knots_completed) : (int, int)\n"
+"    ``istate`` is the final ZVODE istate (2 = success, negative = failure).\n"
+"    ``knots_completed`` is the number of columns written into ``ts_out`` and\n"
+"    ``ys_out``, including column 0 (the initial condition).  On success this\n"
+"    equals ``len(tspan)``; on failure it equals the number of knots reached\n"
+"    before ZVODE gave up, so the caller can truncate the output arrays.\n"
+"\n"
+"Raises\n"
+"------\n"
+"Exception\n"
+"    If a Python callback (``fun`` or ``jac``) raises an exception, it is\n"
+"    propagated immediately; the output arrays may be partially filled.\n");
+
+static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_tspan  = NULL;
+    PyArrayObject *ap_y      = NULL;
+    PyArrayObject *ap_ts_out = NULL, *ap_ys_out = NULL;
+    PyArrayObject *ap_rtol   = NULL, *ap_atol   = NULL;
+    PyArrayObject *ap_zwork  = NULL, *ap_rwork  = NULL, *ap_iwork = NULL;
+    int mf, itol, iopt;
+
+    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL,
+                                  .jac_is_banded = 0, .error = 0 };
+
+    if (!PyArg_ParseTuple(args, "OOiO!O!O!O!iO!O!iO!O!O!:drive_knots",
+            &cb.fun,
+            &cb.jac,
+            &mf,
+            &PyArray_Type, &ap_tspan,
+            &PyArray_Type, &ap_y,
+            &PyArray_Type, &ap_ts_out,
+            &PyArray_Type, &ap_ys_out,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork))
+        return NULL;
+
+    /* Caller (Python) is responsible for correct dtypes, shapes, contiguity,
+     * and writability.  Assert the structural invariants in debug builds. */
+    assert(PyCallable_Check(cb.fun));
+    assert(cb.jac == Py_None || PyCallable_Check(cb.jac));
+
+    const int neq    = (int) PyArray_DIM(ap_y,     0);
+    const int nknots = (int) PyArray_DIM(ap_tspan,  0);
+
+    assert(neq    >= 1);
+    assert(nknots >= 2);
+    assert((int) PyArray_DIM(ap_ts_out, 0) == nknots);
+    assert((int) PyArray_DIM(ap_ys_out, 0) == neq &&
+           (int) PyArray_DIM(ap_ys_out, 1) == nknots);
+
+    cb.jac_is_banded = (abs(mf) % 10 == 4);
+
+    /* ---- extract raw pointers ---- */
+
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
+
+    double complex       *y      = (double complex *) PyArray_DATA(ap_y);
+    const double         *tspan  = (const double *)   PyArray_DATA(ap_tspan);
+    double               *ts_out = (double *)         PyArray_DATA(ap_ts_out);
+    double complex       *ys_out = (double complex *) PyArray_DATA(ap_ys_out);
+    double complex       *zwork  = (double complex *) PyArray_DATA(ap_zwork);
+    double               *rwork  = (double *)         PyArray_DATA(ap_rwork);
+    int                  *iwork  = (int *)            PyArray_DATA(ap_iwork);
+    const double         *rtol   = (const double *)   PyArray_DATA(ap_rtol);
+    const double         *atol   = (const double *)   PyArray_DATA(ap_atol);
+
+    /* ---- store initial condition in output arrays ---- */
+
+    double t  = tspan[0];
+    ts_out[0] = t;
+    memcpy(ys_out, y, (size_t) neq * sizeof(double complex));  /* column 0 */
+
+    /* ---- integration loop ---- */
+
+    const int itask  = 1;   /* advance to tout, landing exactly on it */
+    int istate       = 1;   /* first call: initialise ZVODE            */
+    int knots_completed = 1; /* column 0 (initial condition) always filled */
+
+    for (int knot = 1; knot < nknots; knot++) {
+
+        c_zvode(
+            &fun_adaptor, neq, y,
+            &t, tspan[knot],
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            &jac_adaptor,
+            mf,
+            &cb
+        );
+
+        /* A Python callback raised an exception; it is already active. */
+        if (cb.error) {
+            assert(PyErr_Occurred());
+            return NULL;
+        }
+
+        /* On ZVODE failure, stop filling output and let the caller decide. */
+        if (istate != 2)
+            break;
+
+        ts_out[knot] = t;
+        memcpy(ys_out + (npy_intp) knot * neq, y,
+               (size_t) neq * sizeof(double complex));
+        knots_completed++;
+    }
+
+    return Py_BuildValue("ii", istate, knots_completed);
+}
+
+
 static struct PyMethodDef zvode_module_methods[] = {
-    {"zvode", zvode_py, METH_VARARGS, zvode_doc},
-    {"zvindy", zvindy_py, METH_VARARGS, zvindy_doc},
+    {"zvode",       zvode_py,       METH_VARARGS, zvode_doc},
+    {"zvindy",      zvindy_py,      METH_VARARGS, zvindy_doc},
+    {"drive_knots", drive_knots_py, METH_VARARGS, drive_knots_doc},
     {NULL, NULL, 0, NULL}
 };
 
