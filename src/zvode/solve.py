@@ -42,9 +42,9 @@ from ._helpers import (
 # process.  Only one integration can be active at a time across all threads.
 ZVODE_LOCK = Lock()
 
-# Set ZVODE_BACKEND=C to route knot-output integrations through the C-level
-# drive_knots entry point instead of the Python loop.  Experimental.
-_USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "").upper() == "C"
+# Set ZVODE_BACKEND=python to fall back to the pure-Python knot loop.
+# Any other value (including unset) uses the C-level drive_knots entry point.
+_USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "C").upper() != "PYTHON"
 
 
 class ZVODEResult(dict):
