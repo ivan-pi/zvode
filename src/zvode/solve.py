@@ -343,6 +343,50 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     return tspan, ys, istate
 
 
+def _zvode_adaptive_c(
+    fun,
+    jac,
+    y0,
+    t0,
+    t_bound,
+    itol,
+    rtol,
+    atol,
+    mf,
+    iopt,
+    zwork,
+    rwork,
+    iwork,
+    refine=1,
+    allow_overshoot=False,
+):
+    """Drive ZVODE adaptive stepping using the C-level _zvode.drive_adaptive entry point.
+
+    Acquires the process lock and delegates the entire step-collection loop to C.
+    Returns the same (ts, ys, istate) tuple as _zvode_adaptive.
+    """
+    ytmp = y0.copy()
+    with ZVODE_LOCK:
+        ts, ys, istate = _zvode.drive_adaptive(
+            fun,
+            jac,  # None maps to Py_None; jac_adaptor is only called when mf needs it
+            mf,
+            float(t0),
+            float(t_bound),
+            ytmp,
+            itol,
+            rtol,
+            atol,
+            iopt,
+            zwork,
+            rwork,
+            iwork,
+            int(refine),
+            int(allow_overshoot),
+        )
+    return ts, ys, istate
+
+
 def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
     """Drive ZVODE knots using the C-level _zvode.drive_knots entry point.
 
@@ -735,7 +779,8 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     if len(tspan) == 2 and save_steps:
         # Collect every accepted step (optionally with ZVINDY interpolation).
-        t_out, y_out, istate = _zvode_adaptive(
+        _adaptive_fn = _zvode_adaptive_c if _USE_C_KNOTS else _zvode_adaptive
+        t_out, y_out, istate = _adaptive_fn(
             _fun,
             _jac,
             y0,
