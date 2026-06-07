@@ -22,6 +22,13 @@ def _validate_max_step(max_step):
     return max_step
 
 
+def _validate_min_step(min_step):
+    """Validate that min_step is a non-negative number."""
+    if min_step < 0:
+        raise ValueError("`min_step` must be non-negative.")
+    return min_step
+
+
 def _validate_first_step(first_step, t0, t_bound):
     """Validate the user-supplied initial step size.
 

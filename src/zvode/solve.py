@@ -30,6 +30,7 @@ from ._helpers import (
     _check_tolerances,
     _determine_miter,
     _validate_max_step,
+    _validate_min_step,
     _validate_first_step,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -608,6 +609,12 @@ def solve_complex_ivp(
 
     _miter, ml, mu = _determine_miter(jac, lband, uband, meth, miter)
 
+    if _miter in (4, 5):
+        if ml >= n:
+            raise ValueError(f"'lband' ({ml}) must be less than neq ({n}).")
+        if mu >= n:
+            raise ValueError(f"'uband' ({mu}) must be less than neq ({n}).")
+
     if jac is not None and _miter in (1, 4) and not in_place:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
@@ -615,8 +622,11 @@ def solve_complex_ivp(
     mf = jsv * (10 * meth + _miter)
 
     _validate_max_step(max_step)
+    _validate_min_step(min_step)
     if first_step is not None:
         _validate_first_step(first_step, tspan[0], tspan[-1])
+    if max_num_steps < 0:
+        raise ValueError("`max_num_steps` must be non-negative.")
 
     # ------------------------------------------------------------------
     # 4.  Workspace

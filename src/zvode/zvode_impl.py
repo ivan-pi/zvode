@@ -8,6 +8,7 @@ from ._helpers import (
     MESSAGES,
     _eval_nordsieck,
     _validate_max_step,
+    _validate_min_step,
     _validate_first_step,
     _wrapped_fun,
     _wrapped_jac,
@@ -268,6 +269,10 @@ class ZVODE(OdeSolver):
         )
 
         if self.miter in (4, 5):
+            if self.ml >= self.n:
+                raise ValueError(f"'lband' ({self.ml}) must be less than neq ({self.n}).")
+            if self.mu >= self.n:
+                raise ValueError(f"'uband' ({self.mu}) must be less than neq ({self.n}).")
             bandwidth = self.ml + self.mu + 1
             if bandwidth * 2 > self.n:
                 warnings.warn(
@@ -375,6 +380,7 @@ class ZVODE(OdeSolver):
             self.rwork[5] = self.max_step
 
         if min_step is not None:
+            _validate_min_step(min_step)
             self.rwork[6] = float(min_step)
 
         if max_order is not None:
