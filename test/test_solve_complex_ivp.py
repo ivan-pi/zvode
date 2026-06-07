@@ -475,15 +475,29 @@ def test_compiled_callback_requires_in_place():
         solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
 
 
-def test_compiled_callback_not_yet_implemented():
-    """in_place=True with a compiled callback raises NotImplementedError (stub path)."""
+def test_compiled_callback_runs():
+    """in_place=True with a compiled ctypes callback completes without error."""
     import ctypes
 
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
+    # Minimal ctypes RHS for a trivial ODE (dy/dt = 0); just verifies that the
+    # compiled-callback code path executes without raising NotImplementedError.
+    # The function is called with (neq, t, y*, dy*, ctx) — we only need to
+    # zero-fill dy to avoid uninitialized output.
+    proto = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_int, ctypes.c_double,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_void_p,
+    )
 
-    with pytest.raises(NotImplementedError):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=True)
+    @proto
+    def trivial_rhs(neq, t, y, dy, ctx):
+        for i in range(2 * neq):
+            dy[i] = 0.0
+
+    sol = solve_complex_ivp(trivial_rhs, [T0, TF], Y0, in_place=True)
+    assert sol.y.shape[0] == 2
 
 
 # ---------------------------------------------------------------------------

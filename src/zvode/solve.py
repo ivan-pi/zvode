@@ -227,12 +227,6 @@ def _zvode_adaptive(
     ts = [t]
     ys = [y0]
 
-    # TODO: replace this Python loop with a call to _zvode.drive() once the
-    # C entry point is implemented.  Moving the loop into compiled code drops
-    # the per-step Python/C boundary crossing AND, when fun/jac are compiled
-    # cfuncs, eliminates argument tuple packing/unpacking on every RHS
-    # evaluation — making the entire integration run without re-entering the
-    # Python interpreter.
     with ZVODE_LOCK:
         while direction * (float(t_bound) - t) > 0:
             t_old = t
@@ -310,8 +304,6 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     ys[:, 0] = y0
     t = float(tspan[0])
 
-    # TODO: same as _zvode_adaptive — replace with _zvode.drive() to move the
-    # knot loop into C and fully eliminate Python overhead in the inner loop.
     with ZVODE_LOCK:
         for i in range(1, len(tspan)):
             t, istate = _zvode.zvode(
@@ -370,6 +362,71 @@ def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork
     if istate != 2:
         return ts_out[:knots_completed], ys_out[:, :knots_completed], istate
     return ts_out, ys_out, istate
+
+
+def _zvode_cfunc_knots(
+    fun_addr, jac_addr, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+):
+    """Drive ZVODE to a sequence of knots using compiled C function pointers.
+
+    Allocates output buffers, acquires the process lock, and delegates the
+    entire knot loop to the C-level _zvode.drive_cfunc_knots entry point.
+    Returns the same (tspan, ys, istate) tuple as _zvode_knots_c, truncating
+    the output arrays to the completed knots on failure.
+    """
+    n = len(y0)
+    nknots = len(tspan)
+    ytmp = y0.copy()
+    ts_out = np.empty(nknots, dtype=np.float64)
+    ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
+
+    with ZVODE_LOCK:
+        istate, knots_completed = _zvode.drive_cfunc_knots(
+            fun_addr, jac_addr,
+            mf, tspan, ytmp, ts_out, ys_out,
+            itol, rtol, atol,
+            iopt, zwork, rwork, iwork,
+        )
+
+    if istate != 2:
+        return ts_out[:knots_completed], ys_out[:, :knots_completed], istate
+    return ts_out, ys_out, istate
+
+
+def _zvode_cfunc_adaptive(
+    fun_addr,
+    jac_addr,
+    y0,
+    t0,
+    t_bound,
+    itol,
+    rtol,
+    atol,
+    mf,
+    iopt,
+    zwork,
+    rwork,
+    iwork,
+    refine=1,
+    allow_overshoot=False,
+):
+    """Drive ZVODE in single-step mode using compiled C function pointers.
+
+    Acquires the process lock and delegates the adaptive loop entirely to the
+    C-level _zvode.drive_cfunc_adaptive entry point, which collects every
+    accepted step into dynamically-allocated buffers and returns them as numpy
+    arrays.  Returns the same (ts, ys, istate) tuple as _zvode_adaptive.
+    """
+    with ZVODE_LOCK:
+        ts, ys, istate = _zvode.drive_cfunc_adaptive(
+            fun_addr, jac_addr,
+            y0, rtol, atol,
+            float(t0), float(t_bound),
+            itol, iopt, mf,
+            zwork, rwork, iwork,
+            refine, int(allow_overshoot),
+        )
+    return ts, ys, istate
 
 
 # ---------------------------------------------------------------------------
@@ -577,11 +634,13 @@ def solve_complex_ivp(
     queue rather than run in parallel.  Use ``multiprocessing`` for parallel
     independent integrations.
 
-    **C-level callbacks** — the native function-pointer path
-    (``in_place=True`` with a numba ``@cfunc`` or ctypes function) requires
-    a C-level integration loop (``_zvode.drive``) that is not yet
-    implemented.  Once available, the full integration will run in compiled
-    code with no Python involvement in the inner loop.
+    **C-level callbacks** — when ``fun`` (and optionally ``jac``) is a
+    numba ``@cfunc`` or ctypes ``CFUNCTYPE`` instance, the integration runs
+    entirely in C/Fortran via ``_zvode.drive_cfunc_adaptive`` or
+    ``_zvode.drive_cfunc_knots``.  No Python object is created on each RHS
+    or Jacobian evaluation, so the overhead per function call is that of a
+    direct C function pointer call rather than a Python dispatch.
+    ``in_place=True`` is required for compiled callbacks.
 
     References
     ----------
@@ -680,7 +739,13 @@ def solve_complex_ivp(
     )
 
     # ------------------------------------------------------------------
-    # 5.  Normalize callbacks
+    # 5.  Validate refine
+    # ------------------------------------------------------------------
+    if refine < 1:
+        raise ValueError("`refine` must be a positive integer.")
+
+    # ------------------------------------------------------------------
+    # 6.  Normalize callbacks and integrate
     # ------------------------------------------------------------------
     #
     # Path A (in_place=False)
@@ -691,16 +756,13 @@ def solve_complex_ivp(
     #   Pass through unchanged; fun must already accept (t, y, dy).
     #
     # Path C (in_place=True, compiled cfunc — numba or ctypes)
-    #   Extract the raw C function pointer address (int).  The future
-    #   _zvode.drive() C entry point will accept this integer and run the
-    #   complete integration loop in C/Fortran without ever re-entering the
-    #   Python interpreter.  Until _zvode.drive() is implemented this path
-    #   raises NotImplementedError.
+    #   Extract the raw C function pointer address (int) and pass it
+    #   directly to the C-level _zvode.drive_cfunc_* entry points, which
+    #   run the complete integration loop without re-entering Python on
+    #   every RHS / Jacobian evaluation.
 
     fun_addr = _cfunc_address(fun)
-    jac_addr = (  # noqa: F841 — reserved for _zvode.drive()
-        _cfunc_address(jac) if jac is not None else None
-    )
+    jac_addr = _cfunc_address(jac) if jac is not None else None
 
     if fun_addr is not None and not in_place:
         raise ValueError(
@@ -710,67 +772,74 @@ def solve_complex_ivp(
         )
 
     if fun_addr is not None:
-        # Path C — compiled callback
-        # TODO: call _zvode.drive(fun_addr, jac_addr, y0, tspan, ...) once
-        #       the C entry point is implemented.
-        raise NotImplementedError(
-            "C function-pointer callbacks (numba @cfunc / ctypes) require "
-            "_zvode.drive(), which is not yet implemented.  "
-            "Use a plain Python callable with in_place=True for now."
-        )
-    elif in_place:
-        # Path B — Python in-place callable; use as-is
-        _fun = fun
-        _jac = jac
-    else:
-        # Path A — SciPy-compatible; wrap to in-place
-        _validate_fun_shape(fun, n, tspan[0], y0)
-        _fun = _wrapped_fun(fun)
-        _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
+        # Path C — compiled callback: route through C-level function-pointer drivers.
+        _jac_addr = jac_addr if jac_addr is not None else 0
 
-    # ------------------------------------------------------------------
-    # 6.  Validate refine
-    # ------------------------------------------------------------------
-    if refine < 1:
-        raise ValueError("`refine` must be a positive integer.")
+        if len(tspan) == 2 and save_steps:
+            t_out, y_out, istate = _zvode_cfunc_adaptive(
+                fun_addr, _jac_addr, y0, tspan[0], tspan[1],
+                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+                refine=refine, allow_overshoot=allow_overshoot,
+            )
+        elif len(tspan) == 2:
+            t_out, y_out, istate = _zvode_cfunc_knots(
+                fun_addr, _jac_addr, y0, tspan,
+                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+            )
+            t_out = float(t_out[-1])
+            y_out = y_out[:, -1]
+        else:
+            t_out, y_out, istate = _zvode_cfunc_knots(
+                fun_addr, _jac_addr, y0, tspan,
+                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+            )
 
-    # ------------------------------------------------------------------
-    # 7.  Integrate
-    # ------------------------------------------------------------------
-    if len(tspan) == 2 and save_steps:
-        # Collect every accepted step (optionally with ZVINDY interpolation).
-        t_out, y_out, istate = _zvode_adaptive(
-            _fun,
-            _jac,
-            y0,
-            tspan[0],
-            tspan[1],
-            itol,
-            rtol,
-            atol,
-            mf,
-            iopt,
-            zwork,
-            rwork,
-            iwork,
-            refine=refine,
-            allow_overshoot=allow_overshoot,
-        )
-    elif len(tspan) == 2:
-        # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
-        # and 1-D y — no intermediate storage.
-        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-        t_out, y_out, istate = _knots_fn(
-            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-        )
-        t_out = float(t_out[-1])
-        y_out = y_out[:, -1]
     else:
-        # Knots: output at each element of tspan.
-        _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-        t_out, y_out, istate = _knots_fn(
-            _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-        )
+        # Paths A and B — Python callables.
+        if in_place:
+            # Path B — Python in-place callable; use as-is.
+            _fun = fun
+            _jac = jac
+        else:
+            # Path A — SciPy-compatible; wrap to in-place.
+            _validate_fun_shape(fun, n, tspan[0], y0)
+            _fun = _wrapped_fun(fun)
+            _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
+
+        if len(tspan) == 2 and save_steps:
+            # Collect every accepted step (optionally with ZVINDY interpolation).
+            t_out, y_out, istate = _zvode_adaptive(
+                _fun,
+                _jac,
+                y0,
+                tspan[0],
+                tspan[1],
+                itol,
+                rtol,
+                atol,
+                mf,
+                iopt,
+                zwork,
+                rwork,
+                iwork,
+                refine=refine,
+                allow_overshoot=allow_overshoot,
+            )
+        elif len(tspan) == 2:
+            # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
+            # and 1-D y — no intermediate storage.
+            _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
+            t_out, y_out, istate = _knots_fn(
+                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+            )
+            t_out = float(t_out[-1])
+            y_out = y_out[:, -1]
+        else:
+            # Knots: output at each element of tspan.
+            _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
+            t_out, y_out, istate = _knots_fn(
+                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
+            )
 
     # ------------------------------------------------------------------
     # 8.  Error reporting

@@ -576,6 +576,22 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Compiled-callback helpers                                          */
+/* ------------------------------------------------------------------ */
+
+/* No-op Jacobian for compiled-callback paths where no user jac is needed.
+ * ZVODE will not call this when miter ∈ {0, 2, 3, 5}; it exists solely to
+ * satisfy the non-NULL function-pointer requirement of c_zvode. */
+static void cfunc_noop_jac(
+        int neq, double t, const double complex y[],
+        int ml, int mu, double complex pd[], int nrowpd,
+        void *ctx)
+{
+    (void)neq; (void)t; (void)y;
+    (void)ml;  (void)mu; (void)pd; (void)nrowpd; (void)ctx;
+}
+
+/* ------------------------------------------------------------------ */
 /* drive_knots                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -739,10 +755,330 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 }
 
 
+/* ------------------------------------------------------------------ */
+/* drive_cfunc_knots                                                  */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_cfunc_knots_doc,
+"drive_cfunc_knots(fun_addr, jac_addr, mf, tspan, y, ts_out, ys_out,\n"
+"                  itol, rtol, atol, iopt, zwork, rwork, iwork)\n"
+"    -> (istate, knots_completed)\n"
+"\n"
+"Like drive_knots but accepts raw C function-pointer addresses (Python ints)\n"
+"instead of Python callables.  The addresses must point to functions with the\n"
+"signatures defined by ``zvode_fun`` and ``zvode_jac`` in ``zvode.h``.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun_addr : int -- address of the compiled RHS function (must be non-zero).\n"
+"jac_addr : int -- address of the compiled Jacobian function, or 0 if none.\n"
+"           When 0, a no-op stub is used; ZVODE will not call it for\n"
+"           miter in {0, 2, 3, 5}.\n"
+"\n"
+"All remaining parameters are identical to drive_knots.\n");
+
+static PyObject *drive_cfunc_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_tspan  = NULL;
+    PyArrayObject *ap_y      = NULL;
+    PyArrayObject *ap_ts_out = NULL, *ap_ys_out = NULL;
+    PyArrayObject *ap_rtol   = NULL, *ap_atol   = NULL;
+    PyArrayObject *ap_zwork  = NULL, *ap_rwork  = NULL, *ap_iwork = NULL;
+    int mf, itol, iopt;
+    Py_ssize_t fun_addr, jac_addr;
+
+    if (!PyArg_ParseTuple(args, "nniO!O!O!O!iO!O!iO!O!O!:drive_cfunc_knots",
+            &fun_addr, &jac_addr, &mf,
+            &PyArray_Type, &ap_tspan,
+            &PyArray_Type, &ap_y,
+            &PyArray_Type, &ap_ts_out,
+            &PyArray_Type, &ap_ys_out,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork))
+        return NULL;
+
+    if (fun_addr == 0) {
+        PyErr_SetString(PyExc_ValueError,
+            "drive_cfunc_knots: fun_addr must be non-zero");
+        return NULL;
+    }
+
+    zvode_fun fun = (zvode_fun)(uintptr_t)fun_addr;
+    zvode_jac jac = jac_addr ? (zvode_jac)(uintptr_t)jac_addr : &cfunc_noop_jac;
+
+    const int neq    = (int)PyArray_DIM(ap_y,    0);
+    const int nknots = (int)PyArray_DIM(ap_tspan, 0);
+
+    assert(neq    >= 1);
+    assert(nknots >= 2);
+    assert((int)PyArray_DIM(ap_ts_out, 0) == nknots);
+    assert((int)PyArray_DIM(ap_ys_out, 0) == neq &&
+           (int)PyArray_DIM(ap_ys_out, 1) == nknots);
+
+    const int lzw = (int)PyArray_SIZE(ap_zwork);
+    const int lrw = (int)PyArray_SIZE(ap_rwork);
+    const int liw = (int)PyArray_SIZE(ap_iwork);
+
+    double complex       *y      = (double complex *)PyArray_DATA(ap_y);
+    const double         *tspan  = (const double *)  PyArray_DATA(ap_tspan);
+    double               *ts_out = (double *)        PyArray_DATA(ap_ts_out);
+    double complex       *ys_out = (double complex *)PyArray_DATA(ap_ys_out);
+    double complex       *zwork  = (double complex *)PyArray_DATA(ap_zwork);
+    double               *rwork  = (double *)        PyArray_DATA(ap_rwork);
+    int                  *iwork  = (int *)           PyArray_DATA(ap_iwork);
+    const double         *rtol   = (const double *)  PyArray_DATA(ap_rtol);
+    const double         *atol   = (const double *)  PyArray_DATA(ap_atol);
+
+    double t   = tspan[0];
+    ts_out[0]  = t;
+    memcpy(ys_out, y, (size_t)neq * sizeof(double complex));
+
+    const int itask  = 1;
+    int istate       = 1;
+    int knots_completed = 1;
+
+    for (int knot = 1; knot < nknots; knot++) {
+
+        c_zvode(
+            fun, neq, y,
+            &t, tspan[knot],
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            jac, mf,
+            NULL
+        );
+
+        if (istate != 2) break;
+
+        ts_out[knot] = t;
+        memcpy(ys_out + (npy_intp)knot * neq, y,
+               (size_t)neq * sizeof(double complex));
+        knots_completed++;
+    }
+
+    return Py_BuildValue("ii", istate, knots_completed);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* drive_cfunc_adaptive                                               */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_cfunc_adaptive_doc,
+"drive_cfunc_adaptive(fun_addr, jac_addr, y, rtol, atol,\n"
+"                     t0, t_bound, itol, iopt, mf,\n"
+"                     zwork, rwork, iwork,\n"
+"                     refine, allow_overshoot)\n"
+"    -> (ts, ys, istate)\n"
+"\n"
+"Drive ZVODE in single-step mode using compiled C function pointers, collecting\n"
+"every accepted step.  Returns (ts, ys, istate) where ts is a 1-D float64\n"
+"array of output times and ys is a (neq, m) complex128 F-order array of\n"
+"corresponding states.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun_addr       : int  -- address of the compiled RHS (zvode_fun signature).\n"
+"jac_addr       : int  -- address of the compiled Jacobian (zvode_jac), or 0.\n"
+"y              : complex128 1-D array, writable -- initial state.\n"
+"rtol, atol     : float64 scalar or 1-D arrays -- tolerances.\n"
+"t0, t_bound    : float -- initial and final times.\n"
+"itol           : int  -- tolerance mode flag (1-4).\n"
+"iopt           : int  -- optional-input flag (0 or 1).\n"
+"mf             : int  -- ZVODE method flag.\n"
+"zwork, rwork, iwork -- ZVODE workspace arrays.\n"
+"refine         : int  -- output points per step (1 = step endpoints only).\n"
+"allow_overshoot: int  -- 0 = ITASK=5, 1 = ITASK=2.\n");
+
+/* Initial output buffer capacity (grows by doubling). */
+#define CFUNC_ADAPTIVE_INIT_CAP 1024
+
+static PyObject *drive_cfunc_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_y     = NULL;
+    PyArrayObject *ap_rtol  = NULL, *ap_atol  = NULL;
+    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
+    double t0, t_bound;
+    int mf, itol, iopt, refine, allow_overshoot;
+    Py_ssize_t fun_addr, jac_addr;
+
+    if (!PyArg_ParseTuple(args, "nnO!O!O!ddiiiO!O!O!ii:drive_cfunc_adaptive",
+            &fun_addr, &jac_addr,
+            &PyArray_Type, &ap_y,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &t0, &t_bound,
+            &itol, &iopt, &mf,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork,
+            &refine, &allow_overshoot))
+        return NULL;
+
+    if (fun_addr == 0) {
+        PyErr_SetString(PyExc_ValueError,
+            "drive_cfunc_adaptive: fun_addr must be non-zero");
+        return NULL;
+    }
+
+    zvode_fun fun = (zvode_fun)(uintptr_t)fun_addr;
+    zvode_jac jac = jac_addr ? (zvode_jac)(uintptr_t)jac_addr : &cfunc_noop_jac;
+
+    const int ITASK = allow_overshoot ? 2 : 5;
+    const int neq   = (int)PyArray_DIM(ap_y, 0);
+
+    const int lzw = (int)PyArray_SIZE(ap_zwork);
+    const int lrw = (int)PyArray_SIZE(ap_rwork);
+    const int liw = (int)PyArray_SIZE(ap_iwork);
+
+    double complex *zwork = (double complex *)PyArray_DATA(ap_zwork);
+    double         *rwork = (double *)        PyArray_DATA(ap_rwork);
+    int            *iwork = (int *)           PyArray_DATA(ap_iwork);
+    const double   *rtol  = (const double *)  PyArray_DATA(ap_rtol);
+    const double   *atol  = (const double *)  PyArray_DATA(ap_atol);
+
+    /* Work on a copy of y so the caller's array is not modified. */
+    double complex *ytmp = (double complex *)malloc((size_t)neq * sizeof(double complex));
+    if (!ytmp) return PyErr_NoMemory();
+    memcpy(ytmp, PyArray_DATA(ap_y), (size_t)neq * sizeof(double complex));
+
+    /* Dynamic output buffers; grow by doubling when full. */
+    npy_intp cap = CFUNC_ADAPTIVE_INIT_CAP;
+    double         *ts_buf = (double *)        malloc((size_t)cap * sizeof(double));
+    double complex *ys_buf = (double complex *)malloc((size_t)neq * (size_t)cap
+                                                      * sizeof(double complex));
+    if (!ts_buf || !ys_buf) {
+        free(ytmp); free(ts_buf); free(ys_buf);
+        return PyErr_NoMemory();
+    }
+
+    double t         = t0;
+    double direction = (t_bound > t0) ? 1.0 : -1.0;
+    int istate       = 1;
+    npy_intp count   = 0;
+
+    /* Store initial condition (column 0). */
+    ts_buf[count] = t;
+    memcpy(ys_buf + (size_t)count * (size_t)neq, ytmp,
+           (size_t)neq * sizeof(double complex));
+    count = 1;
+
+    while (direction * (t_bound - t) > 0.0) {
+        double t_old = t;
+
+        c_zvode(
+            fun, neq, ytmp,
+            &t, t_bound,
+            itol, rtol, atol,
+            ITASK, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            jac, mf,
+            NULL
+        );
+
+        if (istate < 0) break;
+
+        /* Ensure capacity for up to refine new columns. */
+        npy_intp need = count + (npy_intp)(refine > 1 ? refine : 1);
+        if (need > cap) {
+            npy_intp new_cap = cap;
+            while (new_cap < need) new_cap *= 2;
+
+            double *new_ts = (double *)realloc(ts_buf,
+                (size_t)new_cap * sizeof(double));
+            if (!new_ts) { free(ytmp); free(ts_buf); free(ys_buf);
+                           return PyErr_NoMemory(); }
+            ts_buf = new_ts;
+
+            double complex *new_ys = (double complex *)realloc(ys_buf,
+                (size_t)neq * (size_t)new_cap * sizeof(double complex));
+            if (!new_ys) { free(ytmp); free(ts_buf); free(ys_buf);
+                           return PyErr_NoMemory(); }
+            ys_buf = new_ys;
+            cap    = new_cap;
+        }
+
+        /* Optionally insert interpolated points between t_old and t. */
+        if (refine > 1) {
+            const int nq = iwork[13];     /* NQU: order last used */
+            const double hu = rwork[10];  /* HU:  step size last used */
+            struct zvode_step_t step = { .h = hu, .tn = t, .hu = hu, .nq = nq };
+
+            for (int k = 1; k < refine; k++) {
+                double t_k = t_old + (double)k * (t - t_old) / (double)refine;
+                double complex *dky = ys_buf + (size_t)count * (size_t)neq;
+                const int iflag = c_zvindy(neq, t_k, zwork, neq, 0, dky, &step);
+                if (iflag != 0) {
+                    free(ytmp); free(ts_buf); free(ys_buf);
+                    PyErr_Format(PyExc_ValueError,
+                        "drive_cfunc_adaptive: ZVINDY failed (iflag=%d) at "
+                        "interpolation time t=%.17g", iflag, t_k);
+                    return NULL;
+                }
+                ts_buf[count] = t_k;
+                count++;
+            }
+        }
+
+        /* Store step endpoint. */
+        ts_buf[count] = t;
+        memcpy(ys_buf + (size_t)count * (size_t)neq, ytmp,
+               (size_t)neq * sizeof(double complex));
+        count++;
+    }
+
+    /* Build output numpy arrays from the C buffers. */
+    PyArrayObject *ts_arr = NULL, *ys_arr = NULL;
+
+    {
+        npy_intp dims_ts[1] = { count };
+        ts_arr = (PyArrayObject *)PyArray_SimpleNew(1, dims_ts, NPY_FLOAT64);
+        if (!ts_arr) goto oom;
+        memcpy(PyArray_DATA(ts_arr), ts_buf, (size_t)count * sizeof(double));
+    }
+
+    {
+        /* ys_buf is stored column-by-column: ys_buf[k*neq + i] = ys[i, k].
+         * This matches F-order (neq, count): element [i, k] at offset i + k*neq. */
+        npy_intp dims_ys[2] = { neq, count };
+        ys_arr = (PyArrayObject *)PyArray_EMPTY(2, dims_ys, NPY_COMPLEX128, 1 /* F-order */);
+        if (!ys_arr) { Py_DECREF(ts_arr); goto oom; }
+        memcpy(PyArray_DATA(ys_arr), ys_buf,
+               (size_t)neq * (size_t)count * sizeof(double complex));
+    }
+
+    free(ytmp); free(ts_buf); free(ys_buf);
+
+    PyObject *result = Py_BuildValue("(OOi)",
+        (PyObject *)ts_arr, (PyObject *)ys_arr, istate);
+    Py_DECREF(ts_arr);
+    Py_DECREF(ys_arr);
+    return result;
+
+oom:
+    free(ytmp); free(ts_buf); free(ys_buf);
+    return PyErr_NoMemory();
+}
+
+
 static struct PyMethodDef zvode_module_methods[] = {
-    {"zvode",       zvode_py,       METH_VARARGS, zvode_doc},
-    {"zvindy",      zvindy_py,      METH_VARARGS, zvindy_doc},
-    {"drive_knots", drive_knots_py, METH_VARARGS, drive_knots_doc},
+    {"zvode",               zvode_py,               METH_VARARGS, zvode_doc},
+    {"zvindy",              zvindy_py,               METH_VARARGS, zvindy_doc},
+    {"drive_knots",         drive_knots_py,          METH_VARARGS, drive_knots_doc},
+    {"drive_cfunc_knots",   drive_cfunc_knots_py,    METH_VARARGS, drive_cfunc_knots_doc},
+    {"drive_cfunc_adaptive",drive_cfunc_adaptive_py, METH_VARARGS, drive_cfunc_adaptive_doc},
     {NULL, NULL, 0, NULL}
 };
 
