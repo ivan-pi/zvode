@@ -677,3 +677,98 @@ def test_check_cfunc_signature_numba_passes_through():
         dy[0] = y[0]
 
     check_cfunc_signature(nb_fun)  # must not raise
+
+
+# ===========================================================================
+# 12. zvode_fun_sig / zvode_jac_sig — numba type signature constants
+# ===========================================================================
+
+
+def test_zvode_fun_sig_requires_numba_or_raises():
+    """Accessing zvode_fun_sig raises ImportError when numba is absent."""
+    numba = pytest.importorskip("numba", reason="numba not installed")
+    import zvode
+
+    sig = zvode.zvode_fun_sig
+    # Verify it is a numba type that can decorate a cfunc.
+    from numba import cfunc
+
+    @cfunc(sig)
+    def _nb_fun(neq, t, y, dy, ctx):
+        dy[0] = y[0]
+
+    assert hasattr(_nb_fun, "address")
+
+
+def test_zvode_jac_sig_requires_numba_or_raises():
+    """Accessing zvode_jac_sig raises ImportError when numba is absent."""
+    pytest.importorskip("numba", reason="numba not installed")
+    import zvode
+
+    sig = zvode.zvode_jac_sig
+    from numba import cfunc
+
+    @cfunc(sig)
+    def _nb_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
+        pass
+
+    assert hasattr(_nb_jac, "address")
+
+
+def test_zvode_fun_sig_end_to_end():
+    """zvode_fun_sig used with @cfunc produces a callback accepted by solve_complex_ivp."""
+    pytest.importorskip("numba", reason="numba not installed")
+    import zvode
+    from numba import cfunc
+
+    @cfunc(zvode.zvode_fun_sig)
+    def nb_fun(neq, t, y, dy, ctx):
+        lam1 = -1.0 + 2.0j
+        lam2 = -2.0 + 1.0j
+        c = 0.0 + 0.5j
+        dy[0] = lam1 * y[0] + c * y[1]
+        dy[1] = lam2 * y[1]
+
+    sol = solve_complex_ivp(nb_fun, [T0, TF], Y0,
+                            in_place=True, rtol=RTOL, atol=ATOL)
+    ref = exact(TF)
+    assert np.allclose(sol.y, ref, rtol=1e-5)
+
+
+def test_zvode_jac_sig_end_to_end():
+    """zvode_jac_sig used with @cfunc produces a Jacobian accepted by solve_complex_ivp."""
+    pytest.importorskip("numba", reason="numba not installed")
+    import zvode
+    from numba import cfunc
+
+    @cfunc(zvode.zvode_fun_sig)
+    def nb_fun(neq, t, y, dy, ctx):
+        lam1 = -1.0 + 2.0j
+        lam2 = -2.0 + 1.0j
+        c = 0.0 + 0.5j
+        dy[0] = lam1 * y[0] + c * y[1]
+        dy[1] = lam2 * y[1]
+
+    @cfunc(zvode.zvode_jac_sig)
+    def nb_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
+        lam1 = -1.0 + 2.0j
+        lam2 = -2.0 + 1.0j
+        c = 0.0 + 0.5j
+        pd[0]          = lam1
+        pd[nrowpd]     = c
+        pd[1 + nrowpd] = lam2
+
+    sol = solve_complex_ivp(nb_fun, [T0, TF], Y0, jac=nb_jac,
+                            in_place=True, rtol=RTOL, atol=ATOL)
+    ref = exact(TF)
+    assert np.allclose(sol.y, ref, rtol=1e-5)
+
+
+def test_zvode_fun_sig_cached_after_first_access():
+    """zvode_fun_sig is the same object on repeated module attribute access."""
+    pytest.importorskip("numba", reason="numba not installed")
+    import zvode
+
+    sig1 = zvode.zvode_fun_sig
+    sig2 = zvode.zvode_fun_sig
+    assert sig1 is sig2

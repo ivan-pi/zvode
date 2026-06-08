@@ -64,6 +64,33 @@ ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
 )
 
 
+def _make_numba_sigs():
+    """Return ``(zvode_fun_sig, zvode_jac_sig)`` numba type objects.
+
+    Import is deferred so numba remains an optional dependency.
+    """
+    from numba import types  # noqa: deferred import
+
+    fun_sig = types.void(
+        types.int32,                      # neq
+        types.float64,                    # t
+        types.CPointer(types.complex128), # y
+        types.CPointer(types.complex128), # dy
+        types.voidptr,                    # ctx
+    )
+    jac_sig = types.void(
+        types.int32,                      # neq
+        types.float64,                    # t
+        types.CPointer(types.complex128), # y
+        types.int32,                      # ml
+        types.int32,                      # mu
+        types.CPointer(types.complex128), # pd
+        types.int32,                      # nrowpd
+        types.voidptr,                    # ctx
+    )
+    return fun_sig, jac_sig
+
+
 def check_cfunc_signature(fun, kind="fun"):
     """Validate that a compiled callback matches the ZVODE calling convention.
 
