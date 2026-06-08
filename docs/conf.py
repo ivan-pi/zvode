@@ -38,12 +38,4 @@ html_theme = "furo"
 html_title = "zvode"
 html_baseurl = "https://ivan-pi.github.io/zvode/"
 
-exclude_patterns = [
-    "_build",
-    "Thumbs.db",
-    ".DS_Store",
-    "README.md",
-    # Superseded by .rst versions with cross-links:
-    "how-to-procedural-api.md",
-    "banded_jacobian.md",
-]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md"]
