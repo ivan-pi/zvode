@@ -170,7 +170,7 @@ def _jac_banded_ctx(neq, t, y, ml, mu, pd, nrowpd, ctx):
 
 
 # ---------------------------------------------------------------------------
-# Python RHS for mixed-mode tests
+# Python callbacks for mixed-mode and ctx-warning tests
 # ---------------------------------------------------------------------------
 
 def _python_rhs(t, y):
@@ -178,6 +178,14 @@ def _python_rhs(t, y):
     dy[0] = LAM1 * y[0] + C * y[1]
     dy[1] = LAM2 * y[1]
     return dy
+
+
+def _python_jac(t, y):
+    pd = np.zeros((len(y), len(y)), dtype=np.complex128)
+    pd[0, 0] = LAM1
+    pd[0, 1] = C
+    pd[1, 1] = LAM2
+    return pd
 
 
 # ---------------------------------------------------------------------------
@@ -381,3 +389,21 @@ def test_mixed_python_rhs_compiled_banded_jac():
         rtol=RTOL, atol=ATOL,
     )
     _check(sol.t, sol.y)
+
+
+# ---------------------------------------------------------------------------
+# 10. ctx keyword with all-Python callbacks warns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
+def test_ctx_with_both_python_warns():
+    """ctx != None when both fun and jac are Python callables must warn.
+
+    ctx is meaningless for Python callbacks; passing it is likely a mistake,
+    so a UserWarning must be issued regardless of whether jac is also present.
+    """
+    with pytest.warns(UserWarning, match="ctx"):
+        solve_complex_ivp(
+            _python_rhs, [T0, TF], Y0, jac=_python_jac, ctx=_CTX
+        )
