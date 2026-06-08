@@ -28,6 +28,20 @@ solve_complex_ivp(
 
 The `in_place` parameter is **removed**.
 
+### Calling conventions
+
+Two calling conventions are used, one per callback kind:
+
+| Kind | Convention | Rationale |
+|------|-----------|-----------|
+| Python callable | **return-value** — `fun(t, y) -> array` | natural Python style; the adaptor copies the result into the solver buffer |
+| Compiled callback | **in-place / mutating** — `fun(..., dy, ...)` fills output arrays through pointers | avoids heap allocation on every evaluation; the solver buffers are passed directly into the compiled function |
+
+This distinction is why the kind must be known before the integration starts:
+the adaptor wrapping a Python callable allocates a temporary array and copies
+the return value, whereas the compiled path writes directly into ZVODE's
+internal workspace.
+
 ### `fun` and `jac`
 
 Two kinds are accepted, detected by type:
