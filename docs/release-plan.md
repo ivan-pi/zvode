@@ -155,8 +155,14 @@ are compiled the entire run executes without touching the Python interpreter.
   > Type annotations on `solve_complex_ivp` are done (landed in 0.3.0 work).
   > `ZVODEResult.__repr__` implemented; fields `t`, `y`, `nfev`, `njev`, `nlu`,
   > `nsteps`, `nni`, `ncfn`, `netf` are all exposed.  Final decision on which of
-  > `nsteps`, `nni`, `ncfn`, `netf` to keep vs. drop, and whether to add
-  > `dense_output`, is still pending.
+  > `nsteps`, `nni`, `ncfn`, `netf` to keep vs. drop is still pending.
+- [ ] Richer `ZVODEResult` attributes: add `success` (bool) and `message` (str)
+  fields so users do not have to interpret raw `istate` values themselves; aligns
+  the return type with the conventions set by `scipy.integrate.OdeResult`
+- [ ] Add a test that `solve_complex_ivp` raises a catchable exception on solver
+  failure so that users can safely wrap calls in a `try`/`except` block; verify
+  that the partial trajectory accumulated up to the failure point is accessible
+  from the exception or the result object
 - [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface
 
