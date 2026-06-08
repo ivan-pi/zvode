@@ -15,7 +15,7 @@
 #include "zvode.h"
 
 /* ------------------------------------------------------------------ */
-/* Debug helpers (compile with -DZVODE_DEBUG to enable)               */
+/* Debug helpers — compile with -DZVODE_DEBUG (or -DZVODE_DEBUG=1)   */
 /* ------------------------------------------------------------------ */
 
 #ifndef ZVODE_DEBUG
