@@ -1,8 +1,9 @@
 """Python bindings to the ZVODE ODE solver"""
 
-from .solve import solve_complex_ivp
+from .solve import solve_complex_ivp, ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE
 
-__all__ = ["solve_complex_ivp"]
+__all__ = ["solve_complex_ivp", "ZVODE_FUN_CTYPE", "ZVODE_JAC_CTYPE",
+           "zvode_fun_sig", "zvode_jac_sig"]
 
 try:
     from .zvode_impl import ZVODE, ZVODE_Adams, ZVODE_BDF
@@ -21,5 +22,28 @@ def __getattr__(name):
     if name in ("ZVODE", "ZVODE_Adams", "ZVODE_BDF"):
         raise ImportError(
             f"{name!r} requires SciPy. Install it with: pip install 'zvode[scipy]'"
+        )
+    # Lazy numba signature objects — constructed on first access so that numba
+    # remains an optional dependency and is never imported at module level.
+    if name == "zvode_fun_sig":
+        from numba import types  # ImportError propagates if numba not installed
+        return types.void(
+            types.int32,                       # neq
+            types.float64,                     # t
+            types.CPointer(types.complex128),  # const double complex *y
+            types.CPointer(types.complex128),  # double complex *dy
+            types.voidptr,                     # void *ctx
+        )
+    if name == "zvode_jac_sig":
+        from numba import types
+        return types.void(
+            types.int32,                       # neq
+            types.float64,                     # t
+            types.CPointer(types.complex128),  # const double complex *y
+            types.int32,                       # ml
+            types.int32,                       # mu
+            types.CPointer(types.complex128),  # double complex *pd
+            types.int32,                       # nrowpd
+            types.voidptr,                     # void *ctx
         )
     raise AttributeError(f"module 'zvode' has no attribute {name!r}")

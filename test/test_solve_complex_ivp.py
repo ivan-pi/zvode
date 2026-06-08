@@ -462,28 +462,34 @@ def test_miter1_banded_jac_shape_raises():
         solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_wrong, miter=1)
 
 
-def test_compiled_callback_requires_in_place():
-    """Compiled callbacks (numba/ctypes) are incompatible with in_place=False."""
+def test_compiled_callback_works():
+    """Compiled ctypes callbacks are now fully supported (no in_place required).
+
+    The new API detects compiled callbacks by type and routes them through the
+    C function-pointer path automatically.  A valid ZVODE_FUN_CTYPE callback
+    must produce the correct solution.
+    """
     import ctypes
+    from zvode import ZVODE_FUN_CTYPE
 
-    # A minimal ctypes function pointer — address detection is enough to
-    # trigger the check; the function is never actually called.
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
+    # Helper to create numpy views over raw C pointers
+    def _ro128(addr, count):
+        buf = (ctypes.c_double * (2 * count)).from_address(addr)
+        return np.frombuffer(buf, dtype=np.complex128)
 
-    with pytest.raises(ValueError, match="in_place"):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
+    def _rw128(addr, count):
+        buf = (ctypes.c_double * (2 * count)).from_address(addr)
+        return np.ctypeslib.as_array(buf).view(np.complex128)
 
+    @ZVODE_FUN_CTYPE
+    def cfun(neq, t, y_ptr, dy_ptr, ctx):
+        y = _ro128(y_ptr, neq)
+        dy = _rw128(dy_ptr, neq)
+        dy[0] = LAM1 * y[0] + C * y[1]
+        dy[1] = LAM2 * y[1]
 
-def test_compiled_callback_not_yet_implemented():
-    """in_place=True with a compiled callback raises NotImplementedError (stub path)."""
-    import ctypes
-
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
-
-    with pytest.raises(NotImplementedError):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=True)
+    sol = solve_complex_ivp(cfun, [T0, TF], Y0, rtol=1e-8, atol=1e-10)
+    _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
