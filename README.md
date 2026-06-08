@@ -132,7 +132,7 @@ pip install ".[test]"      # run the test suite (includes SciPy)
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `fun` | callable | — | RHS `f(t, y) → array_like`. With `in_place=True`: `f(t, y, dy)` fills `dy` in place. |
+| `fun` | callable or `ctypes._CFuncPtr` | — | RHS `f(t, y) → array_like`, or a compiled C function pointer (ctypes/numba). |
 | `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
 | `y0` | array-like | — | Initial state; cast to `complex128`. |
 | `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |

@@ -11,9 +11,9 @@ Python bindings to the classic ZVODE ODE solver.
 
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
 first-order ordinary differential equations with complex-valued state, written
-by P. N. Brown, G. D. Byrne, and A. C. Hindmarsh [2]. It is
-part of ODEPACK and uses a fixed-leading-coefficient Adams or BDF method,
-selectable by the user.
+by P. N. Brown, G. D. Byrne, and A. C. Hindmarsh [2]. It is part of ODEPACK
+and uses a fixed-leading-coefficient Adams or BDF method, selectable by the
+user.
 
 This package exposes two interfaces to ZVODE:
 
@@ -34,7 +34,7 @@ integrator simultaneously.
 
 ## Quick start
 
-### Procedural API — `solve_complex_ivp` (new in 0.2.0)
+### Procedural API — `solve_complex_ivp`
 
 `solve_complex_ivp` is the recommended entry point. Pass the RHS function, a
 time span, and an initial condition; get back a result object with `sol.t`,
@@ -60,14 +60,9 @@ sol = solve_complex_ivp(
 print(sol)
 ```
 
-See {doc}`how-to-procedural-api` for output modes, banded Jacobians, backward
-integration, and other options.
-
 ### OdeSolver API (scipy-compatible)
 
 Pass a `ZVODE_*` class as the `method` argument to `scipy.integrate.solve_ivp`.
-
-**Non-stiff problem** — rotating complex exponential:
 
 ```python
 import numpy as np
@@ -79,20 +74,6 @@ sol = solve_ivp(
     t_span=(0.0, 10.0),
     y0=[1.0 + 0.0j],
     method=ZVODE_Adams,
-)
-```
-
-**Stiff problem** — with a user-supplied Jacobian:
-
-```python
-from zvode import ZVODE_BDF
-
-sol = solve_ivp(
-    fun=lambda t, y: -1j * y,
-    t_span=(0.0, 10.0),
-    y0=[1.0 + 0.0j],
-    method=ZVODE_BDF,
-    jac=lambda t, y: [[-1j]],
 )
 ```
 
@@ -108,43 +89,6 @@ pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams
 The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) subclass
 `scipy.integrate.OdeSolver` and require SciPy. If your code only uses
 `solve_complex_ivp` you do not need SciPy.
-
----
-
-## Solver options
-
-### `solve_complex_ivp` key parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `fun` | callable or `ctypes._CFuncPtr` | — | RHS `f(t, y) → array_like`, or a compiled C function pointer (ctypes/numba). |
-| `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
-| `y0` | array-like | — | Initial state; cast to `complex128`. |
-| `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-| `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
-
-### OdeSolver API options
-
-Keyword arguments accepted by `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`; passed
-through unchanged when supplied via `solve_ivp`.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: `(n, n)` array; banded: `(lband + uband + 1, n)` array. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-
-:::{note}
-For stiff problems, `f` must be analytic (each component must be an analytic
-function of each state variable). For stiff systems where `f` is not analytic,
-use a real-valued solver on the equivalent doubled real system.
-:::
 
 ---
 
@@ -174,8 +118,6 @@ Solution of Ordinary Differential Equations," *ACM Trans. Math. Soft.*,
 1(1), pp. 71–96, 1975. <https://doi.org/10.1145/355626.355636>
 
 ---
-
-## Contents
 
 :::{toctree}
 :maxdepth: 1
