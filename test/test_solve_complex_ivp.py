@@ -79,9 +79,9 @@ def jac_banded(t, y):
     # ZVODE banded storage: pd[mu + i - j, j] = J[i, j]
     # shape = (lband + uband + 1, n) = (2, 2)
     pd = np.zeros((LBAND + UBAND + 1, len(y)), dtype=np.complex128)
-    pd[UBAND,     0] = LAM1  # J[0, 0]
-    pd[UBAND - 1, 1] = C     # J[0, 1]
-    pd[UBAND,     1] = LAM2  # J[1, 1]
+    pd[UBAND, 0] = LAM1  # J[0, 0]
+    pd[UBAND - 1, 1] = C  # J[0, 1]
+    pd[UBAND, 1] = LAM2  # J[1, 1]
     return pd
 
 

@@ -51,8 +51,8 @@ ZVODE_LOCK = Lock()
 #   2. As documentation of the expected C-level calling convention.
 
 ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
-    None,             # void return
-    ctypes.c_int,     # neq
+    None,  # void return
+    ctypes.c_int,  # neq
     ctypes.c_double,  # t
     ctypes.c_void_p,  # const double complex *y  (passed as opaque pointer)
     ctypes.c_void_p,  # double complex *dy        (passed as opaque pointer)
@@ -61,13 +61,13 @@ ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
 
 ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
     None,
-    ctypes.c_int,     # neq
+    ctypes.c_int,  # neq
     ctypes.c_double,  # t
     ctypes.c_void_p,  # const double complex *y
-    ctypes.c_int,     # ml
-    ctypes.c_int,     # mu
+    ctypes.c_int,  # ml
+    ctypes.c_int,  # mu
     ctypes.c_void_p,  # double complex *pd  (column-major)
-    ctypes.c_int,     # nrowpd
+    ctypes.c_int,  # nrowpd
     ctypes.c_void_p,  # void *ctx
 )
 
