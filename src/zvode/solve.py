@@ -43,6 +43,34 @@ from ._helpers import (
 # process.  Only one integration can be active at a time across all threads.
 ZVODE_LOCK = Lock()
 
+# ---------------------------------------------------------------------------
+# Canonical ctypes CFUNCTYPE descriptors for compiled callbacks
+# ---------------------------------------------------------------------------
+# These serve two purposes:
+#   1. As decorators for ctypes callbacks: @ZVODE_FUN_CTYPE
+#   2. As documentation of the expected C-level calling convention.
+
+ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
+    None,             # void return
+    ctypes.c_int,     # neq
+    ctypes.c_double,  # t
+    ctypes.c_void_p,  # const double complex *y  (passed as opaque pointer)
+    ctypes.c_void_p,  # double complex *dy        (passed as opaque pointer)
+    ctypes.c_void_p,  # void *ctx
+)
+
+ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_int,     # neq
+    ctypes.c_double,  # t
+    ctypes.c_void_p,  # const double complex *y
+    ctypes.c_int,     # ml
+    ctypes.c_int,     # mu
+    ctypes.c_void_p,  # double complex *pd  (column-major)
+    ctypes.c_int,     # nrowpd
+    ctypes.c_void_p,  # void *ctx
+)
+
 # Set ZVODE_BACKEND=python to fall back to the pure-Python knot loop.
 # Any other value (including unset) uses the C-level drive_knots entry point.
 _USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "C").upper() != "PYTHON"
@@ -86,16 +114,10 @@ class ZVODEResult(dict):
 def _cfunc_address(fun):
     """Return the C function pointer address (int) for compiled callbacks.
 
-    Recognises:
-    * numba ``@cfunc`` objects — via the ``.address`` attribute (same approach
-      as the numbalsoda package)
-    * ctypes ``CFUNCTYPE`` instances — via ``ctypes.cast``
-
+    Recognises ctypes ``CFUNCTYPE`` instances (including ``numba_cfunc.ctypes``).
     Returns ``None`` for ordinary Python callables.
     """
-    if hasattr(fun, "address"):  # numba @cfunc
-        return int(fun.address)
-    if isinstance(fun, ctypes._CFuncPtr):  # ctypes CFUNCTYPE
+    if isinstance(fun, ctypes._CFuncPtr):
         return ctypes.cast(fun, ctypes.c_void_p).value
     return None
 
@@ -350,17 +372,17 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
 
 
 def solve_complex_ivp(
-    fun: Callable[..., Any],
+    fun: Callable[..., Any] | ctypes._CFuncPtr,
     tspan: ArrayLike,
     y0: ArrayLike,
     *,
     rtol: float | ArrayLike = 1.0e-3,
     atol: float | ArrayLike = 1.0e-6,
-    jac: Callable[..., Any] | None = None,
+    jac: Callable[..., Any] | ctypes._CFuncPtr | None = None,
+    ctx: ctypes.c_void_p | None = None,
     method: Literal["BDF", "Adams"] = "BDF",
     lband: int | None = None,
     uband: int | None = None,
-    in_place: bool = False,
     save_steps: bool = True,
     refine: int = 1,
     allow_overshoot: bool = False,
@@ -388,31 +410,23 @@ def solve_complex_ivp(
 
     Parameters
     ----------
-    fun : callable
+    fun : callable or ctypes._CFuncPtr
         Right-hand side of the system.
 
-        * ``in_place=False`` (default): ``fun(t, y) -> array_like``, SciPy
-          compatible.  A return-value copy is performed on every call.
-        * ``in_place=True``: ``fun(t, y, dy)`` — must fill ``dy`` in place.
-          Accepted forms:
+        * **Python callable**: ``fun(t, y) -> array_like`` (SciPy-compatible).
+        * **Compiled callback** (``ctypes.CFUNCTYPE`` instance or
+          ``numba_cfunc.ctypes``): called directly as a C function pointer,
+          bypassing the Python interpreter on every RHS evaluation.  The
+          C-level signature is::
 
-          - plain Python callable
-          - numba ``@cfunc`` object — pass the decorated function directly;
-            its ``.address`` attribute is used to route calls through a native
-            C function pointer, bypassing the Python interpreter on every RHS
-            evaluation.
-          - ctypes ``CFUNCTYPE`` instance — same principle.
+              void fun(int neq, double t,
+                       const double complex *y,
+                       double complex       *dy,
+                       void                 *ctx);
 
-          The expected C-level signature (using numba types) is::
-
-              @cfunc(types.void(
-                  types.int32,                           # neq
-                  types.float64,                         # t
-                  types.CPointer(types.complex128),      # y[neq]  (read-only)
-                  types.CPointer(types.complex128),      # dy[neq] (write)
-                  types.voidptr,                         # ctx (pass 0 for now)
-              ))
-              def my_rhs(neq, t, y, dy, ctx): ...
+          Use ``ZVODE_FUN_CTYPE`` from this module as the ``CFUNCTYPE``
+          decorator.  For numba, use ``zvode_fun_sig`` as the ``@cfunc``
+          signature and pass ``my_rhs.ctypes``.
 
     tspan : array_like
         Integration times.
@@ -434,18 +448,31 @@ def solve_complex_ivp(
         local error roughly below ``rtol * |y(i)| + atol`` for each component.
         Scalar or per-component arrays are accepted.  Defaults are
         ``rtol=1e-3``, ``atol=1e-6``.
-    jac : callable or None, optional
-        Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
-        convention as ``fun``:
+    jac : callable, ctypes._CFuncPtr, or None, optional
+        Jacobian of ``fun`` w.r.t. ``y``.
 
-        * ``in_place=False``, full (no ``lband``/``uband``):
+        * **Python callable**, full (no ``lband``/``uband``):
           ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
-        * ``in_place=False``, banded (``lband``/``uband`` set):
+        * **Python callable**, banded (``lband``/``uband`` set):
           ``jac(t, y) -> (lband + uband + 1, n)`` array where element
           ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
-        * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
-        * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          banded matrix ``pd`` in place using the same row convention.
+        * **Compiled callback**: C-level signature::
+
+              void jac(int neq, double t,
+                       const double complex *y,
+                       int ml, int mu,
+                       double complex       *pd,
+                       int nrowpd,
+                       void                 *ctx);
+
+        Mixed mode is supported: ``fun`` can be a Python callable while
+        ``jac`` is a compiled callback, or vice versa.
+    ctx : ctypes.c_void_p or None, optional
+        Optional shared user-data pointer passed as the last argument to
+        **both** compiled callbacks on every invocation.  ``None`` (default)
+        passes a NULL pointer.  Ignored (with a ``UserWarning``) when all
+        callbacks are plain Python callables.  The caller is responsible for
+        keeping the referent alive for the duration of the integration.
 
     method : {'BDF', 'Adams'}, optional
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
@@ -455,11 +482,6 @@ def solve_complex_ivp(
         non-negative integers.  When either is set, the banded Jacobian path
         is used and the other defaults to 0.  The full band has width
         ``lband + uband + 1``.
-    in_place : bool, optional
-        Selects the callback convention for ``fun`` and ``jac``.
-        Default ``False`` (SciPy-compatible return-value form).
-        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
-        use the in-place convention; ``in_place=True`` is required for them.
 
     Returns
     -------
@@ -549,11 +571,10 @@ def solve_complex_ivp(
     queue rather than run in parallel.  Use ``multiprocessing`` for parallel
     independent integrations.
 
-    **C-level callbacks** — the native function-pointer path
-    (``in_place=True`` with a numba ``@cfunc`` or ctypes function) requires
-    a C-level integration loop (``_zvode.drive``) that is not yet
-    implemented.  Once available, the full integration will run in compiled
-    code with no Python involvement in the inner loop.
+    **C-level callbacks** — compiled callbacks (``ctypes.CFUNCTYPE`` instances
+    or ``numba_cfunc.ctypes``) are called directly as C function pointers
+    through the ``drive_knots`` / ``drive_adaptive`` integration loops,
+    bypassing the Python interpreter on every RHS or Jacobian evaluation.
 
     References
     ----------
@@ -614,7 +635,7 @@ def solve_complex_ivp(
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
-    if jac is not None and _miter in (1, 4) and not in_place:
+    if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
     jsv = 1 if save_jac else -1
@@ -655,56 +676,71 @@ def solve_complex_ivp(
     # 5.  Normalize callbacks
     # ------------------------------------------------------------------
     #
-    # Path A (in_place=False)
-    #   Wrap SciPy-style fun(t,y)->array to the in-place form that
-    #   _zvode.zvode expects.
+    # Path A (plain Python callable): wrap SciPy-style fun(t,y)->array to the
+    #   in-place form that _zvode.zvode and the C drivers expect.
     #
-    # Path B (in_place=True, plain Python callable)
-    #   Pass through unchanged; fun must already accept (t, y, dy).
-    #
-    # Path C (in_place=True, compiled cfunc — numba or ctypes)
-    #   Extract the raw C function pointer address (int).  The future
-    #   _zvode.drive() C entry point will accept this integer and run the
-    #   complete integration loop in C/Fortran without ever re-entering the
-    #   Python interpreter.  Until _zvode.drive() is implemented this path
-    #   raises NotImplementedError.
+    # Path B (compiled cfunc — ctypes._CFuncPtr or numba @cfunc.ctypes):
+    #   extract the raw C function pointer address (int) and pass it to
+    #   drive_knots / drive_adaptive, which call it directly without entering
+    #   the Python interpreter.  Mixed mode (Python fun + compiled jac, or
+    #   vice versa) is supported.
 
     fun_addr = _cfunc_address(fun)
-    jac_addr = (  # noqa: F841 — reserved for _zvode.drive()
-        _cfunc_address(jac) if jac is not None else None
-    )
-
-    if fun_addr is not None and not in_place:
-        raise ValueError(
-            "Compiled callbacks (numba @cfunc / ctypes) use the in-place calling "
-            "convention and are incompatible with `in_place=False`.  "
-            "Pass `in_place=True`, or use a plain Python callable with `in_place=False`."
-        )
-
-    if fun_addr is not None:
-        # Path C — compiled callback
-        # TODO: call _zvode.drive(fun_addr, jac_addr, y0, tspan, ...) once
-        #       the C entry point is implemented.
-        raise NotImplementedError(
-            "C function-pointer callbacks (numba @cfunc / ctypes) require "
-            "_zvode.drive(), which is not yet implemented.  "
-            "Use a plain Python callable with in_place=True for now."
-        )
-    elif in_place:
-        # Path B — Python in-place callable; use as-is
-        _fun = fun
-        _jac = jac
-    else:
-        # Path A — SciPy-compatible; wrap to in-place
-        _validate_fun_shape(fun, n, tspan[0], y0)
-        _fun = _wrapped_fun(fun)
-        _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
+    jac_addr = _cfunc_address(jac) if jac is not None else None
 
     # ------------------------------------------------------------------
-    # 6.  Validate refine
+    # 5a. Validate and extract ctx
+    # ------------------------------------------------------------------
+    if ctx is not None and not isinstance(ctx, ctypes.c_void_p):
+        raise TypeError(
+            f"'ctx' must be a ctypes.c_void_p or None, got {type(ctx).__name__!r}."
+        )
+    # ctypes.c_void_p(0).value is None (null pointer); treat that as 0.
+    ctx_addr: int = (ctx.value or 0) if ctx is not None else 0
+
+    # Warn when ctx is provided but all callbacks are Python callables
+    # (ctx is meaningless in that case; it's not passed to Python callbacks).
+    if ctx is not None and fun_addr is None and jac_addr is None:
+        warnings.warn(
+            "ctx is ignored when all callbacks are plain Python callables.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # ------------------------------------------------------------------
+    # 5b. Build the fun/jac objects to pass to the C drivers
+    # ------------------------------------------------------------------
+    if fun_addr is not None:
+        # Path B fun: pass integer address; C layer calls it directly
+        _fun = fun_addr
+    else:
+        # Path A fun: SciPy-compatible; validate shape and wrap to in-place
+        _validate_fun_shape(fun, n, tspan[0], y0)
+        _fun = _wrapped_fun(fun)
+
+    if jac is None:
+        _jac = None
+    elif jac_addr is not None:
+        # Path B jac: pass integer address
+        _jac = jac_addr
+    else:
+        # Path A jac: SciPy-compatible; wrap to in-place
+        _jac = _wrapped_jac(jac, banded=(_miter == 4))
+
+    # ------------------------------------------------------------------
+    # 6.  Validate refine; check backend compatibility
     # ------------------------------------------------------------------
     if refine < 1:
         raise ValueError("`refine` must be a positive integer.")
+
+    # Compiled callbacks require the C integration loop (drive_knots /
+    # drive_adaptive).  The Python fallback (ZVODE_BACKEND=python) only
+    # supports Python callables.
+    if not _USE_C_KNOTS and (fun_addr is not None or jac_addr is not None):
+        raise RuntimeError(
+            "Compiled callbacks (ctypes/numba) require the C integration loop. "
+            "Unset the ZVODE_BACKEND environment variable (currently set to 'python')."
+        )
 
     # ------------------------------------------------------------------
     # 7.  Integrate
@@ -717,6 +753,7 @@ def solve_complex_ivp(
                 t_out, y_out, istate = _zvode.drive_adaptive(
                     _fun,
                     _jac,
+                    ctx_addr,
                     mf,
                     float(tspan[0]),
                     float(tspan[1]),
@@ -760,6 +797,7 @@ def solve_complex_ivp(
                 istate, knots_completed = _zvode.drive_knots(
                     _fun,
                     _jac,
+                    ctx_addr,
                     mf,
                     tspan,
                     ytmp,
@@ -792,6 +830,7 @@ def solve_complex_ivp(
                 istate, knots_completed = _zvode.drive_knots(
                     _fun,
                     _jac,
+                    ctx_addr,
                     mf,
                     tspan,
                     ytmp,

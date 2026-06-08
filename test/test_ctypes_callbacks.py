@@ -1,10 +1,8 @@
 """Tests for the ctypes compiled callback path.
 
-All integration tests are marked xfail: they document the API specified in
-docs/compiled-callbacks-design.md and will pass once _zvode.drive() is
-implemented and the ctx parameter / ZVODE_FUN_CTYPE exports are added.
+These tests exercise the API specified in docs/compiled-callbacks-design.md.
+All integration and export tests verify the fully implemented behaviour:
 
-Notable differences from the current (0.2.x) API tested here:
 - No ``in_place`` parameter: callback kind is detected from type alone.
 - New ``ctx`` keyword: an optional ``ctypes.c_void_p`` passed to both
   compiled callbacks on every invocation (NULL when ``ctx=None``).
@@ -64,7 +62,7 @@ def _check(t_arr, y_arr, sol_rtol=1e-5):
 
 # ---------------------------------------------------------------------------
 # Expected ctypes CFUNCTYPE definitions
-# (matches design spec; these will become the canonical zvode exports)
+# (matches design spec; these are now the canonical zvode exports)
 # ---------------------------------------------------------------------------
 
 _ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
@@ -186,23 +184,10 @@ def _python_jac(t, y):
 
 
 # ---------------------------------------------------------------------------
-# Shared xfail mark
-# ---------------------------------------------------------------------------
-
-_XFAIL = pytest.mark.xfail(
-    reason=(
-        "compiled callback path not yet implemented"
-        " (see docs/compiled-callbacks-design.md)"
-    ),
-    strict=False,
-)
-
-# ---------------------------------------------------------------------------
 # 1. Export checks
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="ZVODE_FUN_CTYPE not yet exported from zvode")
 def test_export_fun_ctype():
     """zvode.ZVODE_FUN_CTYPE must be importable and be a ctypes CFUNCTYPE."""
     from zvode import ZVODE_FUN_CTYPE  # noqa: F401
@@ -210,7 +195,6 @@ def test_export_fun_ctype():
     assert issubclass(ZVODE_FUN_CTYPE, ctypes._CFuncPtr)
 
 
-@pytest.mark.xfail(reason="ZVODE_JAC_CTYPE not yet exported from zvode")
 def test_export_jac_ctype():
     """zvode.ZVODE_JAC_CTYPE must be importable and be a ctypes CFUNCTYPE."""
     from zvode import ZVODE_JAC_CTYPE  # noqa: F401
@@ -223,14 +207,12 @@ def test_export_jac_ctype():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_fun_only_steps():
     """Compiled RHS without Jacobian; collect all accepted steps."""
     sol = solve_complex_ivp(_fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
     _check(sol.t, sol.y)
 
 
-@_XFAIL
 def test_fun_only_endpoint():
     """Compiled RHS without Jacobian; endpoint-only mode."""
     sol = solve_complex_ivp(
@@ -239,7 +221,6 @@ def test_fun_only_endpoint():
     np.testing.assert_allclose(sol.y, _exact(TF), rtol=1e-5)
 
 
-@_XFAIL
 def test_fun_only_knots():
     """Compiled RHS without Jacobian; output at requested knots."""
     tspan = np.linspace(T0, TF, 11)
@@ -253,7 +234,6 @@ def test_fun_only_knots():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_dense_jac():
     """Compiled RHS + compiled dense Jacobian; no ctx."""
     sol = solve_complex_ivp(
@@ -267,7 +247,6 @@ def test_dense_jac():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_banded_jac():
     """Compiled RHS + compiled banded Jacobian; no ctx."""
     sol = solve_complex_ivp(
@@ -283,7 +262,6 @@ def test_banded_jac():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_fun_ctx():
     """Compiled RHS parameterized through ctx; no Jacobian."""
     sol = solve_complex_ivp(
@@ -297,7 +275,6 @@ def test_fun_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_dense_jac_ctx():
     """Compiled RHS + compiled dense Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
@@ -313,7 +290,6 @@ def test_dense_jac_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_banded_jac_ctx():
     """Compiled RHS + compiled banded Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
@@ -332,7 +308,6 @@ def test_banded_jac_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_mixed_python_rhs_compiled_dense_jac():
     """Python return-value RHS with a compiled dense Jacobian."""
     sol = solve_complex_ivp(
@@ -343,7 +318,6 @@ def test_mixed_python_rhs_compiled_dense_jac():
     _check(sol.t, sol.y)
 
 
-@_XFAIL
 def test_mixed_python_rhs_compiled_banded_jac():
     """Python return-value RHS with a compiled banded Jacobian."""
     sol = solve_complex_ivp(
@@ -359,21 +333,18 @@ def test_mixed_python_rhs_compiled_banded_jac():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
 def test_ctx_none_is_null():
     """ctx=None passes NULL to compiled callbacks and must not raise."""
     sol = solve_complex_ivp(_fun, [T0, TF], Y0, ctx=None, rtol=RTOL, atol=ATOL)
     _check(sol.t, sol.y)
 
 
-@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
 def test_ctx_with_python_rhs_warns():
     """ctx != None alongside a Python RHS must issue a UserWarning."""
     with pytest.warns(UserWarning, match="ctx"):
         solve_complex_ivp(_python_rhs, [T0, TF], Y0, ctx=_CTX)
 
 
-@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
 def test_ctx_with_both_python_warns():
     """ctx != None when both fun and jac are Python callables must warn.
 
@@ -386,7 +357,6 @@ def test_ctx_with_both_python_warns():
         )
 
 
-@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
 def test_ctx_invalid_type_raises():
     """A non-c_void_p, non-None ctx must raise TypeError immediately.
 
@@ -395,3 +365,22 @@ def test_ctx_invalid_type_raises():
     """
     with pytest.raises(TypeError, match="c_void_p"):
         solve_complex_ivp(_fun, [T0, TF], Y0, ctx=42, rtol=RTOL, atol=ATOL)
+
+
+# ---------------------------------------------------------------------------
+# 10. Python fallback backend with compiled callbacks
+# ---------------------------------------------------------------------------
+
+
+def test_python_backend_rejects_compiled_callbacks(monkeypatch):
+    """Compiled callbacks with ZVODE_BACKEND=python raise RuntimeError.
+
+    The Python fallback loop (_zvode_adaptive/_zvode_knots) can only accept
+    Python callables.  Compiled callbacks are only supported through the C
+    integration loop (drive_knots / drive_adaptive).
+    """
+    import zvode.solve as _solve
+
+    monkeypatch.setattr(_solve, "_USE_C_KNOTS", False)
+    with pytest.raises(RuntimeError, match="ZVODE_BACKEND"):
+        solve_complex_ivp(_fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)

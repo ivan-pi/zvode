@@ -1,9 +1,5 @@
 """Tests for the numba @cfunc compiled callback path.
 
-All integration tests are marked xfail: they document the API specified in
-docs/compiled-callbacks-design.md and will pass once _zvode.drive() is
-implemented and the ctx parameter / zvode_fun_sig exports are added.
-
 The entire module is skipped when numba is not installed.
 
 Numba users pass ``my_rhs.ctypes`` (a ``ctypes._CFuncPtr``) to
@@ -79,7 +75,7 @@ def _check(t_arr, y_arr, sol_rtol=1e-5):
 
 
 # ---------------------------------------------------------------------------
-# Expected numba cfunc signatures (as per design spec; not yet in zvode)
+# Expected numba cfunc signatures (as per design spec; exported from zvode)
 # ---------------------------------------------------------------------------
 
 _zvode_fun_sig = types.void(
@@ -189,23 +185,10 @@ def _python_jac(t, y):
 
 
 # ---------------------------------------------------------------------------
-# Shared xfail mark
-# ---------------------------------------------------------------------------
-
-_XFAIL = pytest.mark.xfail(
-    reason=(
-        "compiled callback path not yet implemented"
-        " (see docs/compiled-callbacks-design.md)"
-    ),
-    strict=False,
-)
-
-# ---------------------------------------------------------------------------
 # 1. Export checks
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="zvode_fun_sig not yet exported from zvode")
 def test_export_fun_sig():
     """zvode.zvode_fun_sig must be importable and usable as a @cfunc signature."""
     import zvode
@@ -219,7 +202,6 @@ def test_export_fun_sig():
     assert _probe.ctypes is not None
 
 
-@pytest.mark.xfail(reason="zvode_jac_sig not yet exported from zvode")
 def test_export_jac_sig():
     """zvode.zvode_jac_sig must be importable and usable as a @cfunc signature."""
     import zvode
@@ -237,14 +219,12 @@ def test_export_jac_sig():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_fun_only_steps():
     """Compiled closure RHS, no Jacobian; collect all steps."""
     sol = solve_complex_ivp(_fun.ctypes, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
     _check(sol.t, sol.y)
 
 
-@_XFAIL
 def test_fun_only_endpoint():
     """Compiled closure RHS, no Jacobian; endpoint-only mode."""
     sol = solve_complex_ivp(
@@ -253,7 +233,6 @@ def test_fun_only_endpoint():
     np.testing.assert_allclose(sol.y, _exact(TF), rtol=1e-5)
 
 
-@_XFAIL
 def test_fun_only_knots():
     """Compiled closure RHS, no Jacobian; output at requested knots."""
     tspan = np.linspace(T0, TF, 11)
@@ -267,7 +246,6 @@ def test_fun_only_knots():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_dense_jac():
     """Compiled closure RHS + compiled dense Jacobian; no ctx."""
     sol = solve_complex_ivp(
@@ -283,7 +261,6 @@ def test_dense_jac():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_banded_jac():
     """Compiled closure RHS + compiled banded Jacobian; no ctx."""
     sol = solve_complex_ivp(
@@ -299,7 +276,6 @@ def test_banded_jac():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_make_rhs_factory():
     """make_rhs creates a fresh @cfunc capturing parameters as constants.
 
@@ -323,7 +299,6 @@ def test_make_rhs_factory():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_fun_ctx():
     """Compiled RHS parameterized via ctx; no Jacobian."""
     sol = solve_complex_ivp(
@@ -337,7 +312,6 @@ def test_fun_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_dense_jac_ctx():
     """Compiled RHS + compiled dense Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
@@ -353,7 +327,6 @@ def test_dense_jac_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_banded_jac_ctx():
     """Compiled RHS + compiled banded Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
@@ -369,7 +342,6 @@ def test_banded_jac_ctx():
 # ---------------------------------------------------------------------------
 
 
-@_XFAIL
 def test_mixed_python_rhs_compiled_dense_jac():
     """Python return-value RHS with a compiled dense Jacobian."""
     sol = solve_complex_ivp(
@@ -380,7 +352,6 @@ def test_mixed_python_rhs_compiled_dense_jac():
     _check(sol.t, sol.y)
 
 
-@_XFAIL
 def test_mixed_python_rhs_compiled_banded_jac():
     """Python return-value RHS with a compiled banded Jacobian."""
     sol = solve_complex_ivp(
@@ -396,7 +367,6 @@ def test_mixed_python_rhs_compiled_banded_jac():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(reason="ctx parameter not yet accepted by solve_complex_ivp")
 def test_ctx_with_both_python_warns():
     """ctx != None when both fun and jac are Python callables must warn.
 

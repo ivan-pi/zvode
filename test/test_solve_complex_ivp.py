@@ -59,39 +59,19 @@ def _check(t_arr, y_arr, sol_rtol=1e-5):
 # Callback definitions
 # ---------------------------------------------------------------------------
 
-# Path B: in-place, in_place=True  (defined first; scipy-style delegates below)
-
-
-def fun_ip(t, y, dy):
-    dy[0] = LAM1 * y[0] + C * y[1]
-    dy[1] = LAM2 * y[1]
-
-
-def jac_dense_ip(t, y, pd):
-    pd[0, 0] = LAM1
-    pd[0, 1] = C
-    pd[1, 1] = LAM2
-
-
-def jac_banded_ip(t, y, pd, ml, mu):
-    # storage: pd[mu + i - j, j] = J[i, j]
-    pd[mu, 0] = LAM1  # J[0, 0]
-    pd[mu - 1, 1] = C  # J[0, 1]
-    pd[mu, 1] = LAM2  # J[1, 1]
-
-
-# Path A: SciPy-style, in_place=False — delegate to the in-place versions above
-
 
 def fun(t, y):
     dy = np.empty(len(y), dtype=np.complex128)
-    fun_ip(t, y, dy)
+    dy[0] = LAM1 * y[0] + C * y[1]
+    dy[1] = LAM2 * y[1]
     return dy
 
 
 def jac_dense(t, y):
     pd = np.zeros((len(y), len(y)), dtype=np.complex128)
-    jac_dense_ip(t, y, pd)
+    pd[0, 0] = LAM1
+    pd[0, 1] = C
+    pd[1, 1] = LAM2
     return pd
 
 
@@ -99,7 +79,9 @@ def jac_banded(t, y):
     # ZVODE banded storage: pd[mu + i - j, j] = J[i, j]
     # shape = (lband + uband + 1, n) = (2, 2)
     pd = np.zeros((LBAND + UBAND + 1, len(y)), dtype=np.complex128)
-    jac_banded_ip(t, y, pd, LBAND, UBAND)
+    pd[UBAND,     0] = LAM1  # J[0, 0]
+    pd[UBAND - 1, 1] = C     # J[0, 1]
+    pd[UBAND,     1] = LAM2  # J[1, 1]
     return pd
 
 
@@ -165,73 +147,7 @@ def test_jacobian_types(method, jac_fn, jac_kwargs):
 
 
 # ---------------------------------------------------------------------------
-# 3. Callback convention (in_place=False vs in_place=True) × output modes
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun(mode):
-    """in_place=True plain Python callable, no Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip, tspan, Y0, in_place=True, save_steps=save, rtol=RTOL, atol=ATOL
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_dense_jac(mode):
-    """in_place=True with dense Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_dense_ip,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_banded_jac(mode):
-    """in_place=True with banded Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_banded_ip,
-        lband=LBAND,
-        uband=UBAND,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-# ---------------------------------------------------------------------------
-# 4. Backward integration × output modes
+# 3. Backward integration × output modes
 # ---------------------------------------------------------------------------
 
 
@@ -286,7 +202,7 @@ def test_negative_first_step_raises():
 
 
 # ---------------------------------------------------------------------------
-# 5. allow_overshoot
+# 4. allow_overshoot
 # ---------------------------------------------------------------------------
 
 
@@ -311,7 +227,7 @@ def test_allow_overshoot_true():
 
 
 # ---------------------------------------------------------------------------
-# 6. max_num_steps exceeded → RuntimeError
+# 5. max_num_steps exceeded → RuntimeError
 # ---------------------------------------------------------------------------
 
 
@@ -328,7 +244,7 @@ def test_max_num_steps_exceeded():
 
 
 # ---------------------------------------------------------------------------
-# 7. Result object and statistics
+# 6. Result object and statistics
 # ---------------------------------------------------------------------------
 
 
@@ -365,7 +281,7 @@ def test_result_dict_access():
 
 
 # ---------------------------------------------------------------------------
-# 8. refine > 1 (denser output via ZVINDY interpolation)
+# 7. refine > 1 (denser output via ZVINDY interpolation)
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +297,7 @@ def test_refine():
 
 
 # ---------------------------------------------------------------------------
-# 9. Argument validation
+# 8. Argument validation
 # ---------------------------------------------------------------------------
 
 
@@ -462,28 +378,34 @@ def test_miter1_banded_jac_shape_raises():
         solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_wrong, miter=1)
 
 
-def test_compiled_callback_requires_in_place():
-    """Compiled callbacks (numba/ctypes) are incompatible with in_place=False."""
+def test_compiled_callback_works():
+    """Compiled ctypes callbacks are now fully supported (no in_place required).
+
+    The new API detects compiled callbacks by type and routes them through the
+    C function-pointer path automatically.  A valid ZVODE_FUN_CTYPE callback
+    must produce the correct solution.
+    """
     import ctypes
+    from zvode import ZVODE_FUN_CTYPE
 
-    # A minimal ctypes function pointer — address detection is enough to
-    # trigger the check; the function is never actually called.
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
+    # Helper to create numpy views over raw C pointers
+    def _ro128(addr, count):
+        buf = (ctypes.c_double * (2 * count)).from_address(addr)
+        return np.frombuffer(buf, dtype=np.complex128)
 
-    with pytest.raises(ValueError, match="in_place"):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
+    def _rw128(addr, count):
+        buf = (ctypes.c_double * (2 * count)).from_address(addr)
+        return np.ctypeslib.as_array(buf).view(np.complex128)
 
+    @ZVODE_FUN_CTYPE
+    def cfun(neq, t, y_ptr, dy_ptr, ctx):
+        y = _ro128(y_ptr, neq)
+        dy = _rw128(dy_ptr, neq)
+        dy[0] = LAM1 * y[0] + C * y[1]
+        dy[1] = LAM2 * y[1]
 
-def test_compiled_callback_not_yet_implemented():
-    """in_place=True with a compiled callback raises NotImplementedError (stub path)."""
-    import ctypes
-
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
-
-    with pytest.raises(NotImplementedError):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=True)
+    sol = solve_complex_ivp(cfun, [T0, TF], Y0, rtol=1e-8, atol=1e-10)
+    _check(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
