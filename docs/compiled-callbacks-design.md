@@ -151,7 +151,9 @@ the banded-storage convention applies: `pd[mu + i - j + j*nrowpd]`.
 
 Inside a numba `@cfunc`, `numba.farray` creates a 2-D Fortran-order view
 over the flat `pd` pointer, which is often more readable than manual index
-arithmetic:
+arithmetic.
+
+**Dense Jacobian:**
 
 ```python
 import numba as nb
@@ -162,6 +164,24 @@ def my_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
     J[0, 0] = lam1    # df[0]/dy[0]
     J[0, 1] = c       # df[0]/dy[1]
     J[1, 1] = lam2    # df[1]/dy[1]
+```
+
+**Banded Jacobian** (`ml` lower and `mu` upper diagonals):
+
+`nrowpd == 2*ml + mu + 1`.  Only the top `ml + mu + 1` rows of `pd` should
+be written; the bottom `ml` rows are LU fill-in workspace and must be left
+untouched.  Element `df[i]/dy[j]` goes to row `mu + i - j`:
+
+```python
+@cfunc(zvode.zvode_jac_sig)
+def my_banded_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
+    J = nb.farray(pd, (nrowpd, neq))   # shape (2*ml+mu+1, neq)
+    # write only rows 0 .. ml+mu  (top ml+mu+1 rows)
+    # J[mu + i - j, j] = df[i]/dy[j]
+    J[mu,     0] = lam1   # df[0]/dy[0], row = mu+0-0 = mu
+    J[mu - 1, 1] = c      # df[0]/dy[1], row = mu+0-1 = mu-1
+    J[mu + 1, 0] = 0.0    # df[1]/dy[0] (zero, below diagonal)
+    J[mu,     1] = lam2   # df[1]/dy[1]
 ```
 
 ---
@@ -199,7 +219,9 @@ def _get_cfunc_address(fun):
 ```
 
 Called once per `solve_complex_ivp` invocation for `fun` and `jac`.
-The result (integer or `None`) is what gets passed to the C extension.
+Passing a `ctypes._CFuncPtr` directly to C and extracting its value there
+would require undocumented ctypes C API internals; extracting the address in
+Python first is simpler and keeps the C interface clean.
 
 ---
 
@@ -235,69 +257,65 @@ typedef struct {
 
 The Python layer normalises before calling C:
 
-- Compiled callback → pass the integer address as a Python `int`.
-- Python callable → pass the callable `PyObject *` unchanged.
-- `ctx` → pass `ctypes.c_void_p.value` (an integer) or `0`.
+- Compiled callback → `_get_cfunc_address(fun)` returns an integer; passed
+  as a Python `int`.
+- Python callable → passed as the `PyObject *` unchanged.
+- `ctx` → `ctypes.c_void_p.value` (an integer) or `0`.
+- Per-callback kind flags → a pair of `int` values `(fun_kind, jac_kind)`
+  sent explicitly alongside the objects.
 
-In C, `fun_obj` and `jac_obj` are parsed with `O` (generic `PyObject *`).
-The kind is then determined by type inspection:
+Passing explicit kind flags is cleaner than type-inspecting the object in C:
+the Python layer makes the decision, C just reads it.
 
 ```c
-if (PyLong_Check(fun_obj)) {
-    cb.fun_kind     = CB_CFUNC;
-    cb.fun_u.cfunc  = (zvode_fun)(uintptr_t)PyLong_AsSsize_t(fun_obj);
-} else {
-    cb.fun_kind     = CB_PYTHON;
-    cb.fun_u.pyobj  = fun_obj;
-}
-cb.ctx = (void *)(uintptr_t)ctx_addr;   /* 0 when data=None */
+PyObject *fun_obj, *jac_obj;
+int       fun_kind, jac_kind;
+Py_ssize_t ctx_addr;
+
+PyArg_ParseTuple(args, "OOiin...",
+    &fun_obj, &jac_obj, &fun_kind, &jac_kind, &ctx_addr, ...);
+
+cb.fun_kind = (cb_kind_t)fun_kind;
+if (fun_kind == CB_CFUNC)
+    cb.fun_u.cfunc = (zvode_fun)(uintptr_t)PyLong_AsSsize_t(fun_obj);
+else
+    cb.fun_u.pyobj = fun_obj;
+
+cb.jac_kind = (cb_kind_t)jac_kind;
+if (jac_kind == CB_CFUNC)
+    cb.jac_u.cfunc = (zvode_jac)(uintptr_t)PyLong_AsSsize_t(jac_obj);
+else
+    cb.jac_u.pyobj = jac_obj;   /* may be Py_None when jac=None */
+
+cb.ctx = (void *)(uintptr_t)ctx_addr;
 ```
 
-### Function pointer selection (branch outside)
+### Dispatch inside the adaptor
 
-The adaptor is chosen **once** before the integration loop, not on every
-evaluation.  `ZVODE_LOCK` ensures only one integration runs at a time, so
-a static `current_cb` pointer is safe to use:
-
-```c
-static zvode_cb_t *current_cb = NULL;  /* protected by ZVODE_LOCK */
-
-/* ... populate cb ... */
-
-current_cb = &cb;
-
-zvode_fun fun_fptr = (cb.fun_kind == CB_CFUNC)
-                   ? cb.fun_u.cfunc       /* passed directly — zero overhead */
-                   : python_fun_adaptor;
-
-zvode_jac jac_fptr = (cb.jac_kind == CB_CFUNC)
-                   ? cb.jac_u.cfunc
-                   : python_jac_adaptor;
-
-c_zvode(..., fun_fptr, ..., jac_fptr, mf, cb.ctx);
-
-current_cb = NULL;
-```
-
-`cb.ctx` is passed as the `data` argument to `c_zvode`, so compiled callbacks
-receive it directly with no extra indirection.  Python adaptors ignore the
-`data` argument and read `current_cb` instead.
-
-### Adaptors (Python path)
+`&cb` is passed as the single `data` pointer to `c_zvode`.  Two fixed adaptor
+functions — one for fun, one for jac — are always given to `c_zvode`;
+they dispatch on the union tag internally:
 
 ```c
-static void python_fun_adaptor(int *neq, double *t,
-                                const double complex *y,
-                                double complex *dy, void *data)
+static void fun_adaptor(int *neq, double *t,
+                         const double complex *y,
+                         double complex *dy, void *data)
 {
-    zvode_cb_t *cb = current_cb;  /* data == cb->ctx; ignored here */
-    /* ... build numpy arrays, call cb->fun_u.pyobj, copy result ... */
-    /* set cb->error = 1 on exception */
+    zvode_cb_t *cb = data;
+    if (cb->fun_kind == CB_CFUNC) {
+        cb->fun_u.cfunc(*neq, *t, y, dy, cb->ctx);
+    } else {
+        /* build numpy views, call cb->fun_u.pyobj, copy result */
+        /* set cb->error = 1 on exception */
+    }
 }
+
+c_zvode(..., fun_adaptor, ..., jac_adaptor, mf, &cb);
 ```
 
-No redirectors are needed.  Compiled callbacks are passed directly to
-`c_zvode` and receive `cb->ctx` as their `void *ctx` argument.
+The branch is on a value that is constant for the lifetime of the integration;
+branch prediction makes it essentially free.  No static globals are required,
+so this design is safe if the lock is ever relaxed.
 
 ### Single C entry point
 
