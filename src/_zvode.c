@@ -828,8 +828,10 @@ stepbuf_grow(StepBuf *buf)
 static int
 stepbuf_append(StepBuf *buf, double t, const double complex *y)
 {
-    if (buf->size == buf->capacity && stepbuf_grow(buf) < 0)
-        return -1;
+    if (buf->size == buf->capacity) {
+        if (stepbuf_grow(buf) < 0)
+            return -1;
+    }
 
     double        *tp = (double *)         PyArray_DATA(buf->ts);
     double complex *yp = (double complex *) PyArray_DATA(buf->ys);
@@ -840,33 +842,51 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
     return 0;
 }
 
-/* Copy the filled portion of the buffer into freshly allocated output arrays.
+/* Transfer ownership of the filled portion of the buffer into output arrays.
  *   *ts_out : shape (size,)       float64
  *   *ys_out : shape (neq, size)   complex128, F-contiguous
- * Returns 0 on success, -1 on failure (exception set). */
+ * Returns 0 on success, -1 on failure (exception set).
+ *
+ * Avoids data copies: PyArray_Resize trims the backing arrays in-place (a
+ * shrinking realloc), and PyArray_Newshape returns a view because a 1-D
+ * contiguous array can always be reinterpreted with new strides.  Ownership
+ * is transferred after all fallible calls succeed, so buf remains valid if
+ * this function returns -1. */
 static int
-stepbuf_finalize(const StepBuf *buf,
+stepbuf_finalize(StepBuf *buf,
                  PyArrayObject **ts_out,
                  PyArrayObject **ys_out)
 {
-    npy_intp ts_dims[1] = { buf->size };
-    npy_intp ys_dims[2] = { buf->neq, buf->size };
+    PyObject *ret;
 
-    PyArrayObject *ts = (PyArrayObject *) PyArray_EMPTY(1, ts_dims, NPY_FLOAT64,   0);
-    if (!ts) return -1;
+    /* Trim ts to buf->size elements. */
+    npy_intp ts_shape[1] = { buf->size };
+    PyArray_Dims ts_dims  = { ts_shape, 1 };
+    ret = PyArray_Resize(buf->ts, &ts_dims, 0, NPY_CORDER);
+    if (!ret) return -1;
+    Py_DECREF(ret);  /* PyArray_Resize returns Py_None on success */
 
-    /* F-contiguous (neq, size): column k at ys[k*neq .. (k+1)*neq-1],
-     * which is exactly how StepBuf lays out its flat ys buffer. */
-    PyArrayObject *ys = (PyArrayObject *) PyArray_EMPTY(2, ys_dims, NPY_COMPLEX128, 1);
-    if (!ys) { Py_DECREF(ts); return -1; }
+    /* Trim ys to size*neq elements. */
+    npy_intp ys_flat[1] = { (npy_intp)buf->neq * buf->size };
+    PyArray_Dims ys_flat_dims = { ys_flat, 1 };
+    ret = PyArray_Resize(buf->ys, &ys_flat_dims, 0, NPY_CORDER);
+    if (!ret) return -1;
+    Py_DECREF(ret);
 
-    memcpy(PyArray_DATA(ts), PyArray_DATA(buf->ts),
-           (size_t)buf->size * sizeof(double));
-    memcpy(PyArray_DATA(ys), PyArray_DATA(buf->ys),
-           (size_t)buf->neq * buf->size * sizeof(double complex));
+    /* Reshape 1-D (size*neq,) → (neq, size) F-contiguous.  The column-major
+     * layout in StepBuf (column k at offset k*neq) matches F-contiguous
+     * strides exactly, so Newshape returns a view with no data copy. */
+    npy_intp ys_2d_shape[2] = { buf->neq, buf->size };
+    PyArray_Dims ys_2d_dims  = { ys_2d_shape, 2 };
+    PyArrayObject *ys_2d = (PyArrayObject *)
+        PyArray_Newshape(buf->ys, &ys_2d_dims, NPY_FORTRANORDER);
+    if (!ys_2d) return -1;
 
-    *ts_out = ts;
-    *ys_out = ys;
+    /* Transfer ownership.  ys_2d holds buf->ys as its base (refcount 2→1
+     * after the Py_DECREF), so the data outlives the buf fields. */
+    *ts_out = buf->ts;  buf->ts = NULL;
+    *ys_out = ys_2d;
+    Py_DECREF(buf->ys); buf->ys = NULL;
     return 0;
 }
 
