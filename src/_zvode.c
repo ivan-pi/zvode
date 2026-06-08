@@ -395,7 +395,6 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
      * always receives Python callables — never compiled cfuncs. */
     PyObject *fun_obj = NULL, *jac_obj = NULL;
     struct zvode_callbacks cb;
-    memset(&cb, 0, sizeof(cb));
 
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
        &fun_obj,
@@ -422,11 +421,14 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     /* zvode_py always uses Python callbacks; cfuncs go through drive_knots/
      * drive_adaptive which handle the dispatch internally. */
-    cb.fun_kind    = CB_PYTHON;
-    cb.fun_u.pyobj = fun_obj;
-    cb.jac_kind    = CB_PYTHON;
-    cb.jac_u.pyobj = jac_obj;
-    cb.ctx         = NULL;
+    cb = (struct zvode_callbacks){
+        .fun_kind      = CB_PYTHON,
+        .fun_u         = { .pyobj = fun_obj },
+        .jac_kind      = CB_PYTHON,
+        .jac_u         = { .pyobj = jac_obj },
+        .ctx           = NULL,
+        .jac_is_banded = (abs(mf) % 10 == 4),
+    };
 
     if (ZVODE_DEBUG) {
         dump_zvode_args(fun_obj, ap_y, t, tout, itol, ap_rtol, ap_atol,
@@ -441,8 +443,6 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     const int miter = abs(mf) % 10;
     assert(miter <= 5);
     assert(abs(mf)/10 == 1 || abs(mf)/10 == 2); /* method */
-
-    cb.jac_is_banded = (miter == 4);
 
     /* Python validates all of the following before the first call and the
      * arrays are not supposed to change between repeated calls.  Keep the
@@ -623,6 +623,64 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 }
 
 /* ------------------------------------------------------------------ */
+/* cb_init_from_pyobjs — shared callback-struct initialiser           */
+/* ------------------------------------------------------------------ */
+
+/* Populate *cb from the three Python objects that drive_knots_py and
+ * drive_adaptive_py both receive as their first three arguments.
+ *
+ * fun_obj: Python callable  → CB_PYTHON
+ *          Python int        → CB_CFUNC (raw function-pointer address)
+ * jac_obj: Py_None           → CB_PYTHON with pyobj = Py_None (no jac)
+ *          Python callable   → CB_PYTHON
+ *          Python int        → CB_CFUNC
+ * ctx_obj: Python int; 0 maps to NULL via PyLong_AsVoidPtr.
+ * mf     : ZVODE method flag; used to derive jac_is_banded.
+ *
+ * Returns 0 on success; sets PyErr and returns -1 on error.
+ */
+static int
+cb_init_from_pyobjs(struct zvode_callbacks *cb,
+                    PyObject *fun_obj, PyObject *jac_obj,
+                    PyObject *ctx_obj, int mf)
+{
+    if (PyCallable_Check(fun_obj)) {
+        cb->fun_kind    = CB_PYTHON;
+        cb->fun_u.pyobj = fun_obj;
+    } else {
+        cb->fun_kind    = CB_CFUNC;
+        cb->fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
+        if (PyErr_Occurred()) return -1;
+        assert(cb->fun_u.cfunc != NULL);
+    }
+
+    if (jac_obj == Py_None) {
+        cb->jac_kind    = CB_PYTHON;
+        cb->jac_u.pyobj = Py_None;
+    } else if (PyCallable_Check(jac_obj)) {
+        cb->jac_kind    = CB_PYTHON;
+        cb->jac_u.pyobj = jac_obj;
+    } else {
+        cb->jac_kind    = CB_CFUNC;
+        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
+        if (PyErr_Occurred()) return -1;
+        assert(cb->jac_u.cfunc != NULL);
+    }
+
+    cb->ctx = PyLong_AsVoidPtr(ctx_obj);
+    if (PyErr_Occurred()) return -1;
+
+    cb->jac_is_banded = (abs(mf) % 10 == 4);
+
+    assert(cb->fun_kind == CB_CFUNC ||
+           (cb->fun_u.pyobj != NULL && PyCallable_Check(cb->fun_u.pyobj)));
+    assert(cb->jac_kind == CB_CFUNC ||
+           cb->jac_u.pyobj == Py_None ||
+           PyCallable_Check(cb->jac_u.pyobj));
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* drive_knots                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -717,39 +775,8 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
             &PyArray_Type, &ap_iwork))
         return NULL;
 
-    /* Determine fun kind: Python callable or compiled cfunc (passed as int). */
-    if (PyCallable_Check(fun_obj)) {
-        cb.fun_kind    = CB_PYTHON;
-        cb.fun_u.pyobj = fun_obj;
-    } else {
-        cb.fun_kind    = CB_CFUNC;
-        cb.fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
-        if (PyErr_Occurred()) return NULL;
-        assert(cb.fun_u.cfunc != NULL);
-    }
-
-    /* Determine jac kind: Py_None = no jac, callable = Python, else int = cfunc. */
-    if (jac_obj == Py_None) {
-        cb.jac_kind    = CB_PYTHON;
-        cb.jac_u.pyobj = Py_None;   /* sentinel: no jac */
-    } else if (PyCallable_Check(jac_obj)) {
-        cb.jac_kind    = CB_PYTHON;
-        cb.jac_u.pyobj = jac_obj;
-    } else {
-        cb.jac_kind    = CB_CFUNC;
-        cb.jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
-        if (PyErr_Occurred()) return NULL;
-        assert(cb.jac_u.cfunc != NULL);
-    }
-
-    /* ctx: Python int (0 = NULL).  PyLong_AsVoidPtr(0) returns NULL. */
-    cb.ctx = PyLong_AsVoidPtr(ctx_obj);
-    if (PyErr_Occurred()) return NULL;
-
-    /* Caller (Python) is responsible for correct dtypes, shapes, contiguity,
-     * and writability.  Assert the structural invariants in debug builds. */
-    assert(cb.fun_kind == CB_CFUNC || (cb.fun_u.pyobj != NULL && PyCallable_Check(cb.fun_u.pyobj)));
-    assert(cb.jac_kind == CB_CFUNC || cb.jac_u.pyobj == Py_None || PyCallable_Check(cb.jac_u.pyobj));
+    if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
+        return NULL;
 
     const int neq    = (int) PyArray_DIM(ap_y,     0);
     const int nknots = (int) PyArray_DIM(ap_tspan,  0);
@@ -759,8 +786,6 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
     assert((int) PyArray_DIM(ap_ts_out, 0) == nknots);
     assert((int) PyArray_DIM(ap_ys_out, 0) == neq &&
            (int) PyArray_DIM(ap_ys_out, 1) == nknots);
-
-    cb.jac_is_banded = (abs(mf) % 10 == 4);
 
     /* ---- extract raw pointers ---- */
 
@@ -1087,40 +1112,10 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
             &allow_overshoot))
         return NULL;
 
-    /* Determine fun kind. */
-    if (PyCallable_Check(fun_obj)) {
-        cb.fun_kind    = CB_PYTHON;
-        cb.fun_u.pyobj = fun_obj;
-    } else {
-        cb.fun_kind    = CB_CFUNC;
-        cb.fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
-        if (PyErr_Occurred()) return NULL;
-        assert(cb.fun_u.cfunc != NULL);
-    }
+    if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
+        return NULL;
 
-    /* Determine jac kind. */
-    if (jac_obj == Py_None) {
-        cb.jac_kind    = CB_PYTHON;
-        cb.jac_u.pyobj = Py_None;
-    } else if (PyCallable_Check(jac_obj)) {
-        cb.jac_kind    = CB_PYTHON;
-        cb.jac_u.pyobj = jac_obj;
-    } else {
-        cb.jac_kind    = CB_CFUNC;
-        cb.jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
-        if (PyErr_Occurred()) return NULL;
-        assert(cb.jac_u.cfunc != NULL);
-    }
-
-    /* ctx: Python int (0 = NULL). */
-    cb.ctx = PyLong_AsVoidPtr(ctx_obj);
-    if (PyErr_Occurred()) return NULL;
-
-    assert(cb.fun_kind == CB_CFUNC || (cb.fun_u.pyobj != NULL && PyCallable_Check(cb.fun_u.pyobj)));
-    assert(cb.jac_kind == CB_CFUNC || cb.jac_u.pyobj == Py_None || PyCallable_Check(cb.jac_u.pyobj));
     assert(refine >= 1);
-
-    cb.jac_is_banded = (abs(mf) % 10 == 4);
 
     const int neq = (int) PyArray_DIM(ap_y, 0);
     const int lzw = (int) PyArray_SIZE(ap_zwork);

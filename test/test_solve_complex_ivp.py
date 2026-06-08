@@ -59,39 +59,19 @@ def _check(t_arr, y_arr, sol_rtol=1e-5):
 # Callback definitions
 # ---------------------------------------------------------------------------
 
-# Path B: in-place, in_place=True  (defined first; scipy-style delegates below)
-
-
-def fun_ip(t, y, dy):
-    dy[0] = LAM1 * y[0] + C * y[1]
-    dy[1] = LAM2 * y[1]
-
-
-def jac_dense_ip(t, y, pd):
-    pd[0, 0] = LAM1
-    pd[0, 1] = C
-    pd[1, 1] = LAM2
-
-
-def jac_banded_ip(t, y, pd, ml, mu):
-    # storage: pd[mu + i - j, j] = J[i, j]
-    pd[mu, 0] = LAM1  # J[0, 0]
-    pd[mu - 1, 1] = C  # J[0, 1]
-    pd[mu, 1] = LAM2  # J[1, 1]
-
-
-# Path A: SciPy-style, in_place=False — delegate to the in-place versions above
-
 
 def fun(t, y):
     dy = np.empty(len(y), dtype=np.complex128)
-    fun_ip(t, y, dy)
+    dy[0] = LAM1 * y[0] + C * y[1]
+    dy[1] = LAM2 * y[1]
     return dy
 
 
 def jac_dense(t, y):
     pd = np.zeros((len(y), len(y)), dtype=np.complex128)
-    jac_dense_ip(t, y, pd)
+    pd[0, 0] = LAM1
+    pd[0, 1] = C
+    pd[1, 1] = LAM2
     return pd
 
 
@@ -99,7 +79,9 @@ def jac_banded(t, y):
     # ZVODE banded storage: pd[mu + i - j, j] = J[i, j]
     # shape = (lband + uband + 1, n) = (2, 2)
     pd = np.zeros((LBAND + UBAND + 1, len(y)), dtype=np.complex128)
-    jac_banded_ip(t, y, pd, LBAND, UBAND)
+    pd[UBAND,     0] = LAM1  # J[0, 0]
+    pd[UBAND - 1, 1] = C     # J[0, 1]
+    pd[UBAND,     1] = LAM2  # J[1, 1]
     return pd
 
 
@@ -165,73 +147,7 @@ def test_jacobian_types(method, jac_fn, jac_kwargs):
 
 
 # ---------------------------------------------------------------------------
-# 3. Callback convention (in_place=False vs in_place=True) × output modes
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun(mode):
-    """in_place=True plain Python callable, no Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip, tspan, Y0, in_place=True, save_steps=save, rtol=RTOL, atol=ATOL
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_dense_jac(mode):
-    """in_place=True with dense Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_dense_ip,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_banded_jac(mode):
-    """in_place=True with banded Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_banded_ip,
-        lband=LBAND,
-        uband=UBAND,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-# ---------------------------------------------------------------------------
-# 4. Backward integration × output modes
+# 3. Backward integration × output modes
 # ---------------------------------------------------------------------------
 
 
@@ -286,7 +202,7 @@ def test_negative_first_step_raises():
 
 
 # ---------------------------------------------------------------------------
-# 5. allow_overshoot
+# 4. allow_overshoot
 # ---------------------------------------------------------------------------
 
 
@@ -311,7 +227,7 @@ def test_allow_overshoot_true():
 
 
 # ---------------------------------------------------------------------------
-# 6. max_num_steps exceeded → RuntimeError
+# 5. max_num_steps exceeded → RuntimeError
 # ---------------------------------------------------------------------------
 
 
@@ -328,7 +244,7 @@ def test_max_num_steps_exceeded():
 
 
 # ---------------------------------------------------------------------------
-# 7. Result object and statistics
+# 6. Result object and statistics
 # ---------------------------------------------------------------------------
 
 
@@ -365,7 +281,7 @@ def test_result_dict_access():
 
 
 # ---------------------------------------------------------------------------
-# 8. refine > 1 (denser output via ZVINDY interpolation)
+# 7. refine > 1 (denser output via ZVINDY interpolation)
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +297,7 @@ def test_refine():
 
 
 # ---------------------------------------------------------------------------
-# 9. Argument validation
+# 8. Argument validation
 # ---------------------------------------------------------------------------
 
 

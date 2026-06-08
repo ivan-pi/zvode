@@ -114,16 +114,10 @@ class ZVODEResult(dict):
 def _cfunc_address(fun):
     """Return the C function pointer address (int) for compiled callbacks.
 
-    Recognises:
-    * numba ``@cfunc`` objects — via the ``.address`` attribute (same approach
-      as the numbalsoda package)
-    * ctypes ``CFUNCTYPE`` instances — via ``ctypes.cast``
-
+    Recognises ctypes ``CFUNCTYPE`` instances (including ``numba_cfunc.ctypes``).
     Returns ``None`` for ordinary Python callables.
     """
-    if hasattr(fun, "address"):  # numba @cfunc
-        return int(fun.address)
-    if isinstance(fun, ctypes._CFuncPtr):  # ctypes CFUNCTYPE
+    if isinstance(fun, ctypes._CFuncPtr):
         return ctypes.cast(fun, ctypes.c_void_p).value
     return None
 
@@ -378,18 +372,17 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
 
 
 def solve_complex_ivp(
-    fun: Callable[..., Any],
+    fun: Callable[..., Any] | ctypes._CFuncPtr,
     tspan: ArrayLike,
     y0: ArrayLike,
     *,
     rtol: float | ArrayLike = 1.0e-3,
     atol: float | ArrayLike = 1.0e-6,
-    jac: Callable[..., Any] | None = None,
+    jac: Callable[..., Any] | ctypes._CFuncPtr | None = None,
     ctx: ctypes.c_void_p | None = None,
     method: Literal["BDF", "Adams"] = "BDF",
     lband: int | None = None,
     uband: int | None = None,
-    in_place: bool = False,
     save_steps: bool = True,
     refine: int = 1,
     allow_overshoot: bool = False,
@@ -420,9 +413,7 @@ def solve_complex_ivp(
     fun : callable or ctypes._CFuncPtr
         Right-hand side of the system.
 
-        * **Python callable**: ``fun(t, y) -> array_like`` (default, SciPy
-          compatible).  With ``in_place=True``: ``fun(t, y, dy)`` must fill
-          ``dy`` in place.
+        * **Python callable**: ``fun(t, y) -> array_like`` (SciPy-compatible).
         * **Compiled callback** (``ctypes.CFUNCTYPE`` instance or
           ``numba_cfunc.ctypes``): called directly as a C function pointer,
           bypassing the Python interpreter on every RHS evaluation.  The
@@ -458,26 +449,21 @@ def solve_complex_ivp(
         Scalar or per-component arrays are accepted.  Defaults are
         ``rtol=1e-3``, ``atol=1e-6``.
     jac : callable, ctypes._CFuncPtr, or None, optional
-        Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
-        convention as ``fun`` for Python callables:
+        Jacobian of ``fun`` w.r.t. ``y``.
 
-        * ``in_place=False``, full (no ``lband``/``uband``):
+        * **Python callable**, full (no ``lband``/``uband``):
           ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
-        * ``in_place=False``, banded (``lband``/``uband`` set):
+        * **Python callable**, banded (``lband``/``uband`` set):
           ``jac(t, y) -> (lband + uband + 1, n)`` array where element
           ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
-        * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
-        * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          banded matrix ``pd`` in place using the same row convention.
+        * **Compiled callback**: C-level signature::
 
-        For compiled callbacks the C-level signature is::
-
-            void jac(int neq, double t,
-                     const double complex *y,
-                     int ml, int mu,
-                     double complex       *pd,
-                     int nrowpd,
-                     void                 *ctx);
+              void jac(int neq, double t,
+                       const double complex *y,
+                       int ml, int mu,
+                       double complex       *pd,
+                       int nrowpd,
+                       void                 *ctx);
 
         Mixed mode is supported: ``fun`` can be a Python callable while
         ``jac`` is a compiled callback, or vice versa.
@@ -496,11 +482,6 @@ def solve_complex_ivp(
         non-negative integers.  When either is set, the banded Jacobian path
         is used and the other defaults to 0.  The full band has width
         ``lband + uband + 1``.
-    in_place : bool, optional
-        Selects the callback convention for ``fun`` and ``jac``.
-        Default ``False`` (SciPy-compatible return-value form).
-        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
-        use the in-place convention; ``in_place=True`` is required for them.
 
     Returns
     -------
@@ -590,11 +571,10 @@ def solve_complex_ivp(
     queue rather than run in parallel.  Use ``multiprocessing`` for parallel
     independent integrations.
 
-    **C-level callbacks** — the native function-pointer path
-    (``in_place=True`` with a numba ``@cfunc`` or ctypes function) requires
-    a C-level integration loop (``_zvode.drive``) that is not yet
-    implemented.  Once available, the full integration will run in compiled
-    code with no Python involvement in the inner loop.
+    **C-level callbacks** — compiled callbacks (``ctypes.CFUNCTYPE`` instances
+    or ``numba_cfunc.ctypes``) are called directly as C function pointers
+    through the ``drive_knots`` / ``drive_adaptive`` integration loops,
+    bypassing the Python interpreter on every RHS or Jacobian evaluation.
 
     References
     ----------
@@ -655,7 +635,7 @@ def solve_complex_ivp(
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
-    if jac is not None and _miter in (1, 4) and not in_place and _cfunc_address(jac) is None:
+    if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
     jsv = 1 if save_jac else -1
@@ -696,18 +676,14 @@ def solve_complex_ivp(
     # 5.  Normalize callbacks
     # ------------------------------------------------------------------
     #
-    # Path A (in_place=False, plain Python callable)
-    #   Wrap SciPy-style fun(t,y)->array to the in-place form that
-    #   _zvode.zvode and the C drivers expect.
+    # Path A (plain Python callable): wrap SciPy-style fun(t,y)->array to the
+    #   in-place form that _zvode.zvode and the C drivers expect.
     #
-    # Path B (in_place=True, plain Python callable)
-    #   Pass through unchanged; fun must already accept (t, y, dy).
-    #
-    # Path C (compiled cfunc — ctypes._CFuncPtr or numba @cfunc.ctypes)
-    #   Extract the raw C function pointer address (int) and pass it to
-    #   drive_knots / drive_adaptive, which route calls through the compiled
-    #   function pointer without ever entering the Python interpreter.
-    #   Mixed mode (Python fun + compiled jac, or vice versa) is supported.
+    # Path B (compiled cfunc — ctypes._CFuncPtr or numba @cfunc.ctypes):
+    #   extract the raw C function pointer address (int) and pass it to
+    #   drive_knots / drive_adaptive, which call it directly without entering
+    #   the Python interpreter.  Mixed mode (Python fun + compiled jac, or
+    #   vice versa) is supported.
 
     fun_addr = _cfunc_address(fun)
     jac_addr = _cfunc_address(jac) if jac is not None else None
@@ -734,16 +710,9 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     # 5b. Build the fun/jac objects to pass to the C drivers
     # ------------------------------------------------------------------
-    # Compiled callbacks are passed as integer addresses; the C dispatch
-    # in fun_adaptor/jac_adaptor routes them directly to the cfunc.
-    # Python callbacks are either wrapped (Path A) or passed as-is (Path B).
-
     if fun_addr is not None:
-        # Path C fun: pass integer address; C layer calls it directly
+        # Path B fun: pass integer address; C layer calls it directly
         _fun = fun_addr
-    elif in_place:
-        # Path B fun: Python in-place callable; use as-is
-        _fun = fun
     else:
         # Path A fun: SciPy-compatible; validate shape and wrap to in-place
         _validate_fun_shape(fun, n, tspan[0], y0)
@@ -752,11 +721,8 @@ def solve_complex_ivp(
     if jac is None:
         _jac = None
     elif jac_addr is not None:
-        # Path C jac: pass integer address
+        # Path B jac: pass integer address
         _jac = jac_addr
-    elif in_place:
-        # Path B jac: Python in-place callable
-        _jac = jac
     else:
         # Path A jac: SciPy-compatible; wrap to in-place
         _jac = _wrapped_jac(jac, banded=(_miter == 4))
