@@ -58,6 +58,20 @@ ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
     ctypes.c_void_p,  # double complex *dy        (passed as opaque pointer)
     ctypes.c_void_p,  # void *ctx
 )
+"""``ctypes.CFUNCTYPE`` descriptor for compiled RHS callbacks.
+
+Use as a decorator to expose a ctypes-based RHS with the expected signature,
+or pass to :func:`ctypes.cast` to wrap a function pointer loaded from a
+shared library::
+
+    @ZVODE_FUN_CTYPE
+    def my_rhs(neq, t, y_ptr, dy_ptr, ctx): ...
+
+    # or, for a DLL function:
+    rhs = ctypes.cast(lib.my_rhs, ZVODE_FUN_CTYPE)
+
+See :doc:`how-to-compiled-callbacks` for full examples.
+"""
 
 ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
     None,
@@ -70,6 +84,22 @@ ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
     ctypes.c_int,  # nrowpd
     ctypes.c_void_p,  # void *ctx
 )
+"""``ctypes.CFUNCTYPE`` descriptor for compiled Jacobian callbacks.
+
+Use as a decorator to expose a ctypes-based Jacobian with the expected
+signature, or pass to :func:`ctypes.cast` to wrap a function pointer loaded
+from a shared library::
+
+    @ZVODE_JAC_CTYPE
+    def my_jac(neq, t, y_ptr, ml, mu, pd_ptr, nrowpd, ctx): ...
+
+    # or, for a DLL function:
+    jac = ctypes.cast(lib.my_jac, ZVODE_JAC_CTYPE)
+
+``pd`` is column-major (Fortran order).  For a banded Jacobian, element
+``df[i]/dy[j]`` goes to ``pd[mu + i - j + j*nrowpd]``.
+See :doc:`how-to-compiled-callbacks` for full examples.
+"""
 
 # Set ZVODE_BACKEND=python to fall back to the pure-Python knot loop.
 # Any other value (including unset) uses the C-level drive_knots entry point.
