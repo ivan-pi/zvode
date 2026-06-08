@@ -38,4 +38,4 @@ html_theme = "furo"
 html_title = "zvode"
 html_baseurl = "https://ivan-pi.github.io/zvode/"
 
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "release-plan.md"]
