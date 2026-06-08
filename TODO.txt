@@ -74,20 +74,20 @@ system, and developer-facing conveniences such as type stubs and validation.
   enables the path.
   (test_compiled_callback_not_yet_implemented in test_solve_complex_ivp.py;
    test_compiled_callback_requires_in_place covers the in_place=False guard)
-- Domain checking of arguments in Python; there is some duplication of
-  responsibilities, as ZVODE does some checks internally too; doing the checks
-  in Python beforehand allows to raise a proper exception.
-  Constructor checks are in place (_check_tolerances, _determine_miter, int32
-  overflow guards, C-layer array validation on istate==1).  The open question is
-  how to cover checks that only become relevant inside _step_impl — one idea is
-  to call ZVODE once with the same t and tout (a no-op step) to let ZVODE raise
-  ISTATE errors early, but the exact mechanics are still TBD.
+- Domain checking of arguments in Python: detect invalid inputs before the
+  integration loop begins so that proper exceptions with informative messages
+  are raised, without duplicating checks across all three layers (Python / C /
+  Fortran).  ZVODE performs its own runtime checks and reports errors via istate;
+  the Python layer covers what ZVODE cannot catch early or cannot report clearly.
+  Constructor-time checks are in place (_check_tolerances, _determine_miter,
+  int32 overflow guards, C-layer array validation on istate==1 in debug mode).
 - Fix nfev/njev evaluation counters: _validate_fun_shape and _validate_jac_shape
-  each call the user callback once at construction time (to probe the return
-  shape), but neither call is counted toward nfev / njev.  The counters live in
-  a global Fortran COMMON block and are only copied into iwork on return from
-  ZVODE, so incrementing them from Python would require maintaining duplicate
-  Python-side counters.  Both probe calls are marked FIXME in _helpers.py.
+  each call the user callback once at construction time to probe the return shape,
+  but this call is not counted toward nfev / njev.  Applies only to the
+  in_place=False Python callback path; in_place=True and compiled callbacks skip
+  the probe and are already exact.  Fix: maintain a Python-side probe counter
+  inside the _wrapped_fun / _wrapped_jac closures and add it to iwork[11/12] at
+  readout.  Both probe calls are marked FIXME in _helpers.py.
   test_counters.py documents the expected correct behaviour with xfail tests
   and pins the current off-by-one discrepancy so a regression is detectable.
 - Add option to expose ZEWSET and ZWNORM as callback functions
@@ -95,7 +95,9 @@ system, and developer-facing conveniences such as type stubs and validation.
   vendored procedures
 - [DONE] Ensure implicit none is used and all variables are strictly typed
   (c_zvode.f90 uses implicit none throughout; zvode.f is upstream — not modified)
-- Add Python typing hints (the .pyi files)
+- [DONE] Add Python type annotations to solve_complex_ivp (inline annotations on
+  the public signature; .pyi stubs for the internal _zvode C extension are
+  intentionally omitted — users do not interact with it directly)
 - [DONE] Add short docstring Examples sections to ZVODE and solve_complex_ivp
   (a few ``>>>`` lines each; enough for ``help()`` to be useful in a REPL)
 - [DONE] Add See Also section to ZVODE linking to scipy.integrate.OdeSolver
@@ -110,24 +112,34 @@ system, and developer-facing conveniences such as type stubs and validation.
 
 ## 0.4.0 — Performance: C-layer time-stepping, compiled callbacks, and API hardening
 
-The procedural interface from 0.2.0 calls back into Python once per accepted
+The procedural interface from 0.2.0 called back into Python once per accepted
 step.  This release pushes the integration loop into the C extension and
 completes the compiled-callback path (originally planned for 0.2.0), so that
 when RHS/Jacobian are compiled the entire run executes without touching the
 Python interpreter.
 
-- Lower the time-stepping loop from Python into the C extension layer
-  (implement _zvode.drive()):
-  - C driver calls c_zvode in a loop, collecting output into pre-allocated
-    buffers, and only returns to Python when the endpoint is reached or an
-    error occurs
-  - When RHS / Jacobian are pure C function pointers (ctypes, cfunc), no GIL
-    acquisition is needed during the loop
+- [DONE] Lower the time-stepping loop from Python into the C extension layer:
+  - [DONE] _zvode.drive_knots: C loop over output knots using ITASK=1; accepts
+    pre-allocated output arrays; returns (istate, knots_completed) tuple so
+    Python can truncate on failure without raising inside C.
+  - [DONE] _zvode.drive_adaptive: C loop in single-step mode (ITASK=5 or 2);
+    uses a growable StepBuf backed by NumPy arrays (starts at 10 columns,
+    doubles on overflow); supports ZVINDY interpolation when refine > 1.
+  - [DONE] ZVODE_BACKEND environment variable: set to "python" to fall back to
+    the pure-Python loops for debugging; C is the default.  The Python loops
+    are retained for now as a reference / debugging aid; they will be deprecated
+    and removed before 1.0.0 once the C path is battle-tested.
+  - GIL-free path: no GIL release yet — requires compiled callbacks (next item).
 - Enable compiled callbacks (numba @cfunc, ctypes CFUNCTYPE): wire up the
-  fun_addr / jac_addr path in solve_complex_ivp through _zvode.drive(), removing
-  the NotImplementedError stub added in 0.2.0
+  fun_addr / jac_addr path in solve_complex_ivp through drive_knots /
+  drive_adaptive, removing the NotImplementedError stub added in 0.2.0.
+  The C loops are in place; this item is now unblocked.
 - API hardening: review and stabilise the procedural interface signatures,
-  return types, and error reporting ahead of the 1.0.0 API freeze
+  return types, and error reporting ahead of the 1.0.0 API freeze.
+  Type annotations on solve_complex_ivp are done (landed in 0.3.0 work).
+  ZVODEResult fields still need review: t, y, nfev, njev, nlu are definite;
+  decide which of nsteps, nni, ncfn, netf to expose or drop.  Add a
+  __repr__ / pretty-print for convenient interactive inspection.
 - Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface
 
