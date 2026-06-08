@@ -12,7 +12,18 @@ release = _meta["project"]["version"]
 extensions = [
     "myst_parser",
     "sphinx_copybutton",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.napoleon",
 ]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+}
+
+autodoc_member_order = "bysource"
 
 myst_enable_extensions = [
     "colon_fence",
