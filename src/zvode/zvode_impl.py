@@ -153,12 +153,7 @@ class ZVODE(OdeSolver):
     Raises
     ------
     ValueError
-        If `lmm` is not ``'BDF'`` or ``'Adams'``; if the tolerances are
-        invalid; if `first_step`, `min_step`, or `max_step` are out of
-        range; if `max_order` is not a positive integer; if `jsv` is not
-        ``1`` or ``-1``; or if the Jacobian workspace size would overflow
-        the 32-bit integer arithmetic used internally (occurs only for
-        very large systems with dense Jacobians, ``neq > 46340``).
+        On invalid input.
 
     Attributes
     ----------
