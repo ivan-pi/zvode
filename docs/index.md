@@ -177,6 +177,13 @@ Solution of Ordinary Differential Equations," *ACM Trans. Math. Soft.*,
 
 :::{toctree}
 :maxdepth: 1
+:caption: API reference
+
+api
+:::
+
+:::{toctree}
+:maxdepth: 1
 :caption: How-to guides
 
 how-to-procedural-api

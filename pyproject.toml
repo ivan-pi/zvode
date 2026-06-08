@@ -39,6 +39,7 @@ docs = [
     "furo",
     "myst-parser",
     "sphinx-copybutton",
+    "scipy>=1.9",
 ]
 
 [project.urls]
