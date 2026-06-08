@@ -182,19 +182,21 @@ def my_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
 
 **Banded Jacobian** (`ml` lower and `mu` upper diagonals):
 
-`nrowpd == 2*ml + mu + 1`.  Only the top `ml + mu + 1` rows of `pd` should
-be written; the bottom `ml` rows are LU fill-in workspace and must be left
-untouched.  Element `df[i]/dy[j]` goes to row `mu + i - j`:
+At least `ml + mu + 1` rows of `pd` are available for writing.
+Element `df[i]/dy[j]` goes to row `mu + i - j`.  Corner entries where the
+band extends beyond the matrix boundaries (the triangular "slivers") may also
+be written and are simply ignored by the solver.
+
+Create a view over just the writable portion with `nb.farray`:
 
 ```python
 @cfunc(zvode.zvode_jac_sig)
 def my_banded_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
-    J = nb.farray(pd, (nrowpd, neq))   # shape (2*ml+mu+1, neq)
-    # write only rows 0 .. ml+mu  (top ml+mu+1 rows)
+    J = nb.farray(pd, (ml + mu + 1, neq))  # view of writable rows only
     # J[mu + i - j, j] = df[i]/dy[j]
-    J[mu,     0] = lam1   # df[0]/dy[0], row = mu+0-0 = mu
-    J[mu - 1, 1] = c      # df[0]/dy[1], row = mu+0-1 = mu-1
-    J[mu + 1, 0] = 0.0    # df[1]/dy[0] (zero, below diagonal)
+    J[mu,     0] = lam1   # df[0]/dy[0]
+    J[mu - 1, 1] = c      # df[0]/dy[1]
+    J[mu + 1, 0] = 0.0    # df[1]/dy[0]
     J[mu,     1] = lam2   # df[1]/dy[1]
 ```
 
@@ -275,31 +277,27 @@ The Python layer normalises before calling C:
   as a Python `int`.
 - Python callable → passed as the `PyObject *` unchanged.
 - `ctx` → `ctypes.c_void_p.value` (an integer) or `0`.
-- Per-callback kind flags → a pair of `int` values `(fun_kind, jac_kind)`
-  sent explicitly alongside the objects.
 
-Passing explicit kind flags is cleaner than type-inspecting the object in C:
-the Python layer makes the decision, C just reads it.
+`fun_obj` and `jac_obj` are parsed with `O` (generic `PyObject *`).
+The kind is determined by type inspection: a callable is a Python callback;
+anything else is assumed to be a Python `int` holding a function pointer:
 
 ```c
 PyObject *fun_obj, *jac_obj;
-int       fun_kind, jac_kind;
 Py_ssize_t ctx_addr;
 
-PyArg_ParseTuple(args, "OOiin...",
-    &fun_obj, &jac_obj, &fun_kind, &jac_kind, &ctx_addr, ...);
+PyArg_ParseTuple(args, "OOn...",
+    &fun_obj, &jac_obj, &ctx_addr, ...);
 
-cb.fun_kind = (cb_kind_t)fun_kind;
-if (fun_kind == CB_CFUNC)
-    cb.fun_u.cfunc = (zvode_fun)(uintptr_t)PyLong_AsSsize_t(fun_obj);
-else
+if (PyCallable_Check(fun_obj)) {
+    cb.fun_kind    = CB_PYTHON;
     cb.fun_u.pyobj = fun_obj;
+} else {
+    cb.fun_kind    = CB_CFUNC;
+    cb.fun_u.cfunc = (zvode_fun)(uintptr_t)PyLong_AsSsize_t(fun_obj);
+}
 
-cb.jac_kind = (cb_kind_t)jac_kind;
-if (jac_kind == CB_CFUNC)
-    cb.jac_u.cfunc = (zvode_jac)(uintptr_t)PyLong_AsSsize_t(jac_obj);
-else
-    cb.jac_u.pyobj = jac_obj;   /* may be Py_None when jac=None */
+/* same for jac_obj; Py_None treated as CB_PYTHON with null pyobj */
 
 cb.ctx = (void *)(uintptr_t)ctx_addr;
 ```
@@ -311,13 +309,13 @@ functions — one for fun, one for jac — are always given to `c_zvode`;
 they dispatch on the union tag internally:
 
 ```c
-static void fun_adaptor(int *neq, double *t,
+static void fun_adaptor(int neq, double t,
                          const double complex *y,
                          double complex *dy, void *data)
 {
     zvode_cb_t *cb = data;
     if (cb->fun_kind == CB_CFUNC) {
-        cb->fun_u.cfunc(*neq, *t, y, dy, cb->ctx);
+        cb->fun_u.cfunc(neq, t, y, dy, cb->ctx);
     } else {
         /* build numpy views, call cb->fun_u.pyobj, copy result */
         /* set cb->error = 1 on exception */
