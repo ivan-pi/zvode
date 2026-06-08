@@ -632,8 +632,23 @@ def solve_complex_ivp(
 
     >>> import math
     >>> from zvode import solve_complex_ivp
-    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j])
+    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, tspan=[0, 2*math.pi], y0=[1+0j])
     >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
+    True
+
+    Two-equation system ``dw/dt = -i*w**2*z``, ``dz/dt = i*z`` with
+    ``w(0) = 1/2.1``, ``z(0) = 1``.  Analytic solution: ``z(t) = exp(i*t)``,
+    ``w(t) = 1/(z(t) + 1.1)``.  After one full revolution both unknowns return
+    to their initial values:
+
+    >>> def fun(t, y):
+    ...     w, z = y
+    ...     return [-1j*w**2*z, 1j*z]
+    ...
+    >>> sol = solve_complex_ivp(fun, tspan=[0, 2*math.pi], y0=[1/2.1+0j, 1+0j])
+    >>> bool(abs(sol.y[0, -1] - 1/2.1) < 1e-2)   # w returns to initial value
+    True
+    >>> bool(abs(sol.y[1, -1] - 1.0) < 1e-2)      # z returns to 1
     True
     """
 
