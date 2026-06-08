@@ -216,18 +216,22 @@ are internal concerns that should not require any user-visible API changes.
 These features are genuinely useful but are architecturally out of scope for a
 binding to the classic ZVODE Fortran solver, or require effort that is
 disproportionate to the library's current stage.  They are documented here so users
-understand why they are absent and know where to look instead.
+understand why they are absent and know where to look instead.  If you have ideas
+on how any of these could be tackled, contributions and discussion are welcome.
 
 **Sparse or matrix-free Jacobians**
 : ZVODE is a dense/banded Adams-BDF solver and has never had a sparse path.  Adding
-  this would require replacing the underlying solver entirely, e.g. with SUNDIALS
-  CVODE (available via scikits.odes or diffrax).
+  sparse support would require hooking in a sparse direct solver (e.g. SuperLU,
+  UMFPACK, or Y12M) or an iterative/Krylov path for the linear algebra step.  This
+  is a substantial extension to the solver internals and is not a simple drop-in.
 
 **Event/root-finding**
-: ZVODE has no built-in root-detection mechanism.  Implementing it at the Python
-  layer (bisecting between steps) is feasible but adds significant complexity.
+: ZVODE has no built-in root-detection mechanism.  At the Fortran step-based level,
+  users can implement their own event detection by calling `ZVINDY` to interpolate
+  within a step and bisect to the root — it requires some work but is doable.
+  The forward Python interface (`solve_complex_ivp`) does not yet expose this path.
   Users who need event handling today should use `scipy.integrate.solve_ivp` with
-  the `events=` argument on the equivalent doubled real system, or SUNDIALS CVODE.
+  the `events=` argument on the equivalent doubled real system.
 
 **Automatic detection of non-analytic stiff RHS**
 : The analytic requirement for stiff complex-valued problems (Cauchy-Riemann
