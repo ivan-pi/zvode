@@ -967,11 +967,16 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
  *   *ys_out : shape (neq, size)   complex128, F-contiguous
  * Returns 0 on success, -1 on failure (exception set).
  *
- * Avoids data copies: PyArray_Resize trims the backing arrays in-place (a
- * shrinking realloc), and PyArray_Newshape returns a view because a 1-D
- * contiguous array can always be reinterpreted with new strides.  Ownership
- * is transferred after all fallible calls succeed, so buf remains valid if
- * this function returns -1. */
+ * PyArray_Resize performs a shrinking realloc (buf->size <= buf->capacity
+ * always holds here), so the allocator is unlikely to move the data in
+ * practice.  It could in principle, however, which would invalidate any raw
+ * data pointer derived from PyArray_DATA before the call.  This function is
+ * safe because it never retains such a pointer across a Resize call — it
+ * holds only PyArrayObject * handles throughout.
+ * PyArray_Newshape is zero-copy: the 1-D column-major layout in StepBuf
+ * matches F-contiguous (neq, size) strides exactly, so Newshape returns a
+ * view with no data movement.  Ownership is transferred after all fallible
+ * calls succeed, so buf remains valid if this function returns -1. */
 static int
 stepbuf_finalize(StepBuf *buf,
                  PyArrayObject **ts_out,
