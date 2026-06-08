@@ -6,6 +6,7 @@ Python bindings to the classic ZVODE ODE solver.
 [![PyPI](https://img.shields.io/pypi/v/zvode)](https://pypi.org/project/zvode/)
 [![Python](https://img.shields.io/pypi/pyversions/zvode)](https://pypi.org/project/zvode/)
 [![License](https://img.shields.io/github/license/ivan-pi/zvode)](https://github.com/ivan-pi/zvode/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-ivan--pi.github.io%2Fzvode-blue)](https://ivan-pi.github.io/zvode/)
 
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
 first-order ordinary differential equations with complex-valued state, written
@@ -67,8 +68,8 @@ sol = solve_complex_ivp(
 print(sol)
 ```
 
-See [`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md) for output
-modes, banded Jacobians, backward integration, and other options.
+See the [documentation](https://ivan-pi.github.io/zvode/) for output modes,
+banded Jacobians, backward integration, compiled callbacks, and other options.
 
 ### OdeSolver API (scipy-compatible)
 

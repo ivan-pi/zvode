@@ -7,6 +7,8 @@ Python bindings to the classic ZVODE ODE solver.
 [![Python](https://img.shields.io/pypi/pyversions/zvode)](https://pypi.org/project/zvode/)
 [![License](https://img.shields.io/github/license/ivan-pi/zvode)](https://github.com/ivan-pi/zvode/blob/main/LICENSE)
 
+[Source on GitHub](https://github.com/ivan-pi/zvode)
+
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
 first-order ordinary differential equations with complex-valued state, written
 by P. N. Brown, G. D. Byrne, and A. C. Hindmarsh [2]. It is

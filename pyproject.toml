@@ -44,6 +44,7 @@ docs = [
 
 [project.urls]
 Repository = "https://github.com/ivan-pi/zvode"
+Documentation = "https://ivan-pi.github.io/zvode/"
 Issues = "https://github.com/ivan-pi/zvode/issues"
 
 [tool.pytest]
