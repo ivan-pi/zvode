@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define NPY_TARGET_VERSION NPY_1_23_API_VERSION
 #define NPY_NO_DEPRECATED_API NPY_1_23_API_VERSION
@@ -266,10 +267,8 @@ static void fun_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    const npy_intp dims_dy[1] = { neq };
-
     PyArrayObject *ap_dy =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_dy, NPY_COMPLEX128, dy);
+        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
     if (ap_dy == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
@@ -440,8 +439,7 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     assert(neq > 0);          /* Python guarantees y0 is non-empty */
     assert(itask >= 1 && itask <= 5);  /* Python manages itask internally */
 
-    const int miter = abs(mf) % 10;
-    assert(miter <= 5);
+    assert(abs(mf) % 10 <= 5);
     assert(abs(mf)/10 == 1 || abs(mf)/10 == 2); /* method */
 
     /* Python validates all of the following before the first call and the
@@ -583,13 +581,6 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     assert(ldyh >= n);
 
-    if ((int) PyArray_SIZE(ap_dky) < n) {
-        PyErr_Format(PyExc_ValueError,
-            "zvindy: dky must have length >= %d (got %d)",
-            n, (int) PyArray_SIZE(ap_dky));
-        return NULL;
-    }
-
     if (k < 0 || k > nq) {
         PyErr_Format(PyExc_ValueError,
             "zvindy: k must satisfy 0 <= k <= %d (got %d)", nq, k);
@@ -644,6 +635,8 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
                     PyObject *fun_obj, PyObject *jac_obj,
                     PyObject *ctx_obj, int mf)
 {
+    cb->error = 0;
+
     if (PyCallable_Check(fun_obj)) {
         cb->fun_kind    = CB_PYTHON;
         cb->fun_u.pyobj = fun_obj;
@@ -974,11 +967,11 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
  *   *ys_out : shape (neq, size)   complex128, F-contiguous
  * Returns 0 on success, -1 on failure (exception set).
  *
- * Avoids data copies: PyArray_Resize trims the backing arrays in-place (a
- * shrinking realloc), and PyArray_Newshape returns a view because a 1-D
- * contiguous array can always be reinterpreted with new strides.  Ownership
- * is transferred after all fallible calls succeed, so buf remains valid if
- * this function returns -1. */
+ * Trims the backing arrays to buf->size and transfers ownership to the
+ * caller via *ts_out and *ys_out.  PyArray_Resize is a shrinking realloc
+ * that could in principle move the data (invalidating any raw PyArray_DATA
+ * pointer held across the call); safe here because only PyArrayObject *
+ * handles are retained.  buf remains valid if this function returns -1. */
 static int
 stepbuf_finalize(StepBuf *buf,
                  PyArrayObject **ts_out,
