@@ -480,8 +480,11 @@ def solve_complex_ivp(
     rtol, atol : float or array_like, optional
         Relative and absolute local error tolerances.  The solver keeps the
         local error roughly below ``rtol * |y(i)| + atol`` for each component.
-        Scalar or per-component arrays are accepted.  Defaults are
-        ``rtol=1e-3``, ``atol=1e-6``.
+        ``rtol`` controls relative accuracy (number of correct digits);
+        ``atol`` controls absolute accuracy and guards against loss of
+        significance when a component passes through zero.  Scalar or
+        per-component arrays are accepted.  Defaults are ``rtol=1e-3``,
+        ``atol=1e-6``.
     jac : callable, ctypes._CFuncPtr, or None, optional
         Jacobian of ``fun`` w.r.t. ``y``.
 
@@ -502,10 +505,14 @@ def solve_complex_ivp(
         Mixed mode is supported: ``fun`` can be a Python callable while
         ``jac`` is a compiled callback, or vice versa.
     lband, uband : int or None, optional
-        Lower and upper half-bandwidths of a banded Jacobian.  Must be
-        non-negative integers.  When either is set, the banded Jacobian path
-        is used and the other defaults to 0.  The full band has width
-        ``lband + uband + 1``.
+        Lower and upper half-bandwidths of a banded Jacobian, i.e.,
+        ``jac[i, j]`` is assumed zero unless ``i - lband <= j <= i + uband``.
+        Must be non-negative integers.  When either is set, the banded Jacobian
+        path is used and the other defaults to 0.  The full band has width
+        ``lband + uband + 1``.  Can be used with ``jac=None`` to have the
+        solver estimate the Jacobian by finite differences within the band
+        only, reducing the number of function evaluations compared to a full
+        finite-difference Jacobian.
     method : {'BDF', 'Adams'}, optional
         Linear multistep method.  ``'BDF'`` (default) for stiff problems
         (max order 5); ``'Adams'`` for non-stiff (max order 12).
@@ -563,7 +570,8 @@ def solve_complex_ivp(
     min_step : float, optional
         Minimum allowed step size.  Default 0.
     max_step : float, optional
-        Maximum allowed step size.  Default ``np.inf``.
+        Maximum allowed step size.  Default ``np.inf``, i.e., the step size
+        is not bounded and determined solely by the solver.
     max_num_steps : int, optional
         Maximum number of internal steps between two consecutive output
         points.  Default 1 000 000.  Lower this to cap computational work
