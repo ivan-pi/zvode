@@ -80,7 +80,7 @@ system, and developer-facing conveniences such as type stubs and validation.
   Fortran).  ZVODE performs its own runtime checks and reports errors via istate;
   the Python layer covers what ZVODE cannot catch early or cannot report clearly.
   Constructor-time checks are in place (_check_tolerances, _determine_miter,
-  int32 overflow guards, C-layer array validation on istate==1).
+  int32 overflow guards, C-layer array validation on istate==1 in debug mode).
 - Fix nfev/njev evaluation counters: _validate_fun_shape and _validate_jac_shape
   each call the user callback once at construction time to probe the return shape,
   but this call is not counted toward nfev / njev.  Applies only to the
@@ -134,8 +134,10 @@ Python interpreter.
   The C loops are in place; this item is now unblocked.
 - API hardening: review and stabilise the procedural interface signatures,
   return types, and error reporting ahead of the 1.0.0 API freeze.
-  Type annotations on solve_complex_ivp are done (landed in 0.3.0 work);
-  ZVODEResult return type stabilised in 0.2.0.
+  Type annotations on solve_complex_ivp are done (landed in 0.3.0 work).
+  ZVODEResult fields still need review: t, y, nfev, njev, nlu are definite;
+  decide which of nsteps, nni, ncfn, netf to expose or drop.  Add a
+  __repr__ / pretty-print for convenient interactive inspection.
 - Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface
 
