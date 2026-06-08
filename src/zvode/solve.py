@@ -560,21 +560,65 @@ def solve_complex_ivp(
     Raises
     ------
     ValueError
-        On invalid arguments.
+        If `tspan` is not a 1-D array with at least two strictly monotonic
+        elements; if `y0` is not 1-D; if `method` is not ``'BDF'`` or
+        ``'Adams'``; if `refine` is less than 1; or if `max_num_steps`,
+        `first_step`, `min_step`, or `max_step` are out of range.
+    TypeError
+        If `ctx` is not a ``ctypes.c_void_p`` or ``None``.
     RuntimeError
-        When the solver cannot reach the requested endpoint.
+        If the solver cannot advance to the next output point.  Possible
+        causes: exceeding `max_num_steps` internal steps (ISTATE ``-1``),
+        overly tight tolerances (ISTATE ``-2``), repeated error-test
+        failures (ISTATE ``-4``), repeated convergence failures — possibly
+        indicating a bad Jacobian or wrong `method` (ISTATE ``-5``), or
+        an error weight becoming zero because a solution component
+        vanished and ``atol=0`` (ISTATE ``-6``).  The exception message
+        includes the ZVODE ``ISTATE`` code and a description of the
+        failure.
 
     Notes
     -----
-    **Thread safety** — ``solve_complex_ivp`` holds a process-wide lock for
-    the entire integration.  Concurrent calls from multiple threads will
-    queue rather than run in parallel.  Use ``multiprocessing`` for parallel
-    independent integrations.
+    **Stiffness and method selection** — A problem is *stiff* when the
+    Jacobian matrix df/dy has an eigenvalue whose real part is negative
+    and large in magnitude compared to the reciprocal of the t span of
+    interest.  Use ``method='BDF'`` (the default) for stiff problems and
+    ``method='Adams'`` for smooth, non-stiff ones.
 
-    **C-level callbacks** — compiled callbacks (``ctypes.CFUNCTYPE`` instances
-    or ``numba_cfunc.ctypes``) are called directly as C function pointers
-    through the ``drive_knots`` / ``drive_adaptive`` integration loops,
-    bypassing the Python interpreter on every RHS or Jacobian evaluation.
+    **Analyticity requirement for BDF** — When solving a stiff system
+    with the BDF method, the right-hand side `fun` must be *analytic*:
+    each component f(i) must be an analytic function of each y(j), so
+    that the partial derivative df(i)/dy(j) is a unique complex number.
+    This property is critical to the way ZVODE solves the dense or
+    banded linear systems that arise in the stiff case.  For a complex
+    stiff ODE system where `fun` is **not** analytic, ZVODE is likely to
+    have convergence failures; instead use a real-valued solver on the
+    equivalent real system of doubled dimension.
+
+    **Error control** — The solver controls the root-mean-square (rms)
+    norm of the estimated local error vector e = (e(i)) such that::
+
+        rms-norm(e(i) / EWT(i)) <= 1,
+
+    where::
+
+        EWT(i) = rtol * abs(y(i)) + atol      (scalar tolerances)
+        EWT(i) = rtol * abs(y(i)) + atol(i)   (array tolerances)
+
+    Use ``rtol=0.0`` for pure absolute error control, and ``atol=0.0``
+    for pure relative error control.  Actual (global) errors may exceed
+    these local tolerances; choose them conservatively.
+
+    **Thread safety** — ``solve_complex_ivp`` holds a process-wide lock
+    for the entire integration.  Concurrent calls from multiple threads
+    will queue rather than run in parallel.  Use `multiprocessing` for
+    parallel independent integrations.
+
+    **C-level callbacks** — Compiled callbacks (``ctypes.CFUNCTYPE``
+    instances or ``numba_cfunc.ctypes``) are called directly as C
+    function pointers through the ``drive_knots`` / ``drive_adaptive``
+    integration loops, bypassing the Python interpreter on every RHS or
+    Jacobian evaluation.
 
     References
     ----------

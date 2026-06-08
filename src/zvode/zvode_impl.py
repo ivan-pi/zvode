@@ -83,10 +83,10 @@ class ZVODE(OdeSolver):
 
     .. note::
 
-        When using ZVODE for a stiff system, `f` must be analytic (i.e., each
-        component f(i) must be an analytic function of each y(j)).  For a
-        complex stiff system where `f` is not analytic, use a real-valued
-        solver on the equivalent real system of doubled dimension.
+        When using ZVODE for a stiff system, `fun` must be *analytic* (i.e.,
+        each component f(i) must be an analytic function of each y(j)).  For
+        a complex stiff system where `fun` is *not* analytic, use a
+        real-valued solver on the equivalent real system of doubled dimension.
 
     Parameters
     ----------
@@ -149,6 +149,16 @@ class ZVODE(OdeSolver):
         needs updating.  Ignored when no full Jacobian matrix is stored, i.e.
         for functional iteration (``miter=0``) and the diagonal approximation
         (``miter=3``).
+
+    Raises
+    ------
+    ValueError
+        If `lmm` is not ``'BDF'`` or ``'Adams'``; if the tolerances are
+        invalid; if `first_step`, `min_step`, or `max_step` are out of
+        range; if `max_order` is not a positive integer; if `jsv` is not
+        ``1`` or ``-1``; or if the Jacobian workspace size would overflow
+        the 32-bit integer arithmetic used internally (occurs only for
+        very large systems with dense Jacobians, ``neq > 46340``).
 
     Attributes
     ----------
