@@ -1,18 +1,33 @@
 # Docs
 
+The documentation is built with [Sphinx](https://www.sphinx-doc.org/) and
+published to <https://ivan-pi.github.io/zvode/>.
+
+To build locally:
+
+```bash
+pip install ".[docs]"
+sphinx-build -b html docs docs/_build/html
+```
+
 ## How-to guides
 
-**[`how-to-procedural-api.md`](how-to-procedural-api.md)** — Step-by-step guide
-to `solve_complex_ivp`: output modes, method selection, dense and banded
-Jacobians, integration statistics, backward integration, and in-place callbacks.
-Start here if you are new to the package.
+The guides are written in reStructuredText and use Sphinx cross-references
+to link to the API reference.
 
-**[`banded_jacobian.md`](banded_jacobian.md)** — Banded Jacobian interface:
-what lower/upper half-bandwidths mean, the compact column-oriented storage
-formula with ASCII layout diagrams, how to write the `jac` callback, output
-modes of `solve_complex_ivp`, and a memory-saving comparison table.
+- **[`how-to-procedural-api.rst`](how-to-procedural-api.rst)** — output modes,
+  method selection, dense and banded Jacobians, backward integration.
+- **[`banded_jacobian.rst`](banded_jacobian.rst)** — compact column-oriented
+  storage layout with worked example and memory-saving comparison table.
+- **[`how-to-compiled-callbacks.rst`](how-to-compiled-callbacks.rst)** —
+  compiled RHS and Jacobian callbacks via numba `@cfunc` or a shared library,
+  including the `ctx` parameter for passing parameters without globals.
 
----
+## API reference
+
+[`api.rst`](api.rst) is the Sphinx autodoc entry point.  It pulls docstrings
+from the installed package, so the package must be installed (e.g.
+`pip install -e .`) before building the docs.
 
 ## Examples (OdeSolver API)
 
