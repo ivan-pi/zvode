@@ -739,10 +739,373 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 }
 
 
+/* ------------------------------------------------------------------ */
+/* StepBuf: growable column buffer for adaptive stepping output       */
+/*                                                                    */
+/* Lifecycle:                                                         */
+/*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
+/*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
+/*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
+/*   stepbuf_free(&buf)                  -- release backing arrays   */
+/*                                                                    */
+/* ts is float64 shape (capacity,); ys is complex128 shape           */
+/* (capacity*neq,) in column-major order: column k occupies          */
+/* ys[k*neq .. (k+1)*neq-1].  Both are PyArrayObjects owned by the  */
+/* struct; stepbuf_free decrefs them.                                 */
+/* ------------------------------------------------------------------ */
+
+/* Initial column capacity.  Doubled on each overflow. */
+#define STEPBUF_INIT_CAP 10
+
+typedef struct {
+    PyArrayObject *ts;  /* float64, 1-D, length = capacity             */
+    PyArrayObject *ys;  /* complex128, 1-D, length = capacity * neq    */
+                        /* column k occupies ys[k*neq .. (k+1)*neq-1]  */
+    int neq;
+    int size;           /* columns filled so far                        */
+    int capacity;       /* allocated columns                            */
+} StepBuf;
+
+/* Allocate backing arrays.  Returns 0 on success, -1 on failure (exception set). */
+static int
+stepbuf_init(StepBuf *buf, int neq, int init_cap)
+{
+    assert(neq > 0);
+    assert(init_cap > 0);
+
+    npy_intp dt[1] = { init_cap };
+    npy_intp dy[1] = { (npy_intp)init_cap * neq };
+
+    buf->ts = (PyArrayObject *) PyArray_EMPTY(1, dt, NPY_FLOAT64,   0);
+    if (!buf->ts) return -1;
+
+    buf->ys = (PyArrayObject *) PyArray_EMPTY(1, dy, NPY_COMPLEX128, 0);
+    if (!buf->ys) { Py_DECREF(buf->ts); buf->ts = NULL; return -1; }
+
+    buf->neq      = neq;
+    buf->size     = 0;
+    buf->capacity = init_cap;
+    return 0;
+}
+
+/* Release backing arrays (safe to call even after a partial init). */
+static void
+stepbuf_free(StepBuf *buf)
+{
+    Py_XDECREF(buf->ts); buf->ts = NULL;
+    Py_XDECREF(buf->ys); buf->ys = NULL;
+}
+
+/* Double capacity, allocating fresh arrays and copying existing data.
+ * Returns 0 on success, -1 on failure (exception set; buf unchanged). */
+static int
+stepbuf_grow(StepBuf *buf)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->capacity > 0);
+    assert(buf->size == buf->capacity);  /* grow is only called when full */
+#ifndef NDEBUG
+    int old_cap  = buf->capacity;
+    int old_size = buf->size;
+#endif
+
+    StepBuf tmp;
+    if (stepbuf_init(&tmp, buf->neq, buf->capacity * 2) < 0)
+        return -1;  /* buf unchanged */
+
+    memcpy(PyArray_DATA(tmp.ts), PyArray_DATA(buf->ts),
+           (size_t)buf->size * sizeof(double));
+    memcpy(PyArray_DATA(tmp.ys), PyArray_DATA(buf->ys),
+           (size_t)buf->size * buf->neq * sizeof(double complex));
+    tmp.size = buf->size;
+
+    StepBuf old = *buf;
+    *buf = tmp;
+    stepbuf_free(&old);
+
+    assert(buf->capacity == old_cap  * 2);
+    assert(buf->size     == old_size);
+    return 0;
+}
+
+/* Append one (t, y[neq]) pair, growing if needed.
+ * Returns 0 on success, -1 on failure (exception set). */
+static int
+stepbuf_append(StepBuf *buf, double t, const double complex *y)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size <= buf->capacity);
+    assert(y != NULL);
+#ifndef NDEBUG
+    int old_size = buf->size;
+#endif
+
+    if (buf->size == buf->capacity) {
+        if (stepbuf_grow(buf) < 0)
+            return -1;
+    }
+
+    double        *tp = (double *)         PyArray_DATA(buf->ts);
+    double complex *yp = (double complex *) PyArray_DATA(buf->ys);
+    tp[buf->size] = t;
+    memcpy(yp + (npy_intp)buf->size * buf->neq, y,
+           (size_t)buf->neq * sizeof(double complex));
+    buf->size++;
+
+    assert(buf->size == old_size + 1);
+    assert(buf->size <= buf->capacity);
+    return 0;
+}
+
+/* Transfer ownership of the filled portion of the buffer into output arrays.
+ *   *ts_out : shape (size,)       float64
+ *   *ys_out : shape (neq, size)   complex128, F-contiguous
+ * Returns 0 on success, -1 on failure (exception set).
+ *
+ * Avoids data copies: PyArray_Resize trims the backing arrays in-place (a
+ * shrinking realloc), and PyArray_Newshape returns a view because a 1-D
+ * contiguous array can always be reinterpreted with new strides.  Ownership
+ * is transferred after all fallible calls succeed, so buf remains valid if
+ * this function returns -1. */
+static int
+stepbuf_finalize(StepBuf *buf,
+                 PyArrayObject **ts_out,
+                 PyArrayObject **ys_out)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);           /* nothing to export from an empty buffer */
+    assert(buf->size <= buf->capacity);
+
+    PyObject *ret;
+
+    /* Trim ts to buf->size elements. */
+    npy_intp ts_shape[1] = { buf->size };
+    PyArray_Dims ts_dims  = { ts_shape, 1 };
+    ret = PyArray_Resize(buf->ts, &ts_dims, 0, NPY_CORDER);
+    if (!ret) return -1;
+    Py_DECREF(ret);  /* PyArray_Resize returns Py_None on success */
+
+    /* Trim ys to size*neq elements. */
+    npy_intp ys_flat[1] = { (npy_intp)buf->neq * buf->size };
+    PyArray_Dims ys_flat_dims = { ys_flat, 1 };
+    ret = PyArray_Resize(buf->ys, &ys_flat_dims, 0, NPY_CORDER);
+    if (!ret) return -1;
+    Py_DECREF(ret);
+
+    /* Reshape 1-D (size*neq,) → (neq, size) F-contiguous.  The column-major
+     * layout in StepBuf (column k at offset k*neq) matches F-contiguous
+     * strides exactly, so Newshape returns a view with no data copy. */
+    npy_intp ys_2d_shape[2] = { buf->neq, buf->size };
+    PyArray_Dims ys_2d_dims  = { ys_2d_shape, 2 };
+    PyArrayObject *ys_2d = (PyArrayObject *)
+        PyArray_Newshape(buf->ys, &ys_2d_dims, NPY_FORTRANORDER);
+    if (!ys_2d) return -1;
+
+    /* Transfer ownership.  ys_2d holds buf->ys as its base (refcount 2→1
+     * after the Py_DECREF), so the data outlives the buf fields. */
+    *ts_out = buf->ts;  buf->ts = NULL;
+    *ys_out = ys_2d;
+    Py_DECREF(buf->ys); buf->ys = NULL;
+
+    assert(buf->ts   == NULL && buf->ys == NULL);  /* ownership fully transferred */
+    assert(*ts_out   != NULL && *ys_out != NULL);
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* drive_adaptive                                                     */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_adaptive_doc,
+"drive_adaptive(fun, jac, mf, t0, t_bound, y,\n"
+"               itol, rtol, atol, iopt, zwork, rwork, iwork,\n"
+"               refine, allow_overshoot) -> (ts, ys, istate)\n"
+"\n"
+"Integrate a complex ODE system in single-step mode, collecting every\n"
+"accepted step into growable output buffers.\n"
+"\n"
+"Uses ITASK=5 by default (solver may not overshoot t_bound = rwork[0] =\n"
+"TCRIT).  When allow_overshoot=1 uses ITASK=2 instead.\n"
+"\n"
+"When refine > 1, inserts (refine - 1) interpolated points inside each\n"
+"accepted step via ZVINDY before appending the step endpoint.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun           : callable -- RHS, called as fun(t, y, dy).\n"
+"jac           : callable or None -- Jacobian.\n"
+"mf            : int -- ZVODE method flag.\n"
+"t0, t_bound   : float -- start and end times.\n"
+"y             : complex128 ndarray, 1-D, writable -- working state;\n"
+"               must be initialised to y(t0) by the caller.\n"
+"itol          : int -- tolerance mode flag (1-4).\n"
+"rtol, atol    : float64 scalar or 1-D ndarray -- tolerances.\n"
+"iopt          : int -- optional-input flag (0 or 1).\n"
+"zwork         : complex128 ndarray, 1-D, writable -- complex workspace.\n"
+"rwork         : float64 ndarray, 1-D, writable -- real workspace;\n"
+"               rwork[0] must be set to t_bound (TCRIT) by the caller.\n"
+"iwork         : int32 ndarray, 1-D, writable -- integer workspace.\n"
+"refine        : int >= 1 -- interpolated sub-points per accepted step.\n"
+"allow_overshoot : int (0 or 1) -- 0: ITASK=5 (default), 1: ITASK=2.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"(ts, ys, istate) : (float64 ndarray shape (m,),\n"
+"                    complex128 ndarray shape (neq, m) F-contiguous,\n"
+"                    int)\n"
+"    ts and ys include the initial condition at index 0.  On solver\n"
+"    failure istate < 0 and the arrays contain all points up to and\n"
+"    including the last successful step.\n"
+"\n"
+"Raises\n"
+"------\n"
+"Exception\n"
+"    Propagated immediately if fun or jac raises inside a callback.\n"
+"RuntimeError\n"
+"    If ZVINDY fails during refinement interpolation.\n");
+
+static PyObject *
+drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_y     = NULL;
+    PyArrayObject *ap_rtol  = NULL, *ap_atol  = NULL;
+    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
+    double t0, t_bound;
+    int mf, itol, iopt, refine, allow_overshoot;
+
+    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL,
+                                  .jac_is_banded = 0, .error = 0 };
+
+    if (!PyArg_ParseTuple(args, "OOiddO!iO!O!iO!O!O!ii:drive_adaptive",
+            &cb.fun,
+            &cb.jac,
+            &mf,
+            &t0, &t_bound,
+            &PyArray_Type, &ap_y,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork,
+            &refine,
+            &allow_overshoot))
+        return NULL;
+
+    assert(PyCallable_Check(cb.fun));
+    assert(cb.jac == Py_None || PyCallable_Check(cb.jac));
+    assert(refine >= 1);
+
+    cb.jac_is_banded = (abs(mf) % 10 == 4);
+
+    const int neq = (int) PyArray_DIM(ap_y, 0);
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
+
+    double complex       *y     = (double complex *) PyArray_DATA(ap_y);
+    double complex       *zwork = (double complex *) PyArray_DATA(ap_zwork);
+    double               *rwork = (double *)         PyArray_DATA(ap_rwork);
+    int                  *iwork = (int *)            PyArray_DATA(ap_iwork);
+    const double         *rtol  = (const double *)   PyArray_DATA(ap_rtol);
+    const double         *atol  = (const double *)   PyArray_DATA(ap_atol);
+
+    /* Scratch buffer for ZVINDY interpolated output; allocated once if
+     * refine > 1, managed by Python's allocator. */
+    double complex *dky = NULL;
+    if (refine > 1) {
+        dky = PyMem_New(double complex, neq);
+        if (!dky) { PyErr_NoMemory(); return NULL; }
+    }
+
+    StepBuf buf = {0};
+    if (stepbuf_init(&buf, neq, STEPBUF_INIT_CAP) < 0)
+        goto cleanup;
+
+    /* Store initial condition. */
+    double t = t0;
+    if (stepbuf_append(&buf, t, y) < 0)
+        goto cleanup;
+
+    const int itask   = allow_overshoot ? 2 : 5;
+    int       istate  = 1;
+    assert(t_bound != t0);  /* Python layer guarantees strict monotonicity of tspan */
+    double    direction = (t_bound > t0) ? 1.0 : -1.0;
+
+    while (direction * (t_bound - t) > 0.0) {
+        double t_old = t;
+
+        c_zvode(
+            &fun_adaptor, neq, y,
+            &t, t_bound,
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            &jac_adaptor,
+            mf,
+            &cb
+        );
+
+        if (cb.error) {
+            assert(PyErr_Occurred());
+            goto cleanup;
+        }
+
+        if (istate < 0)
+            break;  /* solver error — return what we have so far */
+
+        if (refine > 1) {
+            /* Nordsieck array yh lives at zwork[0..neq*(nq+1)-1], ldyh = neq.
+             * h == hu immediately after an accepted step. */
+            int    nq = iwork[13];    /* NQU: IWORK(14), order last used   */
+            double hu = rwork[10];    /* HU:  RWORK(11), step size last used */
+            struct zvode_step_t step = { .h = hu, .tn = t, .hu = hu, .nq = nq };
+
+            for (int i = 1; i < refine; i++) {
+                double t_i = t_old + (double)i * (t - t_old) / refine;
+                int iflag = c_zvindy(neq, t_i, zwork, neq, 0, dky, &step);
+                if (iflag != 0) {
+                    PyErr_Format(PyExc_RuntimeError,
+                        "ZVINDY failed (iflag=%d) interpolating at t=%.17g",
+                        iflag, t_i);
+                    goto cleanup;
+                }
+                if (stepbuf_append(&buf, t_i, dky) < 0)
+                    goto cleanup;
+            }
+        }
+
+        if (stepbuf_append(&buf, t, y) < 0)
+            goto cleanup;
+    }
+
+    /* Build the final output arrays from the filled portion of the buffer. */
+    PyArrayObject *ts_out = NULL, *ys_out = NULL;
+    if (stepbuf_finalize(&buf, &ts_out, &ys_out) < 0)
+        goto cleanup;
+
+    PyMem_Free(dky);
+    stepbuf_free(&buf);
+
+    /* "N" steals the references — no explicit Py_DECREF needed. */
+    return Py_BuildValue("(NNi)", ts_out, ys_out, istate);
+
+cleanup:
+    PyMem_Free(dky);
+    stepbuf_free(&buf);
+    return NULL;
+}
+
+
 static struct PyMethodDef zvode_module_methods[] = {
-    {"zvode",       zvode_py,       METH_VARARGS, zvode_doc},
-    {"zvindy",      zvindy_py,      METH_VARARGS, zvindy_doc},
-    {"drive_knots", drive_knots_py, METH_VARARGS, drive_knots_doc},
+    {"zvode",          zvode_py,          METH_VARARGS, zvode_doc},
+    {"zvindy",         zvindy_py,         METH_VARARGS, zvindy_doc},
+    {"drive_knots",    drive_knots_py,    METH_VARARGS, drive_knots_doc},
+    {"drive_adaptive", drive_adaptive_py, METH_VARARGS, drive_adaptive_doc},
     {NULL, NULL, 0, NULL}
 };
 
