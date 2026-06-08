@@ -15,5 +15,6 @@ myst_enable_extensions = [
 
 html_theme = "furo"
 html_title = "zvode"
+html_baseurl = "https://ivan-pi.github.io/zvode/"
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md"]
