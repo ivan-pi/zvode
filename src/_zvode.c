@@ -1039,6 +1039,7 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
 
     const int itask   = allow_overshoot ? 2 : 5;
     int       istate  = 1;
+    assert(t_bound != t0);  /* Python layer guarantees strict monotonicity of tspan */
     double    direction = (t_bound > t0) ? 1.0 : -1.0;
 
     while (direction * (t_bound - t) > 0.0) {
