@@ -557,7 +557,7 @@ def solve_complex_ivp(
 
     References
     ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
+    .. [Brown1989] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
        Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
        10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
 

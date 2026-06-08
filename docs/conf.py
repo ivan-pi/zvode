@@ -24,6 +24,9 @@ intersphinx_mapping = {
 }
 
 autodoc_member_order = "bysource"
+# NumPy-style References sections define citations without in-text usage;
+# suppress the resulting "not referenced" false positive.
+suppress_warnings = ["ref.citation"]
 
 myst_enable_extensions = [
     "colon_fence",
