@@ -18,7 +18,7 @@ user.
 This package exposes two interfaces to ZVODE:
 
 - **Procedural API** — `solve_complex_ivp(fun, tspan, y0, ...)`: a single-call
-  function in the spirit of `scipy.integrate.odeint`. This is the recommended
+  function in the spirit of {func}`scipy.integrate.odeint`. This is the recommended
   starting point.
 - **OdeSolver API** — `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`: a
   [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html)
@@ -62,7 +62,7 @@ print(sol)
 
 ### OdeSolver API (scipy-compatible)
 
-Pass a `ZVODE_*` class as the `method` argument to `scipy.integrate.solve_ivp`.
+Pass a `ZVODE_*` class as the `method` argument to {func}`scipy.integrate.solve_ivp`.
 
 ```python
 import numpy as np
@@ -87,7 +87,7 @@ pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams
 ```
 
 The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) subclass
-`scipy.integrate.OdeSolver` and require SciPy. If your code only uses
+{class}`scipy.integrate.OdeSolver` and require SciPy. If your code only uses
 `solve_complex_ivp` you do not need SciPy.
 
 ---
