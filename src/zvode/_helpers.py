@@ -272,7 +272,9 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
     elif jac:
         miter = 1
     else:
-        miter = 0 if meth == 1 else 2  # Adams: functional; BDF: chord with generated Jacobian
+        miter = (
+            0 if meth == 1 else 2
+        )  # Adams: functional; BDF: chord with generated Jacobian
 
     if miter in (4, 5):
         if lband >= n:

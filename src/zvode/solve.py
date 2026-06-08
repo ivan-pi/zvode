@@ -344,7 +344,6 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     return tspan, ys, istate
 
 
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -716,18 +715,39 @@ def solve_complex_ivp(
             ytmp = y0.copy()
             with ZVODE_LOCK:
                 t_out, y_out, istate = _zvode.drive_adaptive(
-                    _fun, _jac, mf,
-                    float(tspan[0]), float(tspan[1]),
+                    _fun,
+                    _jac,
+                    mf,
+                    float(tspan[0]),
+                    float(tspan[1]),
                     ytmp,
-                    itol, rtol, atol,
-                    iopt, zwork, rwork, iwork,
-                    int(refine), int(allow_overshoot),
+                    itol,
+                    rtol,
+                    atol,
+                    iopt,
+                    zwork,
+                    rwork,
+                    iwork,
+                    int(refine),
+                    int(allow_overshoot),
                 )
         else:
             t_out, y_out, istate = _zvode_adaptive(
-                _fun, _jac, y0, tspan[0], tspan[1],
-                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
-                refine=refine, allow_overshoot=allow_overshoot,
+                _fun,
+                _jac,
+                y0,
+                tspan[0],
+                tspan[1],
+                itol,
+                rtol,
+                atol,
+                mf,
+                iopt,
+                zwork,
+                rwork,
+                iwork,
+                refine=refine,
+                allow_overshoot=allow_overshoot,
             )
     elif len(tspan) == 2:
         # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
@@ -738,9 +758,20 @@ def solve_complex_ivp(
             ys_out = np.empty((n, 2), dtype=np.complex128, order="F")
             with ZVODE_LOCK:
                 istate, knots_completed = _zvode.drive_knots(
-                    _fun, _jac, mf, tspan, ytmp,
-                    ts_out, ys_out,
-                    itol, rtol, atol, iopt, zwork, rwork, iwork,
+                    _fun,
+                    _jac,
+                    mf,
+                    tspan,
+                    ytmp,
+                    ts_out,
+                    ys_out,
+                    itol,
+                    rtol,
+                    atol,
+                    iopt,
+                    zwork,
+                    rwork,
+                    iwork,
                 )
             if istate != 2:
                 ts_out, ys_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
@@ -759,9 +790,20 @@ def solve_complex_ivp(
             ys_out = np.empty((n, len(tspan)), dtype=np.complex128, order="F")
             with ZVODE_LOCK:
                 istate, knots_completed = _zvode.drive_knots(
-                    _fun, _jac, mf, tspan, ytmp,
-                    ts_out, ys_out,
-                    itol, rtol, atol, iopt, zwork, rwork, iwork,
+                    _fun,
+                    _jac,
+                    mf,
+                    tspan,
+                    ytmp,
+                    ts_out,
+                    ys_out,
+                    itol,
+                    rtol,
+                    atol,
+                    iopt,
+                    zwork,
+                    rwork,
+                    iwork,
                 )
             if istate != 2:
                 t_out, y_out = ts_out[:knots_completed], ys_out[:, :knots_completed]

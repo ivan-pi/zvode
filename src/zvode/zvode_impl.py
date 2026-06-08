@@ -302,9 +302,7 @@ class ZVODE(OdeSolver):
                 )
 
         if jac is not None and self.miter in (1, 4):
-            _validate_jac_shape(
-                jac, self.miter, self.ml, self.mu, self.n, t0, self.y
-            )
+            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
 
         if jsv not in (1, -1):
             raise ValueError(
@@ -420,7 +418,7 @@ class ZVODE(OdeSolver):
 
         self.nfev = self.iwork[11]  # NFE  IWORK(12): f evaluations
         self.njev = self.iwork[12]  # NJE  IWORK(13): Jacobian evaluations
-        self.nlu = self.iwork[19]   # NLU  IWORK(20): LU decompositions
+        self.nlu = self.iwork[19]  # NLU  IWORK(20): LU decompositions
 
         if self.istate != 2:
             description = MESSAGES.get(self.istate, "Unknown error.")
@@ -433,7 +431,11 @@ class ZVODE(OdeSolver):
         nq = int(self.iwork[13])  # IWORK(14) = NQU: order last used
         hu = float(self.rwork[10])  # RWORK(11) = HU: step size last used
         # Copy with order='F': the interpolant outlives this step's zwork.
-        yh = self.zwork[: self.n * (nq + 1)].reshape((self.n, nq + 1), order="F").copy(order="F")
+        yh = (
+            self.zwork[: self.n * (nq + 1)]
+            .reshape((self.n, nq + 1), order="F")
+            .copy(order="F")
+        )
         return ZVODEDenseOutput(self.t_old, self.t, yh, hu)
 
 
