@@ -5,7 +5,7 @@ Procedural API — ``solve_complex_ivp``
 
 :func:`~zvode.solve_complex_ivp` is the main entry point to ZVODE.  Pass the
 right-hand side, a time span, and an initial condition; get back a
-:class:`~zvode.ZVODEResult` object with the solution and solver diagnostics as
+:class:`~zvode.ZVODEResult` object with the solution and solver statistics as
 attributes (also accessible as dict keys).
 
 .. code-block:: python

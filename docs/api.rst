@@ -32,8 +32,8 @@ pointers.  See :doc:`how-to-compiled-callbacks` for usage examples.
 
       void fun(int neq, double t,
                const double complex *y,
-               double complex       *dy,
-               void                 *ctx);
+               double complex *dy,
+               void *ctx);
 
 .. data:: zvode.zvode_jac_sig
 
@@ -45,9 +45,9 @@ pointers.  See :doc:`how-to-compiled-callbacks` for usage examples.
       void jac(int neq, double t,
                const double complex *y,
                int ml, int mu,
-               double complex       *pd,
+               double complex *pd,
                int nrowpd,
-               void                 *ctx);
+               void *ctx);
 
 OdeSolver API
 -------------

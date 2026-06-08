@@ -17,8 +17,8 @@ omitted.
 Lower and upper half-bandwidth
 -------------------------------
 
-- **``lband``** — number of non-zero subdiagonals *below* the main diagonal.
-- **``uband``** — number of non-zero superdiagonals *above* the main diagonal.
+- **``lband``** — number of non-zero diagonals *below* the main diagonal (subdiagonals).
+- **``uband``** — number of non-zero diagonals *above* the main diagonal (superdiagonals).
 
 A tridiagonal matrix has ``lband = uband = 1``.
 A matrix that couples each row to the two rows below it and one row above has
@@ -132,6 +132,11 @@ Memory saving at a glance
 Each entry is the number of complex numbers in the Jacobian workspace.  The
 banded path also avoids fill-in during LU factorisation, so the work-per-step
 saving is comparable.
+
+When the Jacobian is estimated by finite differences (``jac`` omitted), the
+saving is even more pronounced: the dense path requires ``n`` extra RHS
+evaluations per Jacobian approximation, while the banded path needs only
+``lband + uband + 1`` — one evaluation per column group.
 
 Complete example
 -----------------

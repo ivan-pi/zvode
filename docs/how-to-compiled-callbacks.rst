@@ -13,22 +13,13 @@ them directly through the C integration loop, bypassing the Python interpreter
 on each evaluation.  Mixed mode is supported: one callback can be a Python
 callable while the other is compiled.
 
-Three approaches are covered here:
+Two approaches are covered here:
 
 1. :ref:`numba-cfunc` — JIT-compile a Python function with Numba.
-2. :ref:`ctypes-cfunc` — wrap a Python function via ctypes (useful for
-   prototyping the interface before writing C).
-3. :ref:`dll-callback` — load a pre-compiled shared library
-   (``*.so`` / ``*.dll``).
+2. :ref:`dll-callback` — load a pre-compiled shared library (``*.so``).
 
-The optional ``ctx`` pointer lets all three pass parameters without global
-variables; see :ref:`ctx-parameter`.
-
-.. note::
-
-   Compiled callbacks require the C integration loop (the default).  Setting
-   the environment variable ``ZVODE_BACKEND=python`` disables the C loop and
-   causes a ``RuntimeError`` if a compiled callback is passed.
+The optional ``ctx`` pointer lets both approaches pass parameters without
+global variables; see :ref:`ctx-parameter`.
 
 ----
 
@@ -43,8 +34,8 @@ Both callbacks receive raw C pointers.  The expected signatures are:
 
    void fun(int neq, double t,
             const double complex *y,
-            double complex       *dy,
-            void                 *ctx);
+            double complex *dy,
+            void *ctx);
 
 **Jacobian** (``jac``):
 
@@ -53,9 +44,9 @@ Both callbacks receive raw C pointers.  The expected signatures are:
    void jac(int neq, double t,
             const double complex *y,
             int ml, int mu,
-            double complex       *pd,
+            double complex *pd,
             int nrowpd,
-            void                 *ctx);
+            void *ctx);
 
 ``pd`` is column-major (Fortran order).  For a banded Jacobian the
 compact-storage convention applies: element ``df[i]/dy[j]`` goes to
@@ -108,70 +99,41 @@ Dense Jacobian
                            jac=jac.ctypes)
 
 :func:`numba.farray` creates a 2-D view over the flat ``pd`` pointer with
-Fortran (column-major) order, which is often cleaner than manual index
-arithmetic.
+Fortran (column-major) order, which is cleaner than manual index arithmetic.
 
 Banded Jacobian
 ~~~~~~~~~~~~~~~~
 
-For a banded system with lower half-bandwidth ``ml`` and upper half-bandwidth
-``mu``, element ``df[i]/dy[j]`` goes to row ``mu + i - j``:
+The 1-D heat equation ``du/dt = α u_xx`` discretised on a uniform grid with
+spacing ``h`` gives a tridiagonal Jacobian with weights ``α/h²``,
+``-2α/h²``, ``α/h²`` (``lband = uband = 1``):
 
 .. code-block:: python
+
+   import numba as nb
+   from numba import cfunc
+   import numpy as np
+   import zvode
+   from zvode import solve_complex_ivp
+
+   n = 50               # interior grid points
+   h = 1.0 / (n + 1)   # spacing on [0, 1] with Dirichlet BCs
+   alpha = 1.0 + 0.5j  # complex thermal diffusivity
 
    @cfunc(zvode.zvode_jac_sig)
-   def jac_banded(neq, t, y, ml, mu, pd, nrowpd, ctx):
+   def heat_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
        J = nb.farray(pd, (nrowpd, neq))
+       a = alpha / (h * h)
        for j in range(neq):
-           J[mu, j] = alpha                   # main diagonal
+           J[mu, j] = -2.0 * a            # main diagonal
            if j > 0:
-               J[mu - 1, j] = delta           # superdiagonal
+               J[mu - 1, j] = a           # superdiagonal
            if j < neq - 1:
-               J[mu + 1, j] = beta            # first subdiagonal
+               J[mu + 1, j] = a           # subdiagonal
 
-   sol = solve_complex_ivp(rhs.ctypes, tspan=(0.0, 5.0), y0=y0,
-                           jac=jac_banded.ctypes, lband=1, uband=1)
-
-----
-
-.. _ctypes-cfunc:
-
-ctypes callback
----------------
-
-Use :data:`~zvode.ZVODE_FUN_CTYPE` and :data:`~zvode.ZVODE_JAC_CTYPE` as
-decorators.  The decorated Python function is invoked via ctypes on each
-evaluation; there is no GIL crossing, but ctypes itself adds some overhead.
-This is most useful for prototyping or wrapping a small helper:
-
-.. code-block:: python
-
-   import ctypes
-   from zvode import solve_complex_ivp, ZVODE_FUN_CTYPE
-
-   @ZVODE_FUN_CTYPE
-   def rhs(neq, t, y_ptr, dy_ptr, ctx):
-       # complex128 is two consecutive doubles (real, imag)
-       y  = (ctypes.c_double * (2 * neq)).from_address(y_ptr)
-       dy = (ctypes.c_double * (2 * neq)).from_address(dy_ptr)
-       # dy[0]/dt = i * y[0]  =>  real part = -im(y[0]), imag part = re(y[0])
-       dy[0] = -y[1]
-       dy[1] =  y[0]
-
-   sol = solve_complex_ivp(rhs, tspan=(0.0, 10.0), y0=[1.0 + 0j])
-
-.. note::
-
-   Inside a ``ZVODE_FUN_CTYPE`` callback, ``y_ptr`` and ``dy_ptr`` are raw
-   memory addresses.  NumPy views are also possible:
-
-   .. code-block:: python
-
-      import numpy as np
-      y  = np.frombuffer((ctypes.c_double * (2 * neq)).from_address(y_ptr),
-                         dtype=np.float64).view(np.complex128)
-      dy = np.frombuffer((ctypes.c_double * (2 * neq)).from_address(dy_ptr),
-                         dtype=np.float64).view(np.complex128)
+   y0 = np.sin(np.pi * np.linspace(h, 1.0 - h, n)).astype(complex)
+   sol = solve_complex_ivp(rhs.ctypes, tspan=(0.0, 0.1), y0=y0,
+                           jac=heat_jac.ctypes, lband=1, uband=1)
 
 ----
 
@@ -191,8 +153,8 @@ When your RHS is already compiled as a C function, load it with
 
    void my_rhs(int neq, double t,
                const double complex *y,
-               double complex       *dy,
-               void                 *ctx)
+               double complex *dy,
+               void *ctx)
    {
        dy[0] = -1.0 * I * y[0];
    }
@@ -223,10 +185,6 @@ Similarly for the Jacobian:
    jac = ctypes.cast(lib.my_jac, ZVODE_JAC_CTYPE)
    sol = solve_complex_ivp(rhs, tspan=(0.0, 10.0), y0=[1.0 + 0j], jac=jac)
 
-On Windows, replace ``ctypes.CDLL`` with ``ctypes.WinDLL`` for DLLs that use
-the ``__stdcall`` calling convention, or keep ``CDLL`` for ``__cdecl`` (the
-default for C code).
-
 ----
 
 .. _ctx-parameter:
@@ -246,6 +204,7 @@ global variables.
    import ctypes
    import numpy as np
    from numba import cfunc, carray
+   import numba as nb
    import zvode
 
    params = np.array([-1.0+2.0j, -2.0+1.0j], dtype=np.complex128)
@@ -253,8 +212,7 @@ global variables.
 
    @cfunc(zvode.zvode_fun_sig)
    def rhs(neq, t, y, dy, ctx_ptr):
-       import numba as nb
-       p = nb.carray(ctx_ptr, (2,), dtype=nb.complex128)
+       p = carray(ctx_ptr, (2,), dtype=nb.complex128)
        dy[0] = p[0] * y[0]
        dy[1] = p[1] * y[1]
 
