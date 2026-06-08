@@ -372,13 +372,13 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
 
 
 def solve_complex_ivp(
-    fun: Callable[..., Any] | ctypes._CFuncPtr,
+    fun: Callable[..., Any],
     tspan: ArrayLike,
     y0: ArrayLike,
     *,
     rtol: float | ArrayLike = 1.0e-3,
     atol: float | ArrayLike = 1.0e-6,
-    jac: Callable[..., Any] | ctypes._CFuncPtr | None = None,
+    jac: Callable[..., Any] | None = None,
     ctx: ctypes.c_void_p | None = None,
     method: Literal["BDF", "Adams"] = "BDF",
     lband: int | None = None,
