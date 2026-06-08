@@ -126,7 +126,9 @@ Python interpreter.
     uses a growable StepBuf backed by NumPy arrays (starts at 10 columns,
     doubles on overflow); supports ZVINDY interpolation when refine > 1.
   - [DONE] ZVODE_BACKEND environment variable: set to "python" to fall back to
-    the pure-Python loops for debugging; C is the default.
+    the pure-Python loops for debugging; C is the default.  The Python loops
+    are retained for now as a reference / debugging aid; they will be deprecated
+    and removed before 1.0.0 once the C path is battle-tested.
   - GIL-free path: no GIL release yet — requires compiled callbacks (next item).
 - Enable compiled callbacks (numba @cfunc, ctypes CFUNCTYPE): wire up the
   fun_addr / jac_addr path in solve_complex_ivp through drive_knots /
