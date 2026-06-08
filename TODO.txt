@@ -78,10 +78,13 @@ system, and developer-facing conveniences such as type stubs and validation.
   responsibilities, as ZVODE does some checks internally too; doing the checks
   in Python beforehand allows to raise a proper exception.
   Constructor checks are in place (_check_tolerances, _determine_miter, int32
-  overflow guards, C-layer array validation on istate==1).  The open question is
-  how to cover checks that only become relevant inside _step_impl — one idea is
-  to call ZVODE once with the same t and tout (a no-op step) to let ZVODE raise
-  ISTATE errors early, but the exact mechanics are still TBD.
+  overflow guards, C-layer array validation on istate==1).  A no-op ZVODE call
+  (same t and tout) was investigated as a way to trigger early ISTATE errors but
+  found not viable: ZVODE does not perform argument validation on such a call.
+  Conclusion: rely on ZVODE's own istate error reporting during integration and
+  add Python-level pre-checks only where input invalidity can be detected
+  unambiguously before the first step (tolerances, workspace sizes, method flags).
+  No further work planned.
 - Fix nfev/njev evaluation counters: _validate_fun_shape and _validate_jac_shape
   each call the user callback once at construction time (to probe the return
   shape), but neither call is counted toward nfev / njev.  The counters live in
