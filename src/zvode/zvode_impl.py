@@ -72,6 +72,11 @@ class ZVODEDenseOutput(DenseOutput):
 class ZVODE(OdeSolver):
     """Solver for complex-valued ODEs using ZVODE (Variable-coefficient, fixed-leading-coefficient).
 
+    Implements the `scipy.integrate.OdeSolver` interface so that it can be
+    passed as the ``method`` argument to `scipy.integrate.solve_ivp`::
+
+        sol = scipy.integrate.solve_ivp(fun, tspan, y0, method=ZVODE)
+
     ZVODE solves the initial value problem for stiff or non-stiff systems of
     first-order complex ODEs::
 
