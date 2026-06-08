@@ -231,7 +231,9 @@ on how any of these could be tackled, contributions and discussion are welcome.
   within a step and bisect to the root — it requires some work but is doable.
   The forward Python interface (`solve_complex_ivp`) does not yet expose this path.
   Users who need event handling today should use `scipy.integrate.solve_ivp` with
-  the `events=` argument on the equivalent doubled real system.
+  the `events=` argument — either on the complex system directly via
+  `method=ZVODE` (passing the class to `solve_ivp`), or on the equivalent
+  doubled real system with a standard solver.
 
 **Automatic detection of non-analytic stiff RHS**
 : The analytic requirement for stiff complex-valued problems (Cauchy-Riemann
