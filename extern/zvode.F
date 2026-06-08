@@ -1382,6 +1382,8 @@ C Check RTOL and ATOL for legality. ------------------------------------
  70     CONTINUE
       IF (ISTATE .EQ. 1) GO TO 100
 C If ISTATE = 3, set flag to signal parameter changes to ZVSTEP. -------
+      F%NEQ = NEQ
+      JAC%NEQ = NEQ
       JSTART = -1
       IF (NQ .LE. MAXORD) GO TO 200
 C MAXORD was reduced below NQ.  Copy YH(*,MAXORD+2) into SAVF. ---------
