@@ -21,6 +21,12 @@ Two approaches are covered here:
 The optional ``ctx`` pointer lets both approaches pass parameters without
 global variables; see :ref:`ctx-parameter`.
 
+.. note::
+
+   The compiled-callback interface was inspired by the `numbalsoda
+   <https://github.com/Nicholaswogan/numbalsoda>`_ project, which applies the
+   same ctypes/numba technique to the LSODA solver.
+
 ----
 
 C-level calling conventions
