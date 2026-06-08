@@ -794,10 +794,6 @@ stepbuf_init(StepBuf *buf, int neq, int init_cap)
     buf->neq      = neq;
     buf->size     = 0;
     buf->capacity = init_cap;
-
-    assert(buf->size     == 0);
-    assert(buf->capacity == init_cap);
-    assert(buf->neq      == neq);
     return 0;
 }
 
