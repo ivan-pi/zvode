@@ -779,6 +779,9 @@ typedef struct {
 static int
 stepbuf_init(StepBuf *buf, int neq, int init_cap)
 {
+    assert(neq > 0);
+    assert(init_cap > 0);
+
     npy_intp dt[1] = { init_cap };
     npy_intp dy[1] = { (npy_intp)init_cap * neq };
 
@@ -791,6 +794,10 @@ stepbuf_init(StepBuf *buf, int neq, int init_cap)
     buf->neq      = neq;
     buf->size     = 0;
     buf->capacity = init_cap;
+
+    assert(buf->size     == 0);
+    assert(buf->capacity == init_cap);
+    assert(buf->neq      == neq);
     return 0;
 }
 
@@ -807,6 +814,14 @@ stepbuf_free(StepBuf *buf)
 static int
 stepbuf_grow(StepBuf *buf)
 {
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->capacity > 0);
+    assert(buf->size == buf->capacity);  /* grow is only called when full */
+#ifndef NDEBUG
+    int old_cap  = buf->capacity;
+    int old_size = buf->size;
+#endif
+
     StepBuf tmp;
     if (stepbuf_init(&tmp, buf->neq, buf->capacity * 2) < 0)
         return -1;  /* buf unchanged */
@@ -820,6 +835,9 @@ stepbuf_grow(StepBuf *buf)
     StepBuf old = *buf;
     *buf = tmp;
     stepbuf_free(&old);
+
+    assert(buf->capacity == old_cap  * 2);
+    assert(buf->size     == old_size);
     return 0;
 }
 
@@ -828,6 +846,13 @@ stepbuf_grow(StepBuf *buf)
 static int
 stepbuf_append(StepBuf *buf, double t, const double complex *y)
 {
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size <= buf->capacity);
+    assert(y != NULL);
+#ifndef NDEBUG
+    int old_size = buf->size;
+#endif
+
     if (buf->size == buf->capacity) {
         if (stepbuf_grow(buf) < 0)
             return -1;
@@ -839,6 +864,9 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
     memcpy(yp + (npy_intp)buf->size * buf->neq, y,
            (size_t)buf->neq * sizeof(double complex));
     buf->size++;
+
+    assert(buf->size == old_size + 1);
+    assert(buf->size <= buf->capacity);
     return 0;
 }
 
@@ -857,6 +885,10 @@ stepbuf_finalize(StepBuf *buf,
                  PyArrayObject **ts_out,
                  PyArrayObject **ys_out)
 {
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);           /* nothing to export from an empty buffer */
+    assert(buf->size <= buf->capacity);
+
     PyObject *ret;
 
     /* Trim ts to buf->size elements. */
@@ -887,6 +919,9 @@ stepbuf_finalize(StepBuf *buf,
     *ts_out = buf->ts;  buf->ts = NULL;
     *ys_out = ys_2d;
     Py_DECREF(buf->ys); buf->ys = NULL;
+
+    assert(buf->ts   == NULL && buf->ys == NULL);  /* ownership fully transferred */
+    assert(*ts_out   != NULL && *ys_out != NULL);
     return 0;
 }
 
