@@ -21,6 +21,12 @@ Two approaches are covered here:
 The optional ``ctx`` pointer lets both approaches pass parameters without
 global variables; see :ref:`ctx-parameter`.
 
+.. note::
+
+   The compiled-callback interface was inspired by the `numbalsoda
+   <https://github.com/Nicholaswogan/numbalsoda>`_ project, which applies the
+   same ctypes/numba technique to the LSODA solver.
+
 ----
 
 C-level calling conventions
@@ -59,6 +65,9 @@ explanation of the banded layout.
 
 Numba ``@cfunc``
 ----------------
+
+See the `Numba cfunc documentation <https://numba.readthedocs.io/en/stable/user/cfunc.html>`_
+for a full introduction to compiled C callbacks in Numba.
 
 Install numba (``pip install numba``) then use the signature objects exported
 by this package.  :data:`~zvode.zvode_fun_sig` and
@@ -141,6 +150,9 @@ spacing ``h`` gives a tridiagonal Jacobian with weights ``α/h²``,
 
 Loading from a shared library
 ------------------------------
+
+See the `ctypes callback functions documentation <https://docs.python.org/3/library/ctypes.html#callback-functions>`_
+for background on ``CFUNCTYPE`` and wrapping C function pointers in Python.
 
 When your RHS is already compiled as a C function, load it with
 :mod:`ctypes` and cast it to :data:`~zvode.ZVODE_FUN_CTYPE`:

@@ -72,8 +72,8 @@ class ZVODEDenseOutput(DenseOutput):
 class ZVODE(OdeSolver):
     """Solver for complex-valued ODEs using ZVODE (Variable-coefficient, fixed-leading-coefficient).
 
-    Implements the `scipy.integrate.OdeSolver` interface so that it can be
-    passed as the ``method`` argument to `scipy.integrate.solve_ivp`::
+    Implements the :class:`scipy.integrate.OdeSolver` interface so that it can be
+    passed as the ``method`` argument to :func:`scipy.integrate.solve_ivp`::
 
         sol = scipy.integrate.solve_ivp(fun, tspan, y0, method=ZVODE)
 
@@ -112,14 +112,18 @@ class ZVODE(OdeSolver):
     rtol, atol : float or array_like, optional
         Relative and absolute local error tolerances.  The solver keeps the
         local error roughly below ``rtol * |y(i)| + atol`` for each
-        component.  Scalar or per-component arrays are accepted.  Defaults
-        are ``rtol=1e-3``, ``atol=1e-6``.
+        component.  ``rtol`` controls relative accuracy (number of correct
+        digits); ``atol`` controls absolute accuracy and guards against loss
+        of significance when a component passes through zero.  Scalar or
+        per-component arrays are accepted.  Defaults are ``rtol=1e-3``,
+        ``atol=1e-6``.
     first_step : float, optional
         Initial step size.  Chosen automatically if not given.
     min_step : float, optional
         Minimum allowed step size.  Default 0.
     max_step : float, optional
-        Maximum allowed step size.  Default ``np.inf``.
+        Maximum allowed step size.  Default ``np.inf``, i.e., the step size
+        is not bounded and determined solely by the solver.
     jac : callable or None, optional
         Jacobian matrix of `f` with respect to `y`, ``jac(t, y)``.
         For a full Jacobian, return an ``(n, n)`` array ``J[i, j] = df(i)/dy(j)``.
@@ -129,10 +133,14 @@ class ZVODE(OdeSolver):
         (``miter=2``); Adams uses functional iteration and needs no Jacobian
         (``miter=0``).
     lband, uband : int or None, optional
-        Lower and upper half-bandwidths of a banded Jacobian.  Must be
-        non-negative integers.  When either is set, the banded Jacobian path
-        is used and the other defaults to 0.  The full band has width
-        ``lband + uband + 1``.
+        Lower and upper half-bandwidths of a banded Jacobian, i.e.,
+        ``jac[i, j]`` is assumed zero unless ``i - lband <= j <= i + uband``.
+        Must be non-negative integers.  When either is set, the banded Jacobian
+        path is used and the other defaults to 0.  The full band has width
+        ``lband + uband + 1``.  Can be used with ``jac=None`` to have the
+        solver estimate the Jacobian by finite differences within the band
+        only, reducing the number of function evaluations compared to a full
+        finite-difference Jacobian.
     max_order : int, optional
         Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5}, optional

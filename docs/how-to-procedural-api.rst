@@ -22,6 +22,18 @@ attributes (also accessible as dict keys).
 The complete parameter reference is in the :func:`~zvode.solve_complex_ivp`
 docstring.
 
+.. note::
+
+   ZVODE integrates complex-valued ODEs.  For best results the right-hand side
+   ``f(t, y)`` should be `holomorphic
+   <https://en.wikipedia.org/wiki/Holomorphic_function>`_ (complex-analytic):
+   the `Cauchy–Riemann equations
+   <https://en.wikipedia.org/wiki/Cauchy%E2%80%93Riemann_equations>`_ must hold
+   for each component.  Functions that involve ``abs``, ``conj``, or
+   real/imaginary-part splitting are not holomorphic; for such systems,
+   reformulate as an equivalent real system of doubled dimension and use a
+   real-valued solver.
+
 ----
 
 Output modes
@@ -79,13 +91,6 @@ Choosing a method
 
 ``method='BDF'`` (default) is for stiff problems; ``method='Adams'`` for
 non-stiff.
-
-.. note::
-
-   **Analyticity** — BDF uses complex Newton iteration, which requires every
-   component of ``f(t, y)`` to be an analytic function of the complex state.
-   If your RHS uses ``abs``, ``conj``, or real/imaginary-part splitting, use a
-   real-valued solver on the equivalent doubled real system instead.
 
 ----
 
