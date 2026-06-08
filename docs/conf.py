@@ -1,7 +1,13 @@
+import tomllib
+from pathlib import Path
+
+with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+    _meta = tomllib.load(f)
+
 project = "zvode"
 author = "Ivan Pribec"
-copyright = "2024, Ivan Pribec"
-release = "0.2.0"
+copyright = "2026, Ivan Pribec"
+release = _meta["project"]["version"]
 
 extensions = [
     "myst_parser",
