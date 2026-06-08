@@ -72,6 +72,11 @@ class ZVODEDenseOutput(DenseOutput):
 class ZVODE(OdeSolver):
     """Solver for complex-valued ODEs using ZVODE (Variable-coefficient, fixed-leading-coefficient).
 
+    Implements the `scipy.integrate.OdeSolver` interface so that it can be
+    passed as the ``method`` argument to `scipy.integrate.solve_ivp`::
+
+        sol = scipy.integrate.solve_ivp(fun, tspan, y0, method=ZVODE)
+
     ZVODE solves the initial value problem for stiff or non-stiff systems of
     first-order complex ODEs::
 
@@ -83,10 +88,10 @@ class ZVODE(OdeSolver):
 
     .. note::
 
-        When using ZVODE for a stiff system, `f` must be analytic (i.e., each
-        component f(i) must be an analytic function of each y(j)).  For a
-        complex stiff system where `f` is not analytic, use a real-valued
-        solver on the equivalent real system of doubled dimension.
+        When using ZVODE for a stiff system, `fun` must be *analytic* (i.e.,
+        each component f(i) must be an analytic function of each y(j)).  For
+        a complex stiff system where `fun` is *not* analytic, use a
+        real-valued solver on the equivalent real system of doubled dimension.
 
     Parameters
     ----------
@@ -149,6 +154,11 @@ class ZVODE(OdeSolver):
         needs updating.  Ignored when no full Jacobian matrix is stored, i.e.
         for functional iteration (``miter=0``) and the diagonal approximation
         (``miter=3``).
+
+    Raises
+    ------
+    ValueError
+        On invalid input.
 
     Attributes
     ----------

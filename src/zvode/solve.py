@@ -451,9 +451,9 @@ def solve_complex_ivp(
     jac : callable, ctypes._CFuncPtr, or None, optional
         Jacobian of ``fun`` w.r.t. ``y``.
 
-        * **Python callable**, full (no ``lband``/``uband``):
+        * **Python callable**, full (no `lband`/`uband`):
           ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
-        * **Python callable**, banded (``lband``/``uband`` set):
+        * **Python callable**, banded (`lband`/`uband` set):
           ``jac(t, y) -> (lband + uband + 1, n)`` array where element
           ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
         * **Compiled callback**: C-level signature::
@@ -467,21 +467,20 @@ def solve_complex_ivp(
 
         Mixed mode is supported: ``fun`` can be a Python callable while
         ``jac`` is a compiled callback, or vice versa.
-    ctx : ctypes.c_void_p or None, optional
-        Optional shared user-data pointer passed as the last argument to
-        **both** compiled callbacks on every invocation.  ``None`` (default)
-        passes a NULL pointer.  Ignored (with a ``UserWarning``) when all
-        callbacks are plain Python callables.  The caller is responsible for
-        keeping the referent alive for the duration of the integration.
-
-    method : {'BDF', 'Adams'}, optional
-        Linear multistep method.  ``'BDF'`` (default) for stiff problems
-        (max order 5); ``'Adams'`` for non-stiff (max order 12).
     lband, uband : int or None, optional
         Lower and upper half-bandwidths of a banded Jacobian.  Must be
         non-negative integers.  When either is set, the banded Jacobian path
         is used and the other defaults to 0.  The full band has width
         ``lband + uband + 1``.
+    method : {'BDF', 'Adams'}, optional
+        Linear multistep method.  ``'BDF'`` (default) for stiff problems
+        (max order 5); ``'Adams'`` for non-stiff (max order 12).
+    save_steps : bool, optional
+        When `tspan` has exactly two elements, controls whether every
+        accepted internal step is stored.  ``True`` (default) collects all
+        steps; ``False`` returns only the endpoint.  Note: ZVODE always uses
+        adaptive time-stepping regardless of this flag — it only governs what
+        output is captured.
 
     Returns
     -------
@@ -505,12 +504,12 @@ def solve_complex_ivp(
 
     Other Parameters
     ----------------
-    save_steps : bool, optional
-        When ``tspan`` has exactly two elements, controls whether every
-        accepted internal step is stored.  ``True`` (default) collects all
-        steps; ``False`` returns only the endpoint.  Note: ZVODE always uses
-        adaptive time-stepping regardless of this flag — it only governs what
-        output is captured.
+    ctx : ctypes.c_void_p or None, optional
+        Optional shared user-data pointer passed as the last argument to
+        **both** compiled callbacks on every invocation.  ``None`` (default)
+        passes a NULL pointer.  Ignored when all callbacks are plain Python
+        callables.  The caller is responsible for keeping the referent alive
+        for the duration of the integration.
     refine : int, optional
         Number of output points per accepted step when ``save_steps=True``.
         ``refine=1`` (default) records only the step endpoints.
@@ -540,13 +539,13 @@ def solve_complex_ivp(
         Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
     miter : {0, 1, 2, 3, 4, 5} or None, optional
         Iteration method used by the corrector.  Normally inferred from
-        ``method``, ``jac``, and the band arguments.  Without ``jac``,
+        `method`, `jac`, and the band arguments.  Without `jac`,
         ``method='Adams'`` defaults to ``0`` (functional iteration) and
         ``method='BDF'`` defaults to ``2`` (internally generated Jacobian).
-        Providing ``jac`` selects ``1`` (dense) or ``4`` (banded).  Pass
+        Providing `jac` selects ``1`` (dense) or ``4`` (banded).  Pass
         this argument only to override the automatic selection — for instance
         to force diagonal (``3``) or finite-difference Jacobian generation
-        even when a ``jac`` callable is supplied.  Use with care: an
+        even when a `jac` callable is supplied.  Use with care: an
         inconsistent combination (e.g. ``miter=4`` without band arguments)
         will raise a ``ValueError`` or cause a solver failure.
     save_jac : bool, optional
@@ -560,21 +559,65 @@ def solve_complex_ivp(
     Raises
     ------
     ValueError
-        On invalid arguments.
+        On invalid input.
+    TypeError
+        If `ctx` is not a ``ctypes.c_void_p`` or ``None``.
     RuntimeError
-        When the solver cannot reach the requested endpoint.
+        If the solver cannot advance to the next output point.  Possible
+        causes include exceeding `max_num_steps` internal steps, overly
+        tight tolerances, repeated error-test or convergence failures
+        (possibly indicating a bad Jacobian or wrong `method`), or an
+        error weight becoming zero because a solution component vanished
+        and ``atol=0``.
+
+    Warns
+    -----
+    UserWarning
+        If `y0` has a real dtype (it will be cast to ``complex128``).
+    UserWarning
+        If `ctx` is provided but all callbacks are plain Python callables
+        (`ctx` is not passed to Python callables and will be ignored).
 
     Notes
     -----
-    **Thread safety** — ``solve_complex_ivp`` holds a process-wide lock for
-    the entire integration.  Concurrent calls from multiple threads will
-    queue rather than run in parallel.  Use ``multiprocessing`` for parallel
-    independent integrations.
+    **Stiffness and method selection** — Use ``method='BDF'`` (the
+    default) for stiff problems and ``method='Adams'`` for smooth,
+    non-stiff ones.
 
-    **C-level callbacks** — compiled callbacks (``ctypes.CFUNCTYPE`` instances
-    or ``numba_cfunc.ctypes``) are called directly as C function pointers
-    through the ``drive_knots`` / ``drive_adaptive`` integration loops,
-    bypassing the Python interpreter on every RHS or Jacobian evaluation.
+    **Analyticity requirement for BDF** — When solving a stiff system
+    with the BDF method, the right-hand side `fun` must be *analytic*:
+    each component f(i) must be an analytic function of each y(j), so
+    that the partial derivative df(i)/dy(j) is a unique complex number.
+    This property is critical to the way ZVODE solves the dense or
+    banded linear systems that arise in the stiff case.  For a complex
+    stiff ODE system where `fun` is **not** analytic, ZVODE is likely to
+    have convergence failures; instead use a real-valued solver on the
+    equivalent real system of doubled dimension.
+
+    **Error control** — The solver controls the root-mean-square (rms)
+    norm of the estimated local error vector e = (e(i)) such that::
+
+        rms-norm(e(i) / EWT(i)) <= 1,
+
+    where::
+
+        EWT(i) = rtol * abs(y(i)) + atol      (scalar tolerances)
+        EWT(i) = rtol * abs(y(i)) + atol(i)   (array tolerances)
+
+    Use ``rtol=0.0`` for pure absolute error control, and ``atol=0.0``
+    for pure relative error control.  Actual (global) errors may exceed
+    these local tolerances; choose them conservatively.
+
+    **Thread safety** — ``solve_complex_ivp`` holds a process-wide lock
+    for the entire integration.  Concurrent calls from multiple threads
+    will queue rather than run in parallel.  Use `multiprocessing` for
+    parallel independent integrations.
+
+    **C-level callbacks** — Compiled callbacks (``ctypes.CFUNCTYPE``
+    instances or ``numba_cfunc.ctypes``) are called directly as C
+    function pointers through the ``drive_knots`` / ``drive_adaptive``
+    integration loops, bypassing the Python interpreter on every RHS or
+    Jacobian evaluation.
 
     References
     ----------
@@ -589,8 +632,23 @@ def solve_complex_ivp(
 
     >>> import math
     >>> from zvode import solve_complex_ivp
-    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j])
+    >>> sol = solve_complex_ivp(lambda t, y: 1j*y, tspan=[0, 2*math.pi], y0=[1+0j])
     >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
+    True
+
+    Two-equation system ``dw/dt = -i*w**2*z``, ``dz/dt = i*z`` with
+    ``w(0) = 1/2.1``, ``z(0) = 1``.  Analytic solution: ``z(t) = exp(i*t)``,
+    ``w(t) = 1/(z(t) + 1.1)``.  After one full revolution both unknowns return
+    to their initial values:
+
+    >>> def fun(t, y):
+    ...     w, z = y
+    ...     return [-1j*w**2*z, 1j*z]
+    ...
+    >>> sol = solve_complex_ivp(fun, tspan=[0, 2*math.pi], y0=[1/2.1+0j, 1+0j])
+    >>> bool(abs(sol.y[0, -1] - 1/2.1) < 1e-2)   # w returns to initial value
+    True
+    >>> bool(abs(sol.y[1, -1] - 1.0) < 1e-2)      # z returns to 1
     True
     """
 
