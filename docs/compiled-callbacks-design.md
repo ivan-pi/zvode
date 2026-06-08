@@ -187,13 +187,14 @@ Element `df[i]/dy[j]` goes to row `mu + i - j`.  Corner entries where the
 band extends beyond the matrix boundaries (the triangular "slivers") may also
 be written and are simply ignored by the solver.
 
-Create a view over just the writable portion with `nb.farray`:
+Use `nb.farray(pd, (nrowpd, neq))` for the full view; only write into the
+first `ml + mu + 1` rows:
 
 ```python
 @cfunc(zvode.zvode_jac_sig)
 def my_banded_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
-    J = nb.farray(pd, (ml + mu + 1, neq))  # view of writable rows only
-    # J[mu + i - j, j] = df[i]/dy[j]
+    J = nb.farray(pd, (nrowpd, neq))
+    # only rows 0 .. ml+mu should be written; J[mu + i - j, j] = df[i]/dy[j]
     J[mu,     0] = lam1   # df[0]/dy[0]
     J[mu - 1, 1] = c      # df[0]/dy[1]
     J[mu + 1, 0] = 0.0    # df[1]/dy[0]
@@ -283,23 +284,22 @@ The kind is determined by type inspection: a callable is a Python callback;
 anything else is assumed to be a Python `int` holding a function pointer:
 
 ```c
-PyObject *fun_obj, *jac_obj;
-Py_ssize_t ctx_addr;
+PyObject *fun_obj, *jac_obj, *ctx_obj;
 
-PyArg_ParseTuple(args, "OOn...",
-    &fun_obj, &jac_obj, &ctx_addr, ...);
+PyArg_ParseTuple(args, "OOO...",
+    &fun_obj, &jac_obj, &ctx_obj, ...);
 
 if (PyCallable_Check(fun_obj)) {
     cb.fun_kind    = CB_PYTHON;
     cb.fun_u.pyobj = fun_obj;
 } else {
     cb.fun_kind    = CB_CFUNC;
-    cb.fun_u.cfunc = (zvode_fun)(uintptr_t)PyLong_AsSsize_t(fun_obj);
+    cb.fun_u.cfunc = (zvode_fun)PyLong_AsVoidPtr(fun_obj);
 }
 
 /* same for jac_obj; Py_None treated as CB_PYTHON with null pyobj */
 
-cb.ctx = (void *)(uintptr_t)ctx_addr;
+cb.ctx = PyLong_AsVoidPtr(ctx_obj);  /* Py_None → NULL */
 ```
 
 ### Dispatch inside the adaptor
