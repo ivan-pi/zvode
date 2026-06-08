@@ -6,6 +6,7 @@ Python bindings to the classic ZVODE ODE solver.
 [![PyPI](https://img.shields.io/pypi/v/zvode)](https://pypi.org/project/zvode/)
 [![Python](https://img.shields.io/pypi/pyversions/zvode)](https://pypi.org/project/zvode/)
 [![License](https://img.shields.io/github/license/ivan-pi/zvode)](https://github.com/ivan-pi/zvode/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-ivan--pi.github.io%2Fzvode-blue)](https://ivan-pi.github.io/zvode/)
 
 ZVODE is a variable-coefficient ODE solver for stiff and non-stiff systems of
 first-order ordinary differential equations with complex-valued state, written
@@ -67,8 +68,8 @@ sol = solve_complex_ivp(
 print(sol)
 ```
 
-See [`docs/how-to-procedural-api.md`](docs/how-to-procedural-api.md) for output
-modes, banded Jacobians, backward integration, and other options.
+See the [documentation](https://ivan-pi.github.io/zvode/) for output modes,
+banded Jacobians, backward integration, compiled callbacks, and other options.
 
 ### OdeSolver API (scipy-compatible)
 
@@ -131,7 +132,7 @@ pip install ".[test]"      # run the test suite (includes SciPy)
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `fun` | callable | — | RHS `f(t, y) → array_like`. With `in_place=True`: `f(t, y, dy)` fills `dy` in place. |
+| `fun` | callable or `ctypes._CFuncPtr` | — | RHS `f(t, y) → array_like`, or a compiled C function pointer (ctypes/numba). |
 | `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
 | `y0` | array-like | — | Initial state; cast to `complex128`. |
 | `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
