@@ -443,7 +443,9 @@ def solve_complex_ivp(
     fun : callable or ctypes._CFuncPtr
         Right-hand side of the system.
 
-        * **Python callable**: ``fun(t, y) -> array_like`` (SciPy-compatible).
+        * **Python callable**: ``fun(t, y) -> array_like``, where ``t`` is a
+          scalar and ``y`` is an ndarray of shape ``(n,)``; must return an
+          array of the same shape.
         * **Compiled callback** (``ctypes.CFUNCTYPE`` instance or
           ``numba_cfunc.ctypes``): called directly as a C function pointer,
           bypassing the Python interpreter on every RHS evaluation.  The
@@ -472,7 +474,9 @@ def solve_complex_ivp(
           equals the accuracy at internal steps.  Providing many intermediate
           knots has little effect on computational efficiency.
     y0 : array_like, shape (n,)
-        Initial state; cast to ``complex128``.
+        Initial state; cast to ``complex128``.  Pass a complex array even
+        when the initial value is purely real to suppress the implicit-cast
+        ``UserWarning``.
     rtol, atol : float or array_like, optional
         Relative and absolute local error tolerances.  The solver keeps the
         local error roughly below ``rtol * |y(i)| + atol`` for each component.
