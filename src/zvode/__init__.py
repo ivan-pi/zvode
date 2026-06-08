@@ -3,13 +3,12 @@
 import sys as _sys
 
 from .solve import solve_complex_ivp
-from ._helpers import ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE, check_cfunc_signature
+from ._helpers import ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE
 
 __all__ = [
     "solve_complex_ivp",
     "ZVODE_FUN_CTYPE",
     "ZVODE_JAC_CTYPE",
-    "check_cfunc_signature",
     "zvode_fun_sig",
     "zvode_jac_sig",
 ]

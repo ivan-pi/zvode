@@ -10,8 +10,6 @@ from ._helpers import (
     _validate_max_step,
     _validate_min_step,
     _validate_first_step,
-    _wrapped_fun,
-    _wrapped_jac,
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -261,7 +259,7 @@ class ZVODE(OdeSolver):
 
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
-        self.wrap_fun = _wrapped_fun(fun)
+        self.fun = fun
         _validate_fun_shape(fun, self.n, t0, self.y)
 
         self.miter, self.ml, self.mu = _resolve_miter(
@@ -278,7 +276,7 @@ class ZVODE(OdeSolver):
                     stacklevel=2,
                 )
 
-        self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
+        self.jac = jac
 
         # Check for int32 overflow in Fortran workspace arithmetic before
         # doing anything that allocates memory proportional to neq (including
@@ -401,7 +399,7 @@ class ZVODE(OdeSolver):
         # Python evaluates the full RHS before any assignment, so the current
         # self.t and self.istate are safely read as inputs before being overwritten.
         self.t, self.istate = _zvode.zvode(
-            self.wrap_fun,
+            self.fun,
             self._ytmp,
             self.t,
             self.t_bound,
@@ -414,7 +412,7 @@ class ZVODE(OdeSolver):
             self.zwork,
             self.rwork,
             self.iwork,
-            self.wrap_jac,
+            self.jac,
             self.mf,
         )
 

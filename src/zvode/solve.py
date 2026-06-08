@@ -17,7 +17,6 @@ solve_complex_ivp
 from __future__ import annotations
 
 import ctypes
-import os
 import warnings
 from threading import Lock
 from typing import Any, Callable, Literal
@@ -35,17 +34,11 @@ from ._helpers import (
     _validate_first_step,
     _validate_fun_shape,
     _validate_jac_shape,
-    _wrapped_fun,
-    _wrapped_jac,
 )
 
 # ZVODE stores solver state in Fortran COMMON blocks that are global to the
 # process.  Only one integration can be active at a time across all threads.
 ZVODE_LOCK = Lock()
-
-# Set ZVODE_BACKEND=python to fall back to the pure-Python knot loop.
-# Any other value (including unset) uses the C-level drive_knots entry point.
-_USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "C").upper() != "PYTHON"
 
 
 class ZVODEResult(dict):
@@ -83,19 +76,14 @@ class ZVODEResult(dict):
 # ---------------------------------------------------------------------------
 
 
-def _cfunc_address(fun):
-    """Return the C function pointer address (int) for compiled callbacks.
+def _get_cfunc_address(fun):
+    """Return the integer C function pointer address if *fun* is a compiled callback.
 
-    Recognises:
-    * numba ``@cfunc`` objects — via the ``.address`` attribute (same approach
-      as the numbalsoda package)
-    * ctypes ``CFUNCTYPE`` instances — via ``ctypes.cast``
-
-    Returns ``None`` for ordinary Python callables.
+    Accepts ``ctypes.CFUNCTYPE`` instances (including numba ``@cfunc`` objects
+    exposed via their ``.ctypes`` property).  Returns ``None`` for plain Python
+    callables.
     """
-    if hasattr(fun, "address"):  # numba @cfunc
-        return int(fun.address)
-    if isinstance(fun, ctypes._CFuncPtr):  # ctypes CFUNCTYPE
+    if isinstance(fun, ctypes._CFuncPtr):
         return ctypes.cast(fun, ctypes.c_void_p).value
     return None
 
@@ -184,205 +172,26 @@ def _make_workspace(
 # ---------------------------------------------------------------------------
 
 
-def _zvode_adaptive(
-    fun,
-    jac,
-    y0,
-    t0,
-    t_bound,
-    itol,
-    rtol,
-    atol,
-    mf,
-    iopt,
-    zwork,
-    rwork,
-    iwork,
-    refine=1,
-    allow_overshoot=False,
-):
-    """Drive ZVODE in single-step mode, collecting every accepted step.
+def _zvode_drive_knots(fun, jac, ctx_int, y0, tspan, itol, rtol, atol, mf, iopt,
+                       zwork, rwork, iwork):
+    """Drive ZVODE to each output knot via the C-level drive_knots entry point.
 
-    Uses ITASK=5 by default (step must not overshoot TCRIT = rwork[0] = t_bound).
-    When allow_overshoot=True, uses ITASK=2 instead (tout is ignored; ZVODE
-    may step past t_bound).
+    *fun* and *jac* are either Python callables or Python ints (compiled
+    callback addresses).  *ctx_int* is an integer user-data pointer (0 = NULL).
 
-    When refine > 1, inserts (refine - 1) evenly-spaced interpolated points
-    inside each accepted step using ZVINDY before appending the step endpoint.
-
-    Returns
-    -------
-    ts : ndarray, shape (m,)
-    ys : ndarray, shape (n, m), complex128, Fortran order
-    istate : int   (2 = success, negative = solver error)
-    """
-    ITASK = 2 if allow_overshoot else 5
-    istate = 1  # initial call
-
-    n = len(y0)
-    t = float(t0)
-    direction = np.sign(float(t_bound) - t)
-    ytmp = y0.copy()
-
-    ts = [t]
-    ys = [y0]
-
-    with ZVODE_LOCK:
-        while direction * (float(t_bound) - t) > 0:
-            t_old = t
-            t, istate = _zvode.zvode(
-                fun,
-                ytmp,
-                t,
-                t_bound,
-                itol,
-                rtol,
-                atol,
-                ITASK,
-                istate,
-                iopt,
-                zwork,
-                rwork,
-                iwork,
-                jac,
-                mf,
-            )
-
-            if istate < 0:
-                break
-
-            if refine > 1:
-                # After an accepted step the Nordsieck array in zwork[0:n*(nq+1)]
-                # is valid for interpolation over [t_old, t].  ZVINDY is called
-                # before the next zvode call overwrites zwork.
-                nq = int(iwork[13])  # IWORK(14) = NQU: order last used
-                hu = float(rwork[10])  # RWORK(11) = HU: step size last used
-                yh = zwork[: n * (nq + 1)].reshape((n, nq + 1), order="F")
-                dky = np.empty(n, dtype=np.complex128)
-                for i in range(1, refine):
-                    t_i = t_old + i * (t - t_old) / refine
-                    # h == hu immediately after an accepted step; both are passed
-                    # because zvindy uses h for normalisation and hu for the
-                    # interval check.
-                    _zvode.zvindy(t_i, 0, yh, hu, t, hu, dky)
-                    ts.append(t_i)
-                    ys.append(dky.copy())
-
-            ts.append(t)
-            ys.append(ytmp.copy())
-
-    ts = np.asarray(ts)
-    ys = np.asfortranarray(np.vstack(ys).T)  # (n, m)
-
-    return ts, ys, istate
-
-
-def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
-    """Drive ZVODE to each requested output knot using ITASK=1.
-
-    ZVODE takes as many internal steps as needed to reach each knot and
-    returns once per knot — no Python overhead between internal steps.
-
-    On failure (istate < 0) the arrays are truncated to only the successfully
-    completed knots; no uninitialized data is ever returned.
-
-    Note: zwork, rwork, and iwork are updated in place by each call.
-
-    Returns
-    -------
-    tspan : ndarray   (truncated to completed knots on failure)
-    ys    : ndarray, shape (n, m), complex128, Fortran order
-    istate : int
-    """
-    ITASK = 1  # normal: step to tout, taking as many steps as needed
-    istate = 1  # initial call
-
-    n = len(y0)
-    ytmp = y0.copy()  # mutable work buffer; only this is passed to Fortran
-
-    ys = np.empty((n, len(tspan)), dtype=np.complex128, order="F")
-    ys[:, 0] = y0
-    t = float(tspan[0])
-
-    with ZVODE_LOCK:
-        for i in range(1, len(tspan)):
-            t, istate = _zvode.zvode(
-                fun,
-                ytmp,
-                t,
-                float(tspan[i]),
-                itol,
-                rtol,
-                atol,
-                ITASK,
-                istate,
-                iopt,
-                zwork,
-                rwork,
-                iwork,
-                jac,
-                mf,
-            )
-
-            if istate < 0:
-                # Do not store ytmp: ZVODE's output is not meaningful on error.
-                # Return only the knots that completed successfully.
-                return tspan[:i], ys[:, :i], istate
-
-            ys[:, i] = ytmp
-            # istate == 2: carry the ZVODE continuation state into the next
-            # segment; do not reset to 1.
-
-    return tspan, ys, istate
-
-
-def _zvode_knots_c(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork):
-    """Drive ZVODE knots using the C-level _zvode.drive_knots entry point.
-
-    Allocates output buffers, acquires the process lock, and delegates the
-    entire knot loop to C.  Returns the same (tspan, ys, istate) tuple as
-    _zvode_knots, truncating the output arrays to the completed knots on
-    failure so that both paths are interchangeable at the call sites.
+    Returns ``(tspan_out, ys, istate)``, truncating on failure.
     """
     n = len(y0)
     nknots = len(tspan)
     ytmp = y0.copy()
     ts_out = np.empty(nknots, dtype=np.float64)
     ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
+
+    _jac = jac if jac is not None else None
 
     with ZVODE_LOCK:
         istate, knots_completed = _zvode.drive_knots(
-            fun, jac, mf,
-            tspan, ytmp,
-            ts_out, ys_out,
-            itol, rtol, atol,
-            iopt, zwork, rwork, iwork,
-        )
-
-    if istate != 2:
-        return ts_out[:knots_completed], ys_out[:, :knots_completed], istate
-    return ts_out, ys_out, istate
-
-
-def _zvode_cfunc_knots(
-    fun_addr, jac_addr, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-):
-    """Drive ZVODE to a sequence of knots using compiled C function pointers.
-
-    Allocates output buffers, acquires the process lock, and delegates the
-    entire knot loop to the C-level _zvode.drive_cfunc_knots entry point.
-    Returns the same (tspan, ys, istate) tuple as _zvode_knots_c, truncating
-    the output arrays to the completed knots on failure.
-    """
-    n = len(y0)
-    nknots = len(tspan)
-    ytmp = y0.copy()
-    ts_out = np.empty(nknots, dtype=np.float64)
-    ys_out = np.empty((n, nknots), dtype=np.complex128, order="F")
-
-    with ZVODE_LOCK:
-        istate, knots_completed = _zvode.drive_cfunc_knots(
-            fun_addr, jac_addr,
+            fun, _jac, ctx_int,
             mf, tspan, ytmp, ts_out, ys_out,
             itol, rtol, atol,
             iopt, zwork, rwork, iwork,
@@ -393,33 +202,18 @@ def _zvode_cfunc_knots(
     return ts_out, ys_out, istate
 
 
-def _zvode_cfunc_adaptive(
-    fun_addr,
-    jac_addr,
-    y0,
-    t0,
-    t_bound,
-    itol,
-    rtol,
-    atol,
-    mf,
-    iopt,
-    zwork,
-    rwork,
-    iwork,
-    refine=1,
-    allow_overshoot=False,
-):
-    """Drive ZVODE in single-step mode using compiled C function pointers.
+def _zvode_drive_adaptive(fun, jac, ctx_int, y0, t0, t_bound, itol, rtol, atol,
+                           mf, iopt, zwork, rwork, iwork,
+                           refine=1, allow_overshoot=False):
+    """Drive ZVODE in single-step mode via the C-level drive_adaptive entry point.
 
-    Acquires the process lock and delegates the adaptive loop entirely to the
-    C-level _zvode.drive_cfunc_adaptive entry point, which collects every
-    accepted step into dynamically-allocated buffers and returns them as numpy
-    arrays.  Returns the same (ts, ys, istate) tuple as _zvode_adaptive.
+    Returns ``(ts, ys, istate)``.
     """
+    _jac = jac if jac is not None else None
+
     with ZVODE_LOCK:
-        ts, ys, istate = _zvode.drive_cfunc_adaptive(
-            fun_addr, jac_addr,
+        ts, ys, istate = _zvode.drive_adaptive(
+            fun, _jac, ctx_int,
             y0, rtol, atol,
             float(t0), float(t_bound),
             itol, iopt, mf,
@@ -442,10 +236,10 @@ def solve_complex_ivp(
     rtol: float | ArrayLike = 1.0e-3,
     atol: float | ArrayLike = 1.0e-6,
     jac: Callable[..., Any] | None = None,
+    ctx: Any | None = None,
     method: Literal["BDF", "Adams"] = "BDF",
     lband: int | None = None,
     uband: int | None = None,
-    in_place: bool = False,
     save_steps: bool = True,
     refine: int = 1,
     allow_overshoot: bool = False,
@@ -473,31 +267,16 @@ def solve_complex_ivp(
 
     Parameters
     ----------
-    fun : callable
+    fun : callable or ctypes._CFuncPtr
         Right-hand side of the system.
 
-        * ``in_place=False`` (default): ``fun(t, y) -> array_like``, SciPy
-          compatible.  A return-value copy is performed on every call.
-        * ``in_place=True``: ``fun(t, y, dy)`` — must fill ``dy`` in place.
-          Accepted forms:
-
-          - plain Python callable
-          - numba ``@cfunc`` object — pass the decorated function directly;
-            its ``.address`` attribute is used to route calls through a native
-            C function pointer, bypassing the Python interpreter on every RHS
-            evaluation.
-          - ctypes ``CFUNCTYPE`` instance — same principle.
-
-          The expected C-level signature (using numba types) is::
-
-              @cfunc(types.void(
-                  types.int32,                           # neq
-                  types.float64,                         # t
-                  types.CPointer(types.complex128),      # y[neq]  (read-only)
-                  types.CPointer(types.complex128),      # dy[neq] (write)
-                  types.voidptr,                         # ctx (pass 0 for now)
-              ))
-              def my_rhs(neq, t, y, dy, ctx): ...
+        * Python callable: ``fun(t, y) -> array_like`` (SciPy-compatible
+          return-value form).  The solver copies the result into its internal
+          buffer on every evaluation.
+        * Compiled callback (``ctypes.CFUNCTYPE`` instance or numba
+          ``@cfunc`` object exposed via ``.ctypes``): in-place mutating
+          form ``fun(neq, t, y_ptr, dy_ptr, ctx)`` — fills ``dy`` through
+          a pointer, bypassing the Python interpreter on every evaluation.
 
     tspan : array_like
         Integration times.
@@ -507,44 +286,57 @@ def solve_complex_ivp(
         * Two elements ``[t0, tf]`` and ``save_steps=False`` →
           endpoint-only mode: returns a scalar ``t`` and a 1-D ``y``.
         * Three or more elements ``[t0, t1, …, tf]`` → output returned only
-          at the requested knots (``save_steps`` is ignored).  The solver
-          uses its own internal steps to advance between knots and evaluates
-          the solution at each requested time; the accuracy at those points
-          equals the accuracy at internal steps.  Providing many intermediate
-          knots has little effect on computational efficiency.
+          at the requested knots (``save_steps`` is ignored).
     y0 : array_like, shape (n,)
         Initial state; cast to ``complex128``.
     rtol, atol : float or array_like, optional
-        Relative and absolute local error tolerances.  The solver keeps the
-        local error roughly below ``rtol * |y(i)| + atol`` for each component.
-        Scalar or per-component arrays are accepted.  Defaults are
+        Relative and absolute local error tolerances.  Defaults are
         ``rtol=1e-3``, ``atol=1e-6``.
-    jac : callable or None, optional
-        Jacobian of ``fun`` w.r.t. ``y``.  Follows the same ``in_place``
-        convention as ``fun``:
+    jac : callable, ctypes._CFuncPtr, or None, optional
+        Jacobian of ``fun`` w.r.t. ``y``.
 
-        * ``in_place=False``, full (no ``lband``/``uband``):
-          ``jac(t, y) -> (n, n)`` array with ``J[i, j] = df(i)/dy(j)``.
-        * ``in_place=False``, banded (``lband``/``uband`` set):
-          ``jac(t, y) -> (lband + uband + 1, n)`` array where element
-          ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
-        * ``in_place=True``, full: ``jac(t, y, pd)`` — fill ``pd`` in place.
-        * ``in_place=True``, banded: ``jac(t, y, pd, ml, mu)`` — fill the
-          banded matrix ``pd`` in place using the same row convention.
+        * Python callable: ``jac(t, y) -> array_like``.  For a dense
+          Jacobian return shape ``(n, n)`` with ``J[i, j] = df(i)/dy(j)``.
+          For a banded Jacobian return shape ``(lband + uband + 1, n)``
+          using ZVODE's banded-storage convention.
+        * Compiled callback: in-place mutating form
+          ``jac(neq, t, y_ptr, ml, mu, pd_ptr, nrowpd, ctx)``.
+    ctx : ctypes.c_void_p or None, optional
+        Optional shared user-data pointer passed as the ``ctx`` argument to
+        **compiled** callbacks on every invocation.  Ignored (with a warning)
+        when both ``fun`` and ``jac`` are plain Python callables.
 
+        * ``None`` (default) — NULL is passed as ``ctx``.
+        * ``ctypes.c_void_p`` — its ``.value`` is forwarded.
+
+        The caller is responsible for keeping the referent alive for the
+        duration of the integration.
     method : {'BDF', 'Adams'}, optional
-        Linear multistep method.  ``'BDF'`` (default) for stiff problems
-        (max order 5); ``'Adams'`` for non-stiff (max order 12).
+        Linear multistep method.  ``'BDF'`` (default) for stiff problems;
+        ``'Adams'`` for non-stiff.
     lband, uband : int or None, optional
-        Lower and upper half-bandwidths of a banded Jacobian.  Must be
-        non-negative integers.  When either is set, the banded Jacobian path
-        is used and the other defaults to 0.  The full band has width
-        ``lband + uband + 1``.
-    in_place : bool, optional
-        Selects the callback convention for ``fun`` and ``jac``.
-        Default ``False`` (SciPy-compatible return-value form).
-        Compiled callbacks (numba ``@cfunc``, ctypes ``CFUNCTYPE``) always
-        use the in-place convention; ``in_place=True`` is required for them.
+        Lower and upper half-bandwidths of a banded Jacobian.
+    save_steps : bool, optional
+        When ``tspan`` has exactly two elements, controls whether every
+        accepted internal step is stored.
+    refine : int, optional
+        Number of output points per accepted step when ``save_steps=True``.
+    allow_overshoot : bool, optional
+        When ``save_steps=True``, allow the solver to step past the endpoint.
+    first_step : float or None, optional
+        Initial step size hint.
+    min_step : float, optional
+        Minimum allowed step size.
+    max_step : float, optional
+        Maximum allowed step size.
+    max_num_steps : int, optional
+        Maximum internal steps between two consecutive output points.
+    max_order : int or None, optional
+        Maximum integration order (capped at 12 for Adams and 5 for BDF).
+    miter : {0, 1, 2, 3, 4, 5} or None, optional
+        Corrector iteration method.  Normally inferred automatically.
+    save_jac : bool, optional
+        Whether to retain a saved copy of the Jacobian between steps.
 
     Returns
     -------
@@ -552,73 +344,10 @@ def solve_complex_ivp(
         Dict-like object with attribute access.  Always contains:
 
         result.t : float or ndarray, shape (m,)
-            Output time(s).  A scalar float in endpoint-only mode
-            (``len(tspan) == 2`` and ``save_steps=False``); a 1-D array
-            otherwise.
         result.y : ndarray, shape (n,) or (n, m), complex128
-            Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
-            Fortran-order array with ``result.y[:, k]`` the state at
-            ``result.t[k]`` otherwise.
         result.nfev : int
-            Number of right-hand side evaluations.
         result.njev : int
-            Number of Jacobian evaluations.
         result.nlu : int
-            Number of LU decompositions.
-
-    Other Parameters
-    ----------------
-    save_steps : bool, optional
-        When ``tspan`` has exactly two elements, controls whether every
-        accepted internal step is stored.  ``True`` (default) collects all
-        steps; ``False`` returns only the endpoint.  Note: ZVODE always uses
-        adaptive time-stepping regardless of this flag — it only governs what
-        output is captured.
-    refine : int, optional
-        Number of output points per accepted step when ``save_steps=True``.
-        ``refine=1`` (default) records only the step endpoints.
-        ``refine=N`` inserts ``N - 1`` additional interpolated points inside
-        each step for smoother plots; this does not improve the accuracy of
-        the integration.  Ignored when ``save_steps=False`` or
-        ``len(tspan) > 2``.
-    allow_overshoot : bool, optional
-        When ``save_steps=True``, allow the solver to step past the endpoint
-        ``tspan[1]``.  ``False`` (default) ensures the last output point is
-        exactly ``tspan[1]``.  ``True`` lets the solver choose its step size
-        freely, which can occasionally be more efficient, but the last output
-        point may lie slightly beyond ``tspan[1]``.  Ignored when
-        ``save_steps=False`` or ``len(tspan) > 2``.
-    first_step : float or None, optional
-        Initial step size.  Chosen automatically if not given.
-    min_step : float, optional
-        Minimum allowed step size.  Default 0.
-    max_step : float, optional
-        Maximum allowed step size.  Default ``np.inf``.
-    max_num_steps : int, optional
-        Maximum number of internal steps between two consecutive output
-        points.  Default 1 000 000.  Lower this to cap computational work
-        when function evaluations are expensive; an error is raised if the
-        budget is exhausted before the next output point.
-    max_order : int or None, optional
-        Maximum integration order.  Capped at 12 for Adams and 5 for BDF.
-    miter : {0, 1, 2, 3, 4, 5} or None, optional
-        Iteration method used by the corrector.  Normally inferred from
-        ``method``, ``jac``, and the band arguments.  Without ``jac``,
-        ``method='Adams'`` defaults to ``0`` (functional iteration) and
-        ``method='BDF'`` defaults to ``2`` (internally generated Jacobian).
-        Providing ``jac`` selects ``1`` (dense) or ``4`` (banded).  Pass
-        this argument only to override the automatic selection — for instance
-        to force diagonal (``3``) or finite-difference Jacobian generation
-        even when a ``jac`` callable is supplied.  Use with care: an
-        inconsistent combination (e.g. ``miter=4`` without band arguments)
-        will raise a ``ValueError`` or cause a solver failure.
-    save_jac : bool, optional
-        If ``True`` (default), the solver retains a copy of the Jacobian to
-        reuse when rebuilding the Newton iteration matrix, reducing Jacobian
-        evaluations at the cost of extra memory.  If ``False``, no copy is
-        kept and the Jacobian is recomputed whenever the iteration matrix
-        needs updating.  Ignored for functional iteration (``miter=0``) or
-        diagonal approximation (``miter=3``).
 
     Raises
     ------
@@ -627,36 +356,14 @@ def solve_complex_ivp(
     RuntimeError
         When the solver cannot reach the requested endpoint.
 
-    Notes
-    -----
-    **Thread safety** — ``solve_complex_ivp`` holds a process-wide lock for
-    the entire integration.  Concurrent calls from multiple threads will
-    queue rather than run in parallel.  Use ``multiprocessing`` for parallel
-    independent integrations.
-
-    **C-level callbacks** — when ``fun`` (and optionally ``jac``) is a
-    numba ``@cfunc`` or ctypes ``CFUNCTYPE`` instance, the integration runs
-    entirely in C/Fortran via ``_zvode.drive_cfunc_adaptive`` or
-    ``_zvode.drive_cfunc_knots``.  No Python object is created on each RHS
-    or Jacobian evaluation, so the overhead per function call is that of a
-    direct C function pointer call rather than a Python dispatch.
-    ``in_place=True`` is required for compiled callbacks.
-
-    References
-    ----------
-    .. [1] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
-       Variable-Coefficient ODE Solver," *SIAM J. Sci. Stat. Comput.*,
-       10(5), pp. 1038-1051, 1989. https://doi.org/10.1137/0910062
-
     Examples
     --------
-    Trace the unit circle: ``dy/dt = i*y``, ``y(0) = 1``, analytic solution
-    ``y(t) = exp(i*t)``.  After one full revolution the state returns to 1:
+    Trace the unit circle: ``dy/dt = i*y``, ``y(0) = 1``:
 
     >>> import math
     >>> from zvode import solve_complex_ivp
     >>> sol = solve_complex_ivp(lambda t, y: 1j*y, [0, 2*math.pi], [1+0j])
-    >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)   # back near start after one loop
+    >>> bool(abs(sol.y[0, -1] - 1.0) < 1e-2)
     True
     """
 
@@ -667,7 +374,6 @@ def solve_complex_ivp(
     if tspan.ndim != 1 or len(tspan) < 2:
         raise ValueError("`tspan` must be a 1-D array with at least two elements.")
     diffs = np.diff(tspan)
-    # Python `or` short-circuits: the second np.all is skipped when the first is True.
     if not (np.all(diffs > 0) or np.all(diffs < 0)):
         raise ValueError(
             "`tspan` must be strictly monotonic (all increasing or all decreasing)."
@@ -699,10 +405,9 @@ def solve_complex_ivp(
     else:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
 
+    # For _resolve_miter, jac may be a ctypes._CFuncPtr (which is callable)
+    # or a plain callable.  Both pass the callable() check.
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
-
-    if jac is not None and _miter in (1, 4) and not in_place:
-        _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
@@ -717,25 +422,14 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     # 4.  Workspace
     # ------------------------------------------------------------------
-    iopt = 1  # optional inputs present (rwork / iwork slots populated below)
-    # Cap max_step at the largest interval in tspan so the solver cannot
-    # overshoot a knot in a single step.  Honour a tighter user-supplied limit.
+    iopt = 1
     _max_interval = float(np.max(np.abs(diffs)))
     _effective_max_step = min(_max_interval, max_step)
     zwork, rwork, iwork = _make_workspace(
-        n,
-        _miter,
-        ml,
-        mu,
-        mf,
-        maxord_allowed,
-        first_step,
-        min_step,
-        _effective_max_step,
-        max_order,
-        max_num_steps,
-        t0=float(tspan[0]),
-        t_bound=float(tspan[-1]),
+        n, _miter, ml, mu, mf, maxord_allowed,
+        first_step, min_step, _effective_max_step,
+        max_order, max_num_steps,
+        t0=float(tspan[0]), t_bound=float(tspan[-1]),
     )
 
     # ------------------------------------------------------------------
@@ -745,101 +439,60 @@ def solve_complex_ivp(
         raise ValueError("`refine` must be a positive integer.")
 
     # ------------------------------------------------------------------
-    # 6.  Normalize callbacks and integrate
+    # 6.  Normalize callbacks and ctx
     # ------------------------------------------------------------------
-    #
-    # Path A (in_place=False)
-    #   Wrap SciPy-style fun(t,y)->array to the in-place form that
-    #   _zvode.zvode expects.
-    #
-    # Path B (in_place=True, plain Python callable)
-    #   Pass through unchanged; fun must already accept (t, y, dy).
-    #
-    # Path C (in_place=True, compiled cfunc — numba or ctypes)
-    #   Extract the raw C function pointer address (int) and pass it
-    #   directly to the C-level _zvode.drive_cfunc_* entry points, which
-    #   run the complete integration loop without re-entering Python on
-    #   every RHS / Jacobian evaluation.
+    fun_addr = _get_cfunc_address(fun)
+    jac_addr = _get_cfunc_address(jac) if jac is not None else None
 
-    fun_addr = _cfunc_address(fun)
-    jac_addr = _cfunc_address(jac) if jac is not None else None
+    # _fun / _jac: compiled → Python int (address); Python callable → as-is
+    _fun = fun_addr if fun_addr is not None else fun
+    _jac = (jac_addr if jac_addr is not None else jac) if jac is not None else None
 
-    if fun_addr is not None and not in_place:
-        raise ValueError(
-            "Compiled callbacks (numba @cfunc / ctypes) use the in-place calling "
-            "convention and are incompatible with `in_place=False`.  "
-            "Pass `in_place=True`, or use a plain Python callable with `in_place=False`."
+    # Validate ctx
+    if ctx is None:
+        ctx_int = 0
+    elif isinstance(ctx, ctypes.c_void_p):
+        ctx_int = ctx.value if ctx.value is not None else 0
+    else:
+        raise TypeError(
+            "`ctx` must be a ctypes.c_void_p or None; "
+            f"got {type(ctx).__name__!r}."
         )
 
-    if fun_addr is not None:
-        # Path C — compiled callback: route through C-level function-pointer drivers.
-        _jac_addr = jac_addr if jac_addr is not None else 0
+    if ctx is not None and fun_addr is None and jac_addr is None:
+        warnings.warn(
+            "`ctx` is ignored when both `fun` and `jac` are plain Python "
+            "callables (no compiled callback detected).",
+            stacklevel=2,
+        )
 
-        if len(tspan) == 2 and save_steps:
-            t_out, y_out, istate = _zvode_cfunc_adaptive(
-                fun_addr, _jac_addr, y0, tspan[0], tspan[1],
-                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
-                refine=refine, allow_overshoot=allow_overshoot,
-            )
-        elif len(tspan) == 2:
-            t_out, y_out, istate = _zvode_cfunc_knots(
-                fun_addr, _jac_addr, y0, tspan,
-                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
-            )
-            t_out = float(t_out[-1])
-            y_out = y_out[:, -1]
-        else:
-            t_out, y_out, istate = _zvode_cfunc_knots(
-                fun_addr, _jac_addr, y0, tspan,
-                itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
-            )
+    # Validate Python callable shapes before the integration starts.
+    if fun_addr is None:
+        _validate_fun_shape(fun, n, tspan[0], y0)
+    if jac is not None and jac_addr is None and _miter in (1, 4):
+        _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
+    # ------------------------------------------------------------------
+    # 7.  Integrate
+    # ------------------------------------------------------------------
+    if len(tspan) == 2 and save_steps:
+        t_out, y_out, istate = _zvode_drive_adaptive(
+            _fun, _jac, ctx_int, y0, tspan[0], tspan[1],
+            itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+            refine=refine, allow_overshoot=allow_overshoot,
+        )
+    elif len(tspan) == 2:
+        t_out, y_out, istate = _zvode_drive_knots(
+            _fun, _jac, ctx_int, y0, tspan,
+            itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+        )
+        t_out = float(t_out[-1])
+        y_out = y_out[:, -1]
     else:
-        # Paths A and B — Python callables.
-        if in_place:
-            # Path B — Python in-place callable; use as-is.
-            _fun = fun
-            _jac = jac
-        else:
-            # Path A — SciPy-compatible; wrap to in-place.
-            _validate_fun_shape(fun, n, tspan[0], y0)
-            _fun = _wrapped_fun(fun)
-            _jac = _wrapped_jac(jac, banded=(_miter == 4)) if jac is not None else None
-
-        if len(tspan) == 2 and save_steps:
-            # Collect every accepted step (optionally with ZVINDY interpolation).
-            t_out, y_out, istate = _zvode_adaptive(
-                _fun,
-                _jac,
-                y0,
-                tspan[0],
-                tspan[1],
-                itol,
-                rtol,
-                atol,
-                mf,
-                iopt,
-                zwork,
-                rwork,
-                iwork,
-                refine=refine,
-                allow_overshoot=allow_overshoot,
-            )
-        elif len(tspan) == 2:
-            # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
-            # and 1-D y — no intermediate storage.
-            _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-            t_out, y_out, istate = _knots_fn(
-                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-            )
-            t_out = float(t_out[-1])
-            y_out = y_out[:, -1]
-        else:
-            # Knots: output at each element of tspan.
-            _knots_fn = _zvode_knots_c if _USE_C_KNOTS else _zvode_knots
-            t_out, y_out, istate = _knots_fn(
-                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-            )
+        t_out, y_out, istate = _zvode_drive_knots(
+            _fun, _jac, ctx_int, y0, tspan,
+            itol, rtol, atol, mf, iopt, zwork, rwork, iwork,
+        )
 
     # ------------------------------------------------------------------
     # 8.  Error reporting

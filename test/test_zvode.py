@@ -143,8 +143,8 @@ def test_zvode_scalar_real_decay():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = -y[0]
+    def fun(t, y):
+        return np.array([-y[0]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -203,8 +203,8 @@ def test_zvode_complex_rotation():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = 1j * y[0]
+    def fun(t, y):
+        return np.array([1j * y[0]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -230,8 +230,8 @@ def test_zvode_multistep_continuation():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = 1j * y[0]
+    def fun(t, y):
+        return np.array([1j * y[0]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -271,9 +271,8 @@ def test_zvode_two_component_system():
     neq = 2
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = -0.1 * y[0]
-        dy[1] = -2.0 * y[1]
+    def fun(t, y):
+        return np.array([-0.1 * y[0], -2.0 * y[1]])
 
     y = np.array([1.0 + 0j, 1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -300,8 +299,8 @@ def test_zvode_bdf_method():
     neq = 1
     mf = 22
 
-    def fun(t, y, dy):
-        dy[0] = -y[0]
+    def fun(t, y):
+        return np.array([-y[0]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -330,8 +329,8 @@ def test_zvode_optional_output_populated():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = -y[0]
+    def fun(t, y):
+        return np.array([-y[0]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -361,8 +360,8 @@ def test_zvode_wrong_array_type():
     neq = 1
     mf = 10
 
-    def fun(t, y, dy):
-        dy[0] = -y[0]
+    def fun(t, y):
+        return np.array([-y[0]])
 
     rtol = np.array([1e-6], dtype=np.float64)
     atol = np.array([1e-8], dtype=np.float64)
@@ -425,15 +424,11 @@ def test_zvode_bdf_user_jacobian():
     neq = 2
     mf = 21
 
-    def fun(t, y, dy):
-        dy[0] = -y[0] + 1j * y[1]
-        dy[1] = -1j * y[0] - 2.0 * y[1]
+    def fun(t, y):
+        return np.array([-y[0] + 1j * y[1], -1j * y[0] - 2.0 * y[1]])
 
-    def jac(t, y, J):
-        J[0, 0] = -1.0 + 0j
-        J[0, 1] = 1j
-        J[1, 0] = -1j
-        J[1, 1] = -2.0 + 0j
+    def jac(t, y):
+        return np.array([[-1.0 + 0j, 1j], [-1j, -2.0 + 0j]])
 
     y = np.array([1.0 + 0j, 0.0 + 0j], dtype=np.complex128)
     t = 0.0
@@ -466,11 +461,11 @@ def test_zvode_adams_user_jacobian():
     neq = 1
     mf = 11
 
-    def fun(t, y, dy):
-        dy[0] = 1j * y[0] ** 2
+    def fun(t, y):
+        return np.array([1j * y[0] ** 2])
 
-    def jac(t, y, J):
-        J[0, 0] = 2j * y[0]
+    def jac(t, y):
+        return np.array([[2j * y[0]]])
 
     y = np.array([1.0 + 0j], dtype=np.complex128)
     t = 0.0

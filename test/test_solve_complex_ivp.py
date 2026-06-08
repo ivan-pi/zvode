@@ -165,72 +165,6 @@ def test_jacobian_types(method, jac_fn, jac_kwargs):
 
 
 # ---------------------------------------------------------------------------
-# 3. Callback convention (in_place=False vs in_place=True) × output modes
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun(mode):
-    """in_place=True plain Python callable, no Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip, tspan, Y0, in_place=True, save_steps=save, rtol=RTOL, atol=ATOL
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_dense_jac(mode):
-    """in_place=True with dense Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_dense_ip,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-@pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
-def test_inplace_fun_banded_jac(mode):
-    """in_place=True with banded Jacobian."""
-    tspan = np.linspace(T0, TF, 9) if mode == "knots" else [T0, TF]
-    save = mode == "steps"
-    sol = solve_complex_ivp(
-        fun_ip,
-        tspan,
-        Y0,
-        in_place=True,
-        jac=jac_banded_ip,
-        lband=LBAND,
-        uband=UBAND,
-        save_steps=save,
-        rtol=RTOL,
-        atol=ATOL,
-    )
-    if mode == "endpoint":
-        ref = exact(TF)
-        assert np.allclose(sol.y, ref, rtol=1e-5)
-    else:
-        _check(sol.t, sol.y)
-
-
-# ---------------------------------------------------------------------------
 # 4. Backward integration × output modes
 # ---------------------------------------------------------------------------
 
@@ -462,41 +396,19 @@ def test_miter1_banded_jac_shape_raises():
         solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_wrong, miter=1)
 
 
-def test_compiled_callback_requires_in_place():
-    """Compiled callbacks (numba/ctypes) are incompatible with in_place=False."""
-    import ctypes
-
-    # A minimal ctypes function pointer — address detection is enough to
-    # trigger the check; the function is never actually called.
-    prototype = ctypes.CFUNCTYPE(None)
-    dummy = prototype(lambda: None)
-
-    with pytest.raises(ValueError, match="in_place"):
-        solve_complex_ivp(dummy, [T0, TF], Y0, in_place=False)
-
-
 def test_compiled_callback_runs():
-    """in_place=True with a compiled ctypes callback completes without error."""
+    """Compiled ctypes callback completes without error."""
     import ctypes
 
-    # Minimal ctypes RHS for a trivial ODE (dy/dt = 0); just verifies that the
-    # compiled-callback code path executes without raising NotImplementedError.
-    # The function is called with (neq, t, y*, dy*, ctx) — we only need to
-    # zero-fill dy to avoid uninitialized output.
-    proto = ctypes.CFUNCTYPE(
-        None,
-        ctypes.c_int, ctypes.c_double,
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.c_void_p,
-    )
+    from zvode import ZVODE_FUN_CTYPE
 
-    @proto
-    def trivial_rhs(neq, t, y, dy, ctx):
+    @ZVODE_FUN_CTYPE
+    def trivial_rhs(neq, t, y_ptr, dy_ptr, ctx):
+        buf = (ctypes.c_double * (2 * neq)).from_address(dy_ptr)
         for i in range(2 * neq):
-            dy[i] = 0.0
+            buf[i] = 0.0
 
-    sol = solve_complex_ivp(trivial_rhs, [T0, TF], Y0, in_place=True)
+    sol = solve_complex_ivp(trivial_rhs, [T0, TF], Y0)
     assert sol.y.shape[0] == 2
 
 

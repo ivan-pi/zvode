@@ -18,8 +18,6 @@ xfail tests
     lands each xfail will become an XPASS, signalling the task is done.
 
 Passing tests
-    * ``test_nfev_accurate_when_in_place`` — with in_place=True the shape-
-      probe is skipped entirely, so the counter should be exact right now.
     * ``test_*_probe_offset_is_one`` — pin the *current* discrepancy to
       exactly 1 so that a refactor cannot silently introduce a larger offset.
 """
@@ -63,17 +61,6 @@ def _make_jac():
     return jac, counter
 
 
-def _make_inplace_fun():
-    """Return (fun, counter) using the in-place calling convention."""
-    counter = [0]
-
-    def fun(t, y, dy):
-        counter[0] += 1
-        dy[:] = LAM * y
-
-    return fun, counter
-
-
 # ---------------------------------------------------------------------------
 # solve_complex_ivp — nfev
 # ---------------------------------------------------------------------------
@@ -87,13 +74,6 @@ def test_nfev_includes_probe_out_of_place():
     """result.nfev equals total fun calls including the shape-probe (in_place=False)."""
     fun, counter = _make_fun()
     result = solve_complex_ivp(fun, TSPAN, Y0, **TOLS)
-    assert result.nfev == counter[0]
-
-
-def test_nfev_accurate_when_in_place():
-    """result.nfev matches fun call count exactly when in_place=True (no probe)."""
-    fun, counter = _make_inplace_fun()
-    result = solve_complex_ivp(fun, TSPAN, Y0, in_place=True, **TOLS)
     assert result.nfev == counter[0]
 
 
