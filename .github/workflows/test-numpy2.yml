@@ -39,3 +39,6 @@ jobs:
 
       - name: Run tests
         run: python -m pytest test/ -v
+
+      - name: Run doctests
+        run: python -m pytest --doctest-modules src/
