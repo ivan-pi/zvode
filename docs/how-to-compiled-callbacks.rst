@@ -66,6 +66,9 @@ explanation of the banded layout.
 Numba ``@cfunc``
 ----------------
 
+See the `Numba cfunc documentation <https://numba.readthedocs.io/en/stable/user/cfunc.html>`_
+for a full introduction to compiled C callbacks in Numba.
+
 Install numba (``pip install numba``) then use the signature objects exported
 by this package.  :data:`~zvode.zvode_fun_sig` and
 :data:`~zvode.zvode_jac_sig` are constructed on first access so that numba is
@@ -147,6 +150,9 @@ spacing ``h`` gives a tridiagonal Jacobian with weights ``α/h²``,
 
 Loading from a shared library
 ------------------------------
+
+See the `ctypes callback functions documentation <https://docs.python.org/3/library/ctypes.html#callback-functions>`_
+for background on ``CFUNCTYPE`` and wrapping C function pointers in Python.
 
 When your RHS is already compiled as a C function, load it with
 :mod:`ctypes` and cast it to :data:`~zvode.ZVODE_FUN_CTYPE`:
