@@ -229,72 +229,55 @@ docstring so they survive future contributions:
 
 ---
 
-## Pretty-printing (format not yet decided)
+## Pretty-printing
 
-Typing `sol` at the REPL or `print(sol)`-ing it must be useful.  The
-*requirements* below are decided; the exact output format is an **open
-question** to settle before implementation.
+Typing `sol` at the REPL or `print(sol)`-ing it must be useful.
 
-Decided requirements:
+**Decided format: the SciPy/MATLAB aligned `key: value` layout, with
+MATLAB-style array placeholders.**  The layout is what people are used
+to — `scipy.integrate.solve_ivp` users see it today (`OdeResult` inherits
+`OptimizeResult.__repr__`), and MATLAB displays its ODE solution structs
+the same way.  The one place the two precedents differ is array
+rendering: SciPy prints numpy-formatted array *contents* (numpy only
+truncates above ~1000 elements, so a `(2, 58)` solution dumps all 116
+complex numbers), whereas MATLAB renders a compact placeholder
+(`y: [2×58 double]`).  zvode follows MATLAB here: arrays are summarised
+as `[shape dtype]`, never dumped.
 
-- The first thing shown answers "did it work": `success` (and/or `status`
-  and `message`) leads the output, ahead of shapes and counters.
-- Large arrays are never dumped in full.  `t` and `y` are summarised
-  (shape, dtype, and possibly the time interval); anyone who wants the
-  data accesses the attribute.
-- `__repr__` and `__str__` produce the same output — one format, no
-  divergence.  (Note that the interactive shell shows `__repr__`, so a
-  pretty `__str__` alone would miss the primary use case.)
-- The output is derived from the dict contents so a field added to the
-  result cannot silently go missing from the printout.
-
-Candidate formats:
-
-**A. Single line** — the current style, extended:
-
-```
-ZVODEResult(success=True, status=0, t=ndarray(shape=(58,)),
-y=ndarray(shape=(2, 58), dtype=complex128), nfev=131, njev=0, nlu=0, ...)
-```
-
-Grep-friendly and compact in logs, but increasingly crowded as fields
-accumulate, and `message` does not fit.
-
-**B. SciPy `OptimizeResult` style** — right-aligned `key: value` lines,
-arrays printed via numpy's own (self-summarising) formatting:
+Target output for a successful solve:
 
 ```
  message: The solver successfully reached the end of the integration interval.
  success: True
   status: 0
-       t: [0.000e+00 1.234e-03 ... 6.283e+00]
-       y: [[1.000e+00+0.j ... ]]
+       t: [58 float64]
+       y: [2x58 complex128]
     nfev: 131
     njev: 0
      nlu: 0
+  nsteps: 57
+     nni: 0
+    ncfn: 0
+    netf: 1
 ```
 
-Maximum familiarity — this is literally what `solve_ivp` users see today,
-since `OdeResult` inherits `OptimizeResult.__repr__` — but it prints array
-*contents* (numpy-summarised), which violates the no-array-dump
-requirement unless adapted.
+Rules:
 
-**C. Header-plus-summary** — in the spirit of DiffEq's solution printing:
+- Aligned `key: value` lines, keys right-justified to the longest key, in
+  the canonical order above: the verdict block (`message`, `success`,
+  `status`) first — answering "did it work" before anything else — then
+  `t`, `y`, then the counters.  Fields present in the dict but not in the
+  canonical list are appended at the end in insertion order, so a field
+  added to the result cannot silently go missing from the printout.
+- ndarray values render as `[shape dtype]` placeholders: `[2x58
+  complex128]` for 2-D, `[58 float64]` for 1-D.  Scalars (including the
+  endpoint-only mode's float `t`) render with `repr`.
+- `__repr__` and `__str__` produce the same output — one format, no
+  divergence.  (The interactive shell shows `__repr__`, so a pretty
+  `__str__` alone would miss the primary use case.)
 
-```
-ZVODEResult: success (status=0)
-  message: The solver successfully reached the end of the integration interval.
-        t: 58 points in [0.0, 6.2832]
-        y: (2, 58) complex128
-    stats: nfev=131 njev=0 nlu=0 nsteps=57 nni=0 ncfn=0 netf=1
-```
-
-Most informative at a glance; least like anything in the Python
-ecosystem.
-
-Decision deferred.  Whichever format is chosen, the requirements above are
-binding, and the format is *not* API — users must not parse the printout
-(that is what the fields are for), so it can be refined in any release
+The format is *not* API — users must not parse the printout (that is what
+the fields are for) — so the rendering can be refined in any release
 without a deprecation cycle.
 
 ---
@@ -305,8 +288,9 @@ without a deprecation cycle.
   (`src/zvode/solve.py`) at the single point where the result dict is
   built; the failure path constructs the same dict (with the truncated
   `t`/`y` already computed there) before raising `ZVODEError`.
-- `ZVODEResult.__repr__` is replaced per the pretty-printing section above
-  once the format is decided.
+- `ZVODEResult.__repr__` is replaced per the pretty-printing section
+  above; `__str__` is not defined separately (it falls back to
+  `__repr__`).
 - The class-based `ZVODE` stepper API is unaffected; this spec covers only
   the procedural `solve_complex_ivp` return value.
 
