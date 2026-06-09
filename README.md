@@ -213,6 +213,16 @@ pip install ... \
 ```
 The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
 
+### Debug build
+
+Passing `-DZVODE_DEBUG` (equivalent to `-DZVODE_DEBUG=1`) enables extra
+assertions and diagnostic output in the C extension:
+
+```bash
+pip install -v ".[test]" \
+  -C "cmake.args=-DCMAKE_C_FLAGS=-DZVODE_DEBUG"
+```
+
 ## Changelog
 
 See [CHANGELOG.md](https://github.com/ivan-pi/zvode/blob/main/CHANGELOG.md) for version history.
