@@ -735,6 +735,16 @@ def solve_complex_ivp(
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
+    if _miter in (4, 5):
+        bandwidth = ml + mu + 1
+        if bandwidth * 2 > n:
+            warnings.warn(
+                f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
+                f"the system size neq = {n}; verify that a banded "
+                "solver is appropriate for this problem.",
+                stacklevel=2,
+            )
+
     if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
 
@@ -747,8 +757,17 @@ def solve_complex_ivp(
         _validate_first_step(first_step, tspan[0], tspan[-1])
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
-    if max_order is not None and max_order <= 0:
-        raise ValueError("`max_order` must be a positive integer.")
+    if max_order is not None:
+        if max_order <= 0:
+            raise ValueError("`max_order` must be a positive integer.")
+        max_allowed = maxord_allowed  # 12 for Adams, 5 for BDF
+        if max_order > max_allowed:
+            warnings.warn(
+                f"`max_order` ({max_order}) exceeds the maximum allowed order "
+                f"({max_allowed}) for the selected method; it will be reduced "
+                "automatically.",
+                stacklevel=2,
+            )
 
     # ------------------------------------------------------------------
     # 4.  Workspace
