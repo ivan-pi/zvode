@@ -4,247 +4,146 @@ Status: draft for the 0.4.0 release.
 
 ## Goals
 
-- Add `success`, `status`, and `message` fields so users do not have to
-  interpret raw ZVODE `ISTATE` values themselves.
-- Remain duck-type compatible with `scipy.integrate.OdeResult` (the return
-  type of `scipy.integrate.solve_ivp`), so that code written against SciPy —
-  `if not sol.success: print(sol.message)` — works verbatim on a
-  `ZVODEResult`.  SciPy is the compatibility target, not diffrax or
-  DifferentialEquations.jl: zvode already follows SciPy's naming (`t`, `y`,
-  `nfev`, `njev`, `nlu`) and callback conventions, and practitioners
-  switching solvers are switching between `solve_ivp` and
-  `solve_complex_ivp`.
-- Stay minimalistic: every field is plain data with an obvious meaning.
-  Names are reserved (not added) for features that do not exist yet.
-- Provide a stable surface: future enhancements (dense output, events) must
-  slot in as *new* fields without changing the meaning of existing ones.
+- Add `success`, `status`, and `message` so users never interpret raw
+  ZVODE `ISTATE` values.
+- Stay duck-type compatible with `scipy.integrate.OdeResult`: code like
+  `if not sol.success: print(sol.message)` works verbatim.  SciPy — not
+  diffrax or DifferentialEquations.jl — is the compatibility target, since
+  practitioners switch between `solve_ivp` and `solve_complex_ivp`.
+- Minimal and stable: every field is plain data; names are reserved (not
+  added) for features that do not exist yet, so future enhancements slot
+  in without changing existing meanings.
 
----
+## Fields
 
-## Field inventory
-
-`ZVODEResult` remains a `dict` subclass with attribute access.  After this
-change it always contains:
+`ZVODEResult` remains a `dict` subclass with attribute access, always
+containing:
 
 | Field     | Type                  | Origin   | Meaning |
 |-----------|-----------------------|----------|---------|
 | `t`       | float or `(m,)` float64 | existing | Output time(s); scalar in endpoint-only mode |
 | `y`       | `(n,)` or `(n, m)` complex128 | existing | Solution state(s); `y[:, k]` is the state at `t[k]` |
-| `success` | bool                  | **new**  | `True` iff the solver reached the end of the integration interval (`status >= 0`, see below) |
-| `status`  | int                   | **new**  | Termination reason, SciPy semantics: `0` reached end of tspan, `-1` integration step failed; `1` is reserved for future event termination |
-| `message` | str                   | **new**  | Human-readable description of the termination reason |
-| `nfev`    | int                   | existing | Number of right-hand side evaluations |
-| `njev`    | int                   | existing | Number of Jacobian evaluations |
-| `nlu`     | int                   | existing | Number of LU decompositions |
-| `nsteps`  | int                   | existing | Number of internal solver steps |
-| `nni`     | int                   | existing | Number of nonlinear (Newton/functional) iterations |
-| `ncfn`    | int                   | existing | Number of nonlinear convergence failures |
-| `netf`    | int                   | existing | Number of local error test failures |
+| `success` | bool                  | **new**  | `True` iff `status >= 0` |
+| `status`  | int                   | **new**  | `0` reached end of tspan, `-1` step failed; `1` reserved for event termination |
+| `message` | str                   | **new**  | Human-readable termination reason |
+| `nfev`    | int                   | existing | RHS evaluations |
+| `njev`    | int                   | existing | Jacobian evaluations |
+| `nlu`     | int                   | existing | LU decompositions |
+| `nsteps`  | int                   | existing | Internal solver steps |
+| `nni`     | int                   | existing | Nonlinear iterations |
+| `ncfn`    | int                   | existing | Nonlinear convergence failures |
+| `netf`    | int                   | existing | Local error test failures |
 
-All counters are cumulative tallies over the entire integration, never
-per-step quantities: ZVODE zeroes them on the initial call only and
-increments them across the whole solve (e.g. `NETF` is documented as "the
-number of error test failures of the integrator so far"), and the drivers
-carry the `ISTATE=2` continuation state between output knots so the totals
-span the full `solve_complex_ivp` call.  Any counter added in the future
-must follow the same rule; per-step diagnostics (ZVODE's `HU`, `NQU`, ...)
-do not belong on the result object.
+This is a strict superset of the `OdeResult` fields that can exist without
+dense output and events.  The ZVODE-specific counters stay flat alongside
+the SciPy ones (no nested `stats` object); whether all four survive past
+1.0 is an open release-plan item.
 
-The first eight rows make `ZVODEResult` a strict superset of the
-`OdeResult` fields that can exist without dense output and events.  The
-ZVODE-specific counters (`nsteps`, `nni`, `ncfn`, `netf`) are kept flat
-alongside the SciPy ones rather than nested in a `stats` sub-object
-(diffrax/DifferentialEquations.jl style), because SciPy keeps counters flat
-and extra attributes do not interfere with duck-typing.  Whether all four
-are kept past 1.0 is still an open release-plan item; this spec does not
-decide it.
+All counters are cumulative tallies over the entire `solve_complex_ivp`
+call (ZVODE zeroes them on the initial call only, and the drivers carry
+the `ISTATE=2` continuation between knots).  Future counters must follow
+the same rule; per-step diagnostics (`HU`, `NQU`, ...) do not belong on
+the result.
 
 ### `y` shape and memory layout
 
-Two separate guarantees, one inherited and one stronger than SciPy's:
+- **Indexing** (API, same as SciPy and DifferentialEquations.jl): shape
+  `(n, m)`; `y[i, :]` is component `i` over time, `y[:, k]` the state at
+  `t[k]`.
+- **Layout** (guaranteed; SciPy leaves it unspecified): column-major
+  (`y.flags.f_contiguous`).  This is the natural layout end to end — the
+  knots driver fills one column per knot, the adaptive driver appends a
+  column per accepted step — and makes `y[:, k]` a contiguous view that
+  can go back into Fortran/LAPACK without a copy.
 
-- **Indexing convention** (part of the API): `y` has shape `(n, m)` —
-  components down the rows, time across the columns — so `y[i, :]` is the
-  time series of component `i` and `y[:, k]` is the full state at `t[k]`.
-  This is the same convention as `scipy.integrate.solve_ivp` (shape
-  `(n, n_points)`) and as DifferentialEquations.jl (`sol[i, :]` is the
-  i-th component at all times).
-- **Memory layout** (guaranteed, unlike SciPy): `y` is column-major
-  (Fortran order, `y.flags.f_contiguous` is `True`).  SciPy documents only
-  the shape; its arrays merely happen to be F-contiguous as an
-  implementation detail.  zvode promises the layout because it is the
-  natural one throughout: the Fortran solver produces each state as a
-  contiguous vector, the knots driver fills its preallocated output one
-  column per knot (`ys[:, i] = ytmp`), and the adaptive driver appends
-  state columns one accepted step at a time.  Column slices `y[:, k]`
-  are therefore contiguous views, and the array can be handed back to
-  Fortran/LAPACK routines without a copy.
+In endpoint-only mode `y` is 1-D `(n,)` and layout does not arise.
 
-In endpoint-only mode (`len(tspan) == 2` and `save_steps=False`) `y` is a
-1-D `(n,)` array and the layout question does not arise.
+### `status`, `success`, `message`
 
-### `status` and `success` semantics
+`status` uses SciPy semantics, not raw `ISTATE`.  `success` is defined as
+`status >= 0`, **not** `status == 0` — success is a set of codes (the
+lesson behind `SciMLBase.successful_retcode`), so future event
+termination (`status == 1`) counts as success without callers updating.
+`status` is a plain `int`; promoting it to an `IntEnum` later (symbolic
+names that still compare equal to the ints) is compatible and out of
+scope.
 
-`status` follows the `scipy.integrate.solve_ivp` convention, **not** the raw
-ZVODE `ISTATE` convention — exposing `ISTATE` is exactly the burden this
-change removes:
+`message` is for humans — code discriminates on `status`, never by
+parsing `message`.  On success it is SciPy's generic text ("The solver
+successfully reached the end of the integration interval.").  On failure
+it gives the failure location plus the ZVODE detail, with a remedy where
+one is known:
 
-| Condition                | `status` | `success` |
-|--------------------------|----------|-----------|
-| Reached the end of tspan | `0`      | `True`    |
-| Event termination (future) | `1`    | `True`    |
-| Integration step failed  | `-1`     | `False`   |
+| `ISTATE` | `status` | message detail |
+|----------|----------|----------------|
+| `2`      | `0`      | success text |
+| `-1`     | `-1`     | Excess work done (try increasing `max_num_steps`) |
+| `-2`     | `-1`     | Excess accuracy requested (tolerances too tight) |
+| `-3`     | `-1`     | Illegal input detected |
+| `-4`     | `-1`     | Repeated error test failures (singularity, or wrong `method`?) |
+| `-5`     | `-1`     | Repeated convergence failures (bad Jacobian, or try `method='BDF'`?) |
+| `-6`     | `-1`     | Error weight became zero (component vanished with `atol=0`) |
 
-`success` is **defined as `status >= 0`**, not `status == 0`.  Success is a
-set of status codes, not a single code (the lesson behind
-`SciMLBase.successful_retcode`): when event support lands, an
-event-terminated solve (`status == 1`) is a successful solve, and code that
-checks `success` must not need updating.
-
-`status` is a plain `int` in 0.4.0.  Promoting it to an `IntEnum` later
-(symbolic names that still compare equal to `-1`/`0`/`1`, in the spirit of
-diffrax's `RESULTS` and DiffEq's named retcodes) is a compatible,
-purely-additive enhancement and is explicitly out of scope here.
-
-### `message` contents
-
-- On success: SciPy's generic text, `"The solver successfully reached the
-  end of the integration interval."`
-- On failure: the location of the failure plus the ZVODE-specific detail
-  already maintained in `_helpers.MESSAGES`, e.g.
-  `"Integration failed at t=1.234, before reaching t=10.0.
-  ZVODE ISTATE=-4: Repeated error test failures."`
-  Where a remedy is known, the message should state it (e.g. for
-  `ISTATE=-1`, suggest increasing `max_num_steps`) — actionable messages,
-  in the spirit of diffrax's `RESULTS` texts.
-
-`message` is documentation for humans.  Programmatic discrimination uses
-`status` (or `success`); user code must never need to parse `message`.
-
-### `ISTATE` mapping
-
-| ZVODE `ISTATE` | `status` | message detail |
-|----------------|----------|----------------|
-| `2`            | `0`      | success text |
-| `-1`           | `-1`     | Excess work done on this call (try increasing `max_num_steps`) |
-| `-2`           | `-1`     | Excess accuracy requested (tolerances too tight for this precision) |
-| `-3`           | `-1`     | Illegal input detected |
-| `-4`           | `-1`     | Repeated error test failures (check for a singularity, or wrong `method`) |
-| `-5`           | `-1`     | Repeated convergence failures (check the Jacobian, or try `method='BDF'`) |
-| `-6`           | `-1`     | Error weight became zero (a component vanished with `atol=0`) |
-
-Raw `ISTATE` is not stored on the result.  The value appears verbatim inside
-`message`, which is sufficient for bug reports and debugging.
-
----
+Raw `ISTATE` is not a field; it appears verbatim inside `message`, which
+suffices for bug reports.
 
 ## Failure behaviour: raise, carrying the failed result
 
-`solve_complex_ivp` keeps raising on solver failure rather than adopting
-SciPy's return-with-`success=False` behaviour.  Raising is safer by
-default: SciPy-style code that forgets to check `success` gets a loud
-exception instead of silently consuming a truncated trajectory.
-
-The bare `RuntimeError` is replaced by a dedicated exception that carries
-the fully-populated result:
-
-```python
-class ZVODEError(RuntimeError):
-    """Raised when ZVODE cannot advance to the next output point.
-
-    Attributes
-    ----------
-    result : ZVODEResult
-        The partial result accumulated up to the failure point, with
-        ``success=False``, ``status=-1``, the failure ``message``, the
-        truncated trajectory in ``t``/``y``, and all solver counters.
-    """
-```
-
-The exception message equals `result.message`.  This gives both
-conventions from one mechanism:
+Unlike SciPy (which returns with `success=False`), `solve_complex_ivp`
+keeps raising — code that forgets to check `success` gets a loud error
+instead of silently consuming a truncated trajectory.  The bare
+`RuntimeError` becomes `ZVODEError(RuntimeError)` with a `result`
+attribute: the fully-populated `ZVODEResult` with `success=False`,
+`status=-1`, the failure `message` (which is also the exception text),
+the partial `t`/`y` trajectory, and all counters.
 
 ```python
 try:
     sol = solve_complex_ivp(fun, tspan, y0)
 except ZVODEError as exc:
-    partial = exc.result          # status == -1, success is False
-    plt.plot(partial.t, partial.y[0].real)   # inspect how far it got
+    partial = exc.result    # success=False; plot partial.t, partial.y
 ```
 
-`ZVODEError` subclasses `RuntimeError`, so existing `except RuntimeError`
-handlers keep working.  A `success=False` result is therefore never
-*returned* in 0.4.0 — the fields establish the contract, and an opt-in
-flag for SciPy's return-instead-of-raise behaviour can be added later if
-users ask, without any change to the result object itself.
+Existing `except RuntimeError` handlers keep working.  An opt-in flag for
+SciPy's return-instead-of-raise behaviour can be added later without
+touching the result object.
 
----
+## Reserved names
 
-## Reserved names (do not repurpose)
+Reserved for future features, **not** added as dead `None` fields now
+(zvode has no `dense_output`/`events` parameters, so omission matches
+SciPy's "None if not requested" contract):
 
-The following names are **reserved** for future features and must not be
-used for anything else.  They are *not* added as dead `None` fields in
-0.4.0: SciPy's own contract is "None if not requested", and zvode has no
-`dense_output` or `events` parameters yet, so omission is consistent.
+| Reserved | Future feature |
+|----------|----------------|
+| `sol`    | Dense output: callable interpolant, signature `sol(t, k=0)` |
+| `t_events`, `y_events` | Event support (SciPy layout: lists of ndarrays) |
+| `status == 1` | Event termination |
 
-| Reserved name | Future feature | Notes |
-|---------------|----------------|-------|
-| `sol`         | Dense output: a callable interpolant over the solved interval | See signature note below |
-| `t_events`    | Event support: times at which each event triggered | list of ndarrays, SciPy layout |
-| `y_events`    | Event support: states at `t_events` | list of ndarrays, SciPy layout |
-| `status == 1` | Event termination | already reserved in the `status` table above |
-
-**Dense-output signature note.**  When `sol` is added, its call signature
-shall be `sol(t, k=0)` where `k` is the derivative order, returning the
-k-th derivative of the interpolating polynomial.  ZVINDY natively computes
-k-th derivatives (the `refine` path already calls it with `k=0`), so this
-capability is free at the Fortran level, and it is something
-`scipy.integrate.OdeSolution` cannot do (DiffEq's `sol(t, deriv=...)` can).
-Committing to the signature now means it never has to change.  The
-canonical spelling is SciPy's `result.sol(t)`; making the result object
-itself callable (DiffEq-style `sol(t)`) is possible sugar later and is not
-part of this spec.
-
----
+The `k` in `sol(t, k=0)` is the derivative order: ZVINDY computes k-th
+derivatives natively (the `refine` path already uses it), so zvode can
+offer what `scipy.integrate.OdeSolution` cannot, at no Fortran-level
+cost.  Committing to the signature now means it never changes.  Making
+the result itself callable (DiffEq-style) is possible sugar later.
 
 ## Anti-goals
 
-These are deliberate non-features, to be stated in the `ZVODEResult`
-docstring so they survive future contributions:
+To be stated in the `ZVODEResult` docstring so they survive future
+contributions:
 
-- **`ZVODEResult` is plain data.**  Arrays, ints, floats, strings, bools —
-  nothing else.  It holds no references to `fun`, `jac`, `ctx`, or solver
-  workspace arrays, and is therefore picklable as-is.  (Cautionary tale:
-  DifferentialEquations.jl stores the problem and algorithm on its
-  solution object and consequently needs `strip_solution` to make results
-  serializable.)
-- **No array interface on the result.**  NumPy slicing on `result.y`
-  already provides `sol[i, j]`-style access; the result object itself does
-  not implement `__getitem__` beyond its dict behaviour, statistics, or
-  plotting hooks.
-- **No raw solver state.**  `ISTATE`, `RWORK`, `IWORK`, Nordsieck arrays
-  and the like are implementation details; diffrax-style `solver_state` /
-  `controller_state` fields are artifacts of JAX's functional constraints
-  and have no place here.
-
----
+- **Plain data only** — no references to `fun`/`jac`/`ctx` or workspace
+  arrays; picklable as-is.  (DifferentialEquations.jl stores the problem
+  on its solution and needs `strip_solution` to serialize — avoid that.)
+- **No array interface** — slicing lives on `result.y`, not on the result.
+- **No raw solver state** — no `ISTATE`/`RWORK`/`IWORK`/Nordsieck fields;
+  diffrax-style `solver_state` is a JAX artifact with no place here.
 
 ## Pretty-printing
 
-Typing `sol` at the REPL or `print(sol)`-ing it must be useful.
-
-**Decided format: the SciPy/MATLAB aligned `key: value` layout, with
-MATLAB-style array placeholders.**  The layout is what people are used
-to — `scipy.integrate.solve_ivp` users see it today (`OdeResult` inherits
-`OptimizeResult.__repr__`), and MATLAB displays its ODE solution structs
-the same way.  The one place the two precedents differ is array
-rendering: SciPy prints numpy-formatted array *contents* (numpy only
-truncates above ~1000 elements, so a `(2, 58)` solution dumps all 116
-complex numbers), whereas MATLAB renders a compact placeholder
-(`y: [2×58 double]`).  zvode follows MATLAB here: arrays are summarised
-as `[shape dtype]`, never dumped.
-
-Target output for a successful solve:
+The SciPy/MATLAB aligned `key: value` layout (what `solve_ivp` and MATLAB
+users already see), but with MATLAB-style array placeholders instead of
+SciPy's numpy-formatted array contents — arrays are summarised as
+`[shape dtype]`, never dumped:
 
 ```
  message: The solver successfully reached the end of the integration interval.
@@ -261,48 +160,28 @@ Target output for a successful solve:
     netf: 1
 ```
 
-Rules:
-
-- Aligned `key: value` lines, keys right-justified to the longest key, in
-  the canonical order above: the verdict block (`message`, `success`,
-  `status`) first — answering "did it work" before anything else — then
-  `t`, `y`, then the counters.  Fields present in the dict but not in the
-  canonical list are appended at the end in insertion order, so a field
-  added to the result cannot silently go missing from the printout.
-- ndarray values render as `[shape dtype]` placeholders: `[2x58
-  complex128]` for 2-D, `[58 float64]` for 1-D.  Scalars (including the
-  endpoint-only mode's float `t`) render with `repr`.
-- `__repr__` and `__str__` produce the same output — one format, no
-  divergence.  (The interactive shell shows `__repr__`, so a pretty
-  `__str__` alone would miss the primary use case.)
-
-The format is *not* API — users must not parse the printout (that is what
-the fields are for) — so the rendering can be refined in any release
-without a deprecation cycle.
-
----
+Rules: keys right-justified, verdict block (`message`/`success`/`status`)
+first, then `t`, `y`, then counters; dict fields outside the canonical
+order are appended so nothing goes missing; scalars render with `repr`;
+`__repr__` and `__str__` are identical (the shell shows `__repr__`).  The
+printout is *not* API — never parse it — so the rendering can change in
+any release.
 
 ## Implementation notes
 
-- `success`/`status`/`message` are constructed in `solve_complex_ivp`
-  (`src/zvode/solve.py`) at the single point where the result dict is
-  built; the failure path constructs the same dict (with the truncated
-  `t`/`y` already computed there) before raising `ZVODEError`.
-- `ZVODEResult.__repr__` is replaced per the pretty-printing section
-  above; `__str__` is not defined separately (it falls back to
-  `__repr__`).
-- The class-based `ZVODE` stepper API is unaffected; this spec covers only
-  the procedural `solve_complex_ivp` return value.
+- `success`/`status`/`message` are built at the single point in
+  `solve_complex_ivp` where the result dict is constructed; the failure
+  path builds the same dict (truncated `t`/`y`) before raising
+  `ZVODEError`.
+- The class-based `ZVODE` stepper API is unaffected.
 
 ## Acceptance criteria
 
-1. A successful solve returns a result with `success is True`,
-   `status == 0`, and the generic success `message`.
-2. A failing solve raises `ZVODEError`; `exc.result.success is False`,
-   `exc.result.status == -1`, `exc.result.message` contains the ZVODE
-   `ISTATE` value and detail, and `exc.result.t` / `exc.result.y` hold the
-   partial trajectory (this also closes the release-plan item on catchable
-   exceptions with accessible partial trajectories).
+1. Successful solve: `success is True`, `status == 0`, generic success
+   `message`.
+2. Failing solve raises `ZVODEError`; `exc.result` has `success is False`,
+   `status == -1`, a `message` containing the `ISTATE` detail, and the
+   partial trajectory (closes the release-plan item on catchable failures).
 3. `pickle.loads(pickle.dumps(result))` round-trips.
-4. A `ZVODEResult` passes for an `OdeResult` in duck-typed code that reads
+4. A `ZVODEResult` passes for an `OdeResult` in duck-typed code reading
    `t`, `y`, `success`, `status`, `message`, `nfev`, `njev`, `nlu`.
