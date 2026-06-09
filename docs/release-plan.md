@@ -204,15 +204,22 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > removed from the public namespace (importable from `zvode.solve`, not
   > re-exported from `zvode`).  Final decision on which of `nsteps`, `nni`,
   > `ncfn`, `netf` to keep vs. drop is still pending.
-- [ ] Richer `ZVODEResult` attributes: add `success` (bool) and `message` (str)
+- [ ] Finish the `ZVODEResult` struct: add `success` (bool) and `message` (str)
   fields so users do not have to interpret raw `istate` values themselves; aligns
-  the return type with the conventions set by `scipy.integrate.OdeResult`
+  the return type with the conventions set by `scipy.integrate.OdeResult`.
+  Before freezing the field set, also compare with what diffrax does
+  (`diffrax.Solution`: a `result` enum plus a `stats` dict) and borrow whatever
+  conventions make sense.
 - [ ] Make the partial trajectory accumulated up to the failure point accessible
   from the `RuntimeError` raised on solver failure (or from a result object);
   the exception and its test landed in 0.3.0, but the partial trajectory is
   currently discarded when the exception is raised
 - [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface
+- [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
+  side still needs work in general — e.g. clean compiles under strict warning
+  flags for the C extension and the Fortran layer, and a review of the CMake
+  setup against current best practice
 
 
 ---
@@ -236,6 +243,14 @@ round-trips.
     (`banded_jacobian.rst` is a full worked tutorial in the toctree; decide
     whether it satisfies this item or whether the `docs/demo_*.py` scripts
     should also be linked from the documentation pages)
+  - [ ] Non-linear examples: the existing examples are mostly linear; add some
+    non-linear ones that are more attractive and more taxing on the solver
+    (e.g. complex Ginzburg–Landau, a Kerr / nonlinear Schrödinger oscillator)
+- [ ] Fortran standard conformance: build and run the test suite with multiple
+  compilers — gfortran (current CI default), ifx, flang, nagfor, lfortran.
+  nagfor's strict checking mode is particularly valuable for conformance;
+  lfortran support may be limited by the Fortran 2003 abstract-class callbacks
+  in the modified `zvode.F`.
 - [~] Binary wheel distribution via cibuildwheel:
   - [x] `wheels.yml` builds Linux x86-64 (manylinux) and macOS arm64 wheels
   - [~] PyPI publish job with trusted publishing exists but needs hardening before
