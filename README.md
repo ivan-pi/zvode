@@ -22,10 +22,9 @@ This package exposes two interfaces to ZVODE:
   [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) subclass for use with
   [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html).
 
-The underlying Fortran source has been modified; [`extern/README.md`](extern/README.md) documents the changes.
+The underlying Fortran source has been modified; [`extern/README.md`](https://github.com/ivan-pi/zvode/blob/main/extern/README.md) documents the changes.
 
-> [!WARNING]
-> This integrator is not thread-safe. You cannot have two threads
+> **Warning:** This integrator is currently not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
 **Table of Contents:**
@@ -104,7 +103,7 @@ sol = solve_ivp(
 )
 ```
 
-More OdeSolver examples are in the [`docs/`](docs/) folder.
+More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tree/main/docs) folder on GitHub.
 
 ## Installation
 
@@ -259,7 +258,7 @@ pip install -v ".[test]" \
 
 ## License
 
-`zvode` is distributed under the BSD license. See [LICENSE](LICENSE) for details.
+`zvode` is distributed under the BSD license. See [LICENSE](https://github.com/ivan-pi/zvode/blob/main/LICENSE) for details.
 
 ## Contributing
 
