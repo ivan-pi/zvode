@@ -229,14 +229,84 @@ docstring so they survive future contributions:
 
 ---
 
+## Pretty-printing (format not yet decided)
+
+Typing `sol` at the REPL or `print(sol)`-ing it must be useful.  The
+*requirements* below are decided; the exact output format is an **open
+question** to settle before implementation.
+
+Decided requirements:
+
+- The first thing shown answers "did it work": `success` (and/or `status`
+  and `message`) leads the output, ahead of shapes and counters.
+- Large arrays are never dumped in full.  `t` and `y` are summarised
+  (shape, dtype, and possibly the time interval); anyone who wants the
+  data accesses the attribute.
+- `__repr__` and `__str__` produce the same output — one format, no
+  divergence.  (Note that the interactive shell shows `__repr__`, so a
+  pretty `__str__` alone would miss the primary use case.)
+- The output is derived from the dict contents so a field added to the
+  result cannot silently go missing from the printout.
+
+Candidate formats:
+
+**A. Single line** — the current style, extended:
+
+```
+ZVODEResult(success=True, status=0, t=ndarray(shape=(58,)),
+y=ndarray(shape=(2, 58), dtype=complex128), nfev=131, njev=0, nlu=0, ...)
+```
+
+Grep-friendly and compact in logs, but increasingly crowded as fields
+accumulate, and `message` does not fit.
+
+**B. SciPy `OptimizeResult` style** — right-aligned `key: value` lines,
+arrays printed via numpy's own (self-summarising) formatting:
+
+```
+ message: The solver successfully reached the end of the integration interval.
+ success: True
+  status: 0
+       t: [0.000e+00 1.234e-03 ... 6.283e+00]
+       y: [[1.000e+00+0.j ... ]]
+    nfev: 131
+    njev: 0
+     nlu: 0
+```
+
+Maximum familiarity — this is literally what `solve_ivp` users see today,
+since `OdeResult` inherits `OptimizeResult.__repr__` — but it prints array
+*contents* (numpy-summarised), which violates the no-array-dump
+requirement unless adapted.
+
+**C. Header-plus-summary** — in the spirit of DiffEq's solution printing:
+
+```
+ZVODEResult: success (status=0)
+  message: The solver successfully reached the end of the integration interval.
+        t: 58 points in [0.0, 6.2832]
+        y: (2, 58) complex128
+    stats: nfev=131 njev=0 nlu=0 nsteps=57 nni=0 ncfn=0 netf=1
+```
+
+Most informative at a glance; least like anything in the Python
+ecosystem.
+
+Decision deferred.  Whichever format is chosen, the requirements above are
+binding, and the format is *not* API — users must not parse the printout
+(that is what the fields are for), so it can be refined in any release
+without a deprecation cycle.
+
+---
+
 ## Implementation notes
 
 - `success`/`status`/`message` are constructed in `solve_complex_ivp`
   (`src/zvode/solve.py`) at the single point where the result dict is
   built; the failure path constructs the same dict (with the truncated
   `t`/`y` already computed there) before raising `ZVODEError`.
-- `ZVODEResult.__repr__` is extended to lead with `success` and `status`
-  so a glance at the REPL answers "did it work".
+- `ZVODEResult.__repr__` is replaced per the pretty-printing section above
+  once the format is decided.
 - The class-based `ZVODE` stepper API is unaffected; this spec covers only
   the procedural `solve_complex_ivp` return value.
 
