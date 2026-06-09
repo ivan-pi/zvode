@@ -128,8 +128,7 @@ the result itself callable (DiffEq-style) is possible sugar later.
 
 ## Anti-goals
 
-To be stated in the `ZVODEResult` docstring so they survive future
-contributions:
+Deliberate non-features:
 
 - **Plain data only** — no references to `fun`/`jac`/`ctx` or workspace
   arrays; picklable as-is.  (DifferentialEquations.jl stores the problem
@@ -143,13 +142,17 @@ contributions:
 The SciPy/MATLAB aligned `key: value` layout (what `solve_ivp` and MATLAB
 users already see), but with MATLAB-style array placeholders instead of
 SciPy's numpy-formatted array contents — arrays are summarised as
-`[shape dtype]`, never dumped:
+`[shape dtype]`, never dumped.  The exception is `t`: seeing the
+integration interval is genuinely useful (SciPy, DifferentialEquations.jl,
+and diffrax all print the time values; only MATLAB hides them), and since
+`t` is monotonic its first and last entries convey the interval without a
+dump:
 
 ```
  message: The solver successfully reached the end of the integration interval.
  success: True
   status: 0
-       t: [58 float64]
+       t: [58 float64] 0.0 to 6.2832
        y: [2x58 complex128]
     nfev: 131
     njev: 0
@@ -162,7 +165,8 @@ SciPy's numpy-formatted array contents — arrays are summarised as
 
 Rules: keys right-justified, verdict block (`message`/`success`/`status`)
 first, then `t`, `y`, then counters; dict fields outside the canonical
-order are appended so nothing goes missing; scalars render with `repr`;
+order are appended so nothing goes missing; `t` carries the
+`first to last` interval suffix; scalars render with `repr`;
 `__repr__` and `__str__` are identical (the shell shows `__repr__`).  The
 printout is *not* API — never parse it — so the rendering can change in
 any release.
