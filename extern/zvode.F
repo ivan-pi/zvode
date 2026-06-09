@@ -1382,6 +1382,10 @@ C Check RTOL and ATOL for legality. ------------------------------------
  70     CONTINUE
       IF (ISTATE .EQ. 1) GO TO 100
 C If ISTATE = 3, set flag to signal parameter changes to ZVSTEP. -------
+C Sync the cached problem size in the functor objects. The functors store
+C NEQ as a field so they can size the y/ydot arrays in their eval methods;
+C this must be updated here whenever NEQ changes (NEQ can only decrease,
+C see check above).
       F%NEQ = NEQ
       JAC%NEQ = NEQ
       JSTART = -1
