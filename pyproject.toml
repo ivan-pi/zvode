@@ -68,7 +68,7 @@ sdist.exclude = [
     ".claude/**",
     ".github/**",
     ".gitignore",
-    "docs/**",
+    "docs/release-plan.md",
     "TODO.txt",
     "notes.txt",
     "test/*.f",
