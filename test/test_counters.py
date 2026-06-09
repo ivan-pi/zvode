@@ -1,4 +1,4 @@
-"""Counter-accuracy tests for nfev / njev.
+"""Tests for nfev / njev counter accuracy.
 
 ZVODE maintains its NFE/NJE counters inside the Fortran COMMON block and
 writes them to iwork[11] / iwork[12] after each accepted step.  The Python

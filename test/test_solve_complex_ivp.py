@@ -1,5 +1,8 @@
 """Tests for the procedural solve_complex_ivp interface.
 
+Verifies numerical accuracy against an analytic solution for a coupled
+complex ODE with two components.
+
 System under test: 2-component coupled complex ODE
 
     dy[0]/dt = LAM1*y[0] + C*y[1]

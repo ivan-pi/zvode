@@ -1,5 +1,7 @@
-"""
-Regression and validation tests for solve_complex_ivp:
+"""Tests for solve_complex_ivp.
+
+Regression and validation tests covering accuracy, error handling,
+cross-validation against SciPy, and solver option behaviour:
 
   1. Damped harmonic oscillator accuracy (Adams, BDF)
   2. Nonlinear complex oscillator accuracy

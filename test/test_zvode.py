@@ -1,4 +1,4 @@
-"""Tests of the _zvode extension module
+"""Tests for the _zvode extension module.
 
 These smoke-tests exercise _zvode.zvode(...) directly, bypassing any
 higher-level wrapper.  The goal is to verify that the C extension and the
