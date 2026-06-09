@@ -8,20 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Sphinx documentation site deployed to GitHub Pages
-  (`docs/` converted to RST; autodoc API reference; intersphinx cross-links
-  to NumPy and SciPy)
 - Compiled callbacks enabled in `solve_complex_ivp`: ctypes `CFUNCTYPE` and
   numba `@cfunc` function pointers are now accepted for `fun` and `jac`
   (previously raised `NotImplementedError`)
+- `ctx` parameter added to `solve_complex_ivp` (`ctypes.c_void_p`): passes
+  user data through to compiled callbacks without requiring a Python closure
 - C-level integration loops `_zvode.drive_knots` and `_zvode.drive_adaptive`;
   C backend is now the default
+- Sphinx documentation site deployed to GitHub Pages
+  (`docs/` converted to RST; autodoc API reference; intersphinx cross-links
+  to NumPy and SciPy)
 - Python-layer argument validation: all user-facing parameters validated with
   informative exceptions before reaching the Fortran layer; warnings added for
   `max_order` caps and bandwidth mismatches
 - Python type annotations on the `solve_complex_ivp` public signature
 - Docstring improvements: `Examples` sections in `solve_complex_ivp` and
   `ZVODE`, and a `See Also` section in `ZVODE`
+
+### Removed
+
+- `in_place` parameter removed from `solve_complex_ivp`; callback kind is now
+  detected automatically from the argument type
 
 ### Fixed
 
