@@ -4,6 +4,7 @@ from .solve import solve_complex_ivp, ZVODEResult, ZVODE_FUN_CTYPE, ZVODE_JAC_CT
 
 __all__ = [
     "solve_complex_ivp",
+    "ZVODEResult",
     "ZVODE_FUN_CTYPE",
     "ZVODE_JAC_CTYPE",
     "zvode_fun_sig",
