@@ -20,8 +20,10 @@ callbacks.  Use them as decorators (ctypes) or for casting DLL function
 pointers.  See :doc:`how-to-compiled-callbacks` for usage examples.
 
 .. autodata:: zvode.ZVODE_FUN_CTYPE
+   :annotation: ctypes.CFUNCTYPE(None, c_int, c_double, c_void_p, c_void_p, c_void_p)
 
 .. autodata:: zvode.ZVODE_JAC_CTYPE
+   :annotation: ctypes.CFUNCTYPE(None, c_int, c_double, c_void_p, c_int, c_int, c_void_p, c_int, c_void_p)
 
 .. data:: zvode.zvode_fun_sig
 
