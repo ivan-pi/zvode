@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "zvode"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python bindings to the classic ZVODE ODE solver"
 authors = [{name = "Ivan Pribec", email = "ivan.pribec@gmail.com"}]
 requires-python = ">=3.9"
