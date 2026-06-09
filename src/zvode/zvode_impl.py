@@ -382,8 +382,6 @@ class ZVODE(OdeSolver):
 
         # Optional input settings
         self.iopt = 1
-        self.rwork[4:9] = 0.0
-        self.iwork[4:9] = 0
 
         if self.itask == 5:
             self.rwork[0] = t_bound
