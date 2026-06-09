@@ -984,13 +984,12 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     if istate < 0:
         _msg = MESSAGES.get(istate, "Unknown error.")
-        _where = (
-            f"at t={t_out[-1]}, before reaching t={tspan[-1]}"
-            if len(tspan) == 2 and save_steps
-            else f"after {len(t_out)} of {len(tspan)} requested output point(s)"
-            if len(tspan) > 2
-            else f"before reaching t={tspan[-1]}"
-        )
+        if len(tspan) == 2 and save_steps:
+            _where = f"at t={t_out[-1]}, before reaching t={tspan[-1]}"
+        elif len(tspan) > 2:
+            _where = f"after {len(t_out)} of {len(tspan)} requested output point(s)"
+        else:
+            _where = f"before reaching t={tspan[-1]}"
         raise RuntimeError(
             f"solve_complex_ivp: integration failed {_where}. "
             f"ZVODE ISTATE={istate}: {_msg}"
