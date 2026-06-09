@@ -41,6 +41,15 @@ change it always contains:
 | `ncfn`    | int                   | existing | Number of nonlinear convergence failures |
 | `netf`    | int                   | existing | Number of local error test failures |
 
+All counters are cumulative tallies over the entire integration, never
+per-step quantities: ZVODE zeroes them on the initial call only and
+increments them across the whole solve (e.g. `NETF` is documented as "the
+number of error test failures of the integrator so far"), and the drivers
+carry the `ISTATE=2` continuation state between output knots so the totals
+span the full `solve_complex_ivp` call.  Any counter added in the future
+must follow the same rule; per-step diagnostics (ZVODE's `HU`, `NQU`, ...)
+do not belong on the result object.
+
 The first eight rows make `ZVODEResult` a strict superset of the
 `OdeResult` fields that can exist without dense output and events.  The
 ZVODE-specific counters (`nsteps`, `nni`, `ncfn`, `netf`) are kept flat
