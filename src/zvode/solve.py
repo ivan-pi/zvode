@@ -220,10 +220,8 @@ def _make_workspace(
     if first_step is not None:
         # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
-    if max_step > 0:
-        rwork[5] = float(max_step)
-    if min_step:
-        rwork[6] = float(min_step)
+    rwork[5] = float(max_step)
+    rwork[6] = float(min_step)
     if max_order is not None:
         iwork[4] = int(max_order)
     iwork[5] = int(max_num_steps)  # MXSTEP: max internal steps per output point
