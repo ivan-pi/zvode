@@ -32,12 +32,12 @@ The underlying Fortran source has been modified; [`extern/README.md`](https://gi
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Limitations](#limitations)
-- [References](#references)
 - [Links](#links)
 - [Building from source](#building-from-source)
 - [Changelog](#changelog)
 - [License](#license)
 - [Contributing](#contributing)
+- [References](#references)
 
 ## Installation
 
@@ -133,54 +133,20 @@ More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tr
 - no solution back-tracking available
 - only dense or banded Jacobians
 
-## References
-
-<a id="1">[1]</a>
-A. C. Hindmarsh,
-"ODEPACK, A Systematized Collection of ODE Solvers,"
-in *Scientific Computing*, R. S. Stepleman et al. (eds.),
-North-Holland, Amsterdam, 1983 (vol. 1 of IMACS Transactions on Scientific Computation), pp. 55–64.
-https://computing.llnl.gov/projects/odepack
-
-<a id="2">[2]</a>
-P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
-"VODE, A Variable-Coefficient ODE Solver,"
-*SIAM J. Sci. Stat. Comput.*, 10 (1989), pp. 1038–1051.
-https://doi.org/10.1137/0910062
-
-<a id="3">[3]</a>
-G. D. Byrne and A. C. Hindmarsh,
-"A Polyalgorithm for the Numerical Solution of Ordinary Differential Equations,"
-*ACM Trans. Math. Soft.*, 1(1), pp. 71–96, 1975.
-https://doi.org/10.1145/355626.355636
-
-For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
-[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
-
 ## Links
 
 ### ZVODE upstream
 
-| Resource | URL |
-|---|---|
-| ODEPACK | <https://computing.llnl.gov/projects/odepack> |
-| Netlib mirror | <https://netlib.org/ode/zvode.f> |
-| Netlib mirror (Sandia) | <https://netlib.sandia.gov/ode/zvode.f> |
-| SUNDIALS | <https://computing.llnl.gov/projects/sundials> |
+- [ODEPACK](https://computing.llnl.gov/projects/odepack)
+- [Netlib mirror](https://netlib.org/ode/zvode.f)
+- [Netlib mirror (Sandia)](https://netlib.sandia.gov/ode/zvode.f)
+- [SUNDIALS](https://computing.llnl.gov/projects/sundials)
 
 ### Python / R ecosystem
 
-| Resource | URL |
-|---|---|
-| `scipy.integrate.OdeSolver` (base class) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html> |
-| `scipy.integrate.ode` (legacy ZVODE wrapper) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html> |
-| R wrappers — deSolve `zvode` | <https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode> |
-
-SciPy has historically provided a ZVODE wrapper through
-[`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html),
-a stateful, class-based interface (`integrator='zvode'`). As of SciPy 1.17,
-the underlying Fortran source was [replaced](https://github.com/scipy/scipy/pull/23963) with a C translation of ZVODE
-that is thread-safe.
+- [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) — base class used by the OdeSolver API
+- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper (replaced by a C translation in SciPy 1.17)
+- [deSolve `zvode`](https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode) — R wrapper
 
 ## Building from source
 
@@ -242,3 +208,27 @@ The most useful reports are:
   very helpful.
 - **Feature requests** — even if a feature is not planned, requests help track what practitioners
   actually need.
+
+## References
+
+<a id="1">[1]</a>
+A. C. Hindmarsh,
+"ODEPACK, A Systematized Collection of ODE Solvers,"
+in *Scientific Computing*, R. S. Stepleman et al. (eds.),
+North-Holland, Amsterdam, 1983 (vol. 1 of IMACS Transactions on Scientific Computation), pp. 55–64.
+https://computing.llnl.gov/projects/odepack
+
+<a id="2">[2]</a>
+P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
+"VODE, A Variable-Coefficient ODE Solver,"
+*SIAM J. Sci. Stat. Comput.*, 10 (1989), pp. 1038–1051.
+https://doi.org/10.1137/0910062
+
+<a id="3">[3]</a>
+G. D. Byrne and A. C. Hindmarsh,
+"A Polyalgorithm for the Numerical Solution of Ordinary Differential Equations,"
+*ACM Trans. Math. Soft.*, 1(1), pp. 71–96, 1975.
+https://doi.org/10.1145/355626.355636
+
+For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
+[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
