@@ -211,9 +211,6 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   from the `RuntimeError` raised on solver failure (or from a result object);
   the exception and its test landed in 0.3.0, but the partial trajectory is
   currently discarded when the exception is raised
-- [ ] Emit a `DeprecationWarning` when `ZVODE_BACKEND=python` selects the
-  pure-Python integration loops — the intermediate step required before the loops
-  are removed entirely in 1.0.0
 - [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface
 
@@ -229,11 +226,9 @@ round-trips.
 
 - [ ] Procedural interface declared stable (no breaking changes after this point)
 - [ ] Remove the Python-level integration loops (`_zvode_adaptive`, `_zvode_knots`
-  in `solve.py`) that were retained in 0.3.0 as a debugging reference.  Emit a
-  `DeprecationWarning` in an intermediate release first (planned for 0.4.0,
-  controlled by the existing `ZVODE_BACKEND` environment variable), then drop the
-  code and the env-var fallback before 1.0.0 once the C path has been sufficiently
-  battle-tested.
+  in `solve.py`) that were retained in 0.3.0 as a debugging reference, along with
+  the `ZVODE_BACKEND` environment-variable fallback, once the C path has been
+  sufficiently battle-tested.  No deprecation cycle is needed pre-1.0.
 - [~] Minimalistic documentation hosted on GitHub Pages (the build infrastructure —
   Sphinx/`furo`, `docs.yml` deploy workflow, autodoc API reference, how-to guides,
   intersphinx — all landed in 0.3.0; see that section):
