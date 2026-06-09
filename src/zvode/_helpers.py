@@ -283,6 +283,8 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
 
 # Maps linear multistep method name to (ZVODE integer code, maximum order).
 _LMM = {"Adams": (1, 12), "BDF": (2, 5)}
+# Reverse map: ZVODE integer code → maximum order.
+_METH_MAXORD = {m: o for m, o in _LMM.values()}
 
 
 def _make_workspace(
@@ -331,7 +333,7 @@ def _make_workspace(
         raise RuntimeError(f"Unhandled miter={miter}")
 
     meth = abs(mf) // 10
-    maxord = 12 if meth == 1 else 5
+    maxord = _METH_MAXORD[meth]
     lzw = n * (maxord + 1) + 2 * n + lwm
     zwork = np.zeros(lzw, dtype=np.complex128)
 
