@@ -193,6 +193,11 @@ Python callbacks), so that the entire integration runs in compiled code without 
 round-trips.
 
 - [ ] Procedural interface declared stable (no breaking changes after this point)
+- [ ] Remove the Python-level integration loops (`_zvode_adaptive`, `_zvode_knots`
+  in `solve.py`) that were retained in 0.4.0 as a debugging reference.  Emit a
+  `DeprecationWarning` in an intermediate release first (controlled by the existing
+  `ZVODE_BACKEND` environment variable), then drop the code and the env-var fallback
+  before 1.0.0 once the C path has been sufficiently battle-tested.
 - [~] Minimalistic documentation hosted on GitHub Pages:
   - [x] Sphinx build configured (`docs/conf.py`, `furo` theme)
   - [x] GitHub Actions workflow to build and deploy on each push to `main`
