@@ -652,7 +652,8 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
     }
 
     if (jac_obj == Py_None) {
-        cb->jac_kind = CB_NONE;
+        cb->jac_kind    = CB_NONE;
+        cb->jac_u.pyobj = NULL;
     } else if (PyCallable_Check(jac_obj)) {
         cb->jac_kind    = CB_PYTHON;
         cb->jac_u.pyobj = jac_obj;
@@ -751,7 +752,6 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
     PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
 
     struct zvode_callbacks cb;
-    memset(&cb, 0, sizeof(cb));
 
     if (!PyArg_ParseTuple(args, "OOOiO!O!O!O!iO!O!iO!O!O!:drive_knots",
             &fun_obj,
@@ -1088,7 +1088,6 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
     PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
 
     struct zvode_callbacks cb;
-    memset(&cb, 0, sizeof(cb));
 
     if (!PyArg_ParseTuple(args, "OOOiddO!iO!O!iO!O!O!ii:drive_adaptive",
             &fun_obj,
