@@ -119,8 +119,13 @@ and developer-facing conveniences such as type stubs and validation.
 - [x] Add `See Also` section to `ZVODE` linking to `scipy.integrate.OdeSolver`
   (the base class) and `scipy.integrate.solve_ivp` (the driver that accepts
   `method=ZVODE`); section sits between Attributes and Notes per numpydoc order
-- [ ] Check older SciPy versions for any bug fixes not yet incorporated, and verify
+- [x] Check older SciPy versions for any bug fixes not yet incorporated, and verify
   original licenses are properly attributed
+  > Reviewed SciPy git history for `zvode.f`. Applied: three comment typo fixes
+  > (`interrrupted`, `Threshhold`, `succesful`); XERRWD output redirected to stderr;
+  > MESFLG defaulted to 0 so the library is silent unless the user calls `XSETF(1)`.
+  > LINPACK→LAPACK migration and the MXSTEP warning removal were already handled
+  > in this project. PR #99.
 - [x] Note on NEQ reset: when NEQ is reset during integration (`ISTATE = 3`), we must
   also modify the NEQ component of `fun` and `jac` class instances; not relevant to
   the SciPy interface as `neq` can't change during integration — fixed in PR #98
