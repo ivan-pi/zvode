@@ -571,9 +571,15 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
         return NULL;
     }
 
-    if (!check_array(ap_yh, "yh", 2, NPY_COMPLEX128, 'F')) return NULL;
-    if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
-    if (!check_writable(ap_dky, "dky"))                 return NULL;
+    /* Python always passes correctly typed, contiguous, writable arrays.
+     * Only verify in debug builds — zvindy is called on every interpolated
+     * sub-point (refine-1 times per accepted step) so these checks would
+     * otherwise run in a tight loop during integration. */
+    if (ZVODE_DEBUG) {
+        if (!check_array(ap_yh, "yh", 2, NPY_COMPLEX128, 'F')) return NULL;
+        if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
+        if (!check_writable(ap_dky, "dky"))                      return NULL;
+    }
 
     const int n    = (int) PyArray_DIM(ap_dky,0);     /* number of equations */
     const int ldyh = (int) PyArray_DIM(ap_yh, 0);     /* leading dimension   */
