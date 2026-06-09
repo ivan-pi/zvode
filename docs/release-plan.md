@@ -210,6 +210,12 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   Before freezing the field set, also compare with what diffrax does
   (`diffrax.Solution`: a `result` enum plus a `stats` dict) and borrow whatever
   conventions make sense.
+  > Design spec drafted in `docs/result-object-design.md`: adds `success`,
+  > `status` (SciPy semantics), and `message`; failure raises `ZVODEError`
+  > carrying the partial result; `sol` / `t_events` / `y_events` reserved.
+  > The spec records the diffrax / DifferentialEquations.jl comparison:
+  > counters stay flat rather than nested in a `stats` object, and
+  > `success` is defined as `status >= 0` (the `successful_retcode` lesson).
 - [ ] Make the partial trajectory accumulated up to the failure point accessible
   from the `RuntimeError` raised on solver failure (or from a result object);
   the exception and its test landed in 0.3.0, but the partial trajectory is

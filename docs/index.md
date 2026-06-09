@@ -160,4 +160,5 @@ how-to-compiled-callbacks
 :caption: Internals
 
 compiled-callbacks-design
+result-object-design
 :::
