@@ -315,7 +315,7 @@ class ZVODE(OdeSolver):
         )
 
         self.max_step = _validate_max_step(max_step)
-        _validate_min_step(min_step)
+        self.min_step = _validate_min_step(min_step)
         if first_step is not None:
             self.h0 = _validate_first_step(first_step, t0, t_bound)
         if max_order is not None:
@@ -332,7 +332,7 @@ class ZVODE(OdeSolver):
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n, self.miter, self.ml, self.mu, self.mf, t0, t_bound,
             first_step=first_step,
-            min_step=min_step,
+            min_step=self.min_step,
             max_step=self.max_step,
             max_order=max_order,
         )
