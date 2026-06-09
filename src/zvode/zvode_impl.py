@@ -393,13 +393,11 @@ class ZVODE(OdeSolver):
             # ZVODE requires H0 to carry the sign of the integration direction.
             self.rwork[4] = self.h0 * np.sign(t_bound - t0)
 
-        if max_step is not None:
-            self.max_step = _validate_max_step(max_step)
-            self.rwork[5] = self.max_step
+        self.max_step = _validate_max_step(max_step)
+        self.rwork[5] = self.max_step
 
-        if min_step is not None:
-            _validate_min_step(min_step)
-            self.rwork[6] = float(min_step)
+        _validate_min_step(min_step)
+        self.rwork[6] = float(min_step)
 
         if max_order is not None:
             if max_order <= 0:
