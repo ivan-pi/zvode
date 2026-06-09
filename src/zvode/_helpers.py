@@ -349,6 +349,7 @@ def _make_workspace(
 
     rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
+        _validate_first_step(first_step, t0, t_bound)
         # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
     rwork[5] = float(max_step)

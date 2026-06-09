@@ -673,8 +673,6 @@ def solve_complex_ivp(
 
     _validate_max_step(max_step)
     _validate_min_step(min_step)
-    if first_step is not None:
-        _validate_first_step(first_step, tspan[0], tspan[-1])
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
     if max_order is not None:
