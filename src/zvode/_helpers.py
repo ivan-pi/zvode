@@ -131,7 +131,11 @@ def _check_tolerances(rtol, atol, n):
     elif len(rtol) == n and len(atol) == n:
         itol = 4
     else:
-        raise RuntimeError("This should not occur.")
+        assert False, (
+            f"_check_tolerances: unhandled tolerance shape combination "
+            f"(rtol.ndim={rtol.ndim}, rtol.shape={rtol.shape}, "
+            f"atol.ndim={atol.ndim}, atol.shape={atol.shape}, n={n})"
+        )
 
     return itol, rtol, atol
 

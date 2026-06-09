@@ -248,7 +248,6 @@ class ZVODE(OdeSolver):
         _warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound, vectorized=False, support_complex=True)
 
-        self.tout = self.t_bound
         if np.isrealobj(y0):
             warnings.warn(
                 "y0 has a real dtype and will be cast to complex128. "
