@@ -1,8 +1,38 @@
 ! test_zvode_complex_oscillator.F90
 ! ============================================================
-!  Fortran driver that replicates solve_ivp using ZVODE
-!  Problem : dy/dt = -i * y,  y(0) = 1 + 0i  =>  y(t) = exp(-i*t)
+!  Fortran driver for a complex oscillator test using ZVODE.
+!
+!  Problem : dy/dt = -i*y,  y(0) = 1+0i  =>  y(t) = exp(-i*t)
 !  Method  : BDF (MF = 22), internally generated dense Jacobian.
+!
+!  Two ZVODE calling conventions are supported, selected at
+!  compile time with the preprocessor macro USE_ZVODE_BIND_C:
+!
+!  Legacy interface  (default — zvode_original.f):
+!    CALL ZVODE(F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+!               ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
+!               JAC, MF, RPAR, IPAR)
+!    F(NEQ, T, Y, YDOT, RPAR, IPAR)          — Fortran 77 style
+!    JAC(NEQ, T, Y, ML, MU, PD, NROWPD, RPAR, IPAR)
+!
+!  bind(c) interface  (-DUSE_ZVODE_BIND_C — extern/zvode.f):
+!    CALL ZVODE(F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
+!               ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
+!               JAC, MF, CTX)
+!    F(NEQ, T, Y, YDOT, CTX) BIND(C)         — all scalars by value
+!    JAC(NEQ, T, Y, ML, MU, PD, NROWPD, CTX) BIND(C)
+!
+!  Assertions:
+!    1. ISTATE == 2 on return
+!    2. T == TOUT on return
+!    3. |y(TOUT) - exp(-i*TOUT)| <= rtol*|exp(-i*TOUT)| + atol
+!
+!  Exits with status 0 on pass, 1 on any failed assertion.
+!
+!  Compile (see also Makefile):
+!    Legacy:   gfortran ... -c test_zvode_complex_oscillator.F90
+!    bind(c):  gfortran ... -DUSE_ZVODE_BIND_C -c test_zvode_complex_oscillator.F90
+!              (extern/zvode.f must be compiled first to provide zvode_mod.mod)
 ! ============================================================
 
 program test_zvode_complex_oscillator

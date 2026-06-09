@@ -21,6 +21,12 @@ C
 C  The f_params argument is not forwarded to the RHS (the lambda
 C  ignores its third parameter), so RPAR/IPAR are unused here too.
 C
+C  Assertions:
+C    1. ISTATE == 2 on return
+C    2. |Re[y(1) - 2i]| + |Im[y(1) - 2i]| <= 1.0d-8
+C
+C  Exits with status 0 on pass, 1 on any failed assertion.
+C
 C  Compile together with zvode_original.f, for example:
 C    gfortran -O2 zvode_original.f test_zvode_const.f -o test_zvode_const
 C-----------------------------------------------------------------------
