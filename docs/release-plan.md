@@ -120,9 +120,9 @@ and developer-facing conveniences such as type stubs and validation.
   `method=ZVODE`); section sits between Attributes and Notes per numpydoc order
 - [ ] Check older SciPy versions for any bug fixes not yet incorporated, and verify
   original licenses are properly attributed
-- [ ] Note on NEQ reset: when NEQ is reset during integration (`ISTATE = 3`), we must
+- [x] Note on NEQ reset: when NEQ is reset during integration (`ISTATE = 3`), we must
   also modify the NEQ component of `fun` and `jac` class instances; not relevant to
-  the SciPy interface as `neq` can't change during integration — document this
+  the SciPy interface as `neq` can't change during integration — fixed in PR #98
 
 
 ---
