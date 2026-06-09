@@ -334,6 +334,8 @@ class ZVODE(OdeSolver):
             max_step=self.max_step,
             max_order=max_order,
         )
+        # Last: probing jac(t0, y0) may allocate an (neq, neq) array; validate
+        # after _make_workspace so its overflow check fires first for large neq.
         if jac is not None and self.miter in (1, 4):
             _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
             self.njev += 1
