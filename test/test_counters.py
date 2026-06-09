@@ -13,7 +13,6 @@ callbacks (ctypes / numba) skip the shape probe and are already exact.
 """
 
 import numpy as np
-import pytest
 
 from zvode import ZVODE, solve_complex_ivp
 
