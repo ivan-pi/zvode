@@ -107,6 +107,7 @@ and developer-facing conveniences such as type stubs and validation.
   > Fortran counter.  `test_counters.py`: `xfail` decorators removed (tests now
   > pass); offset-pinning tests removed as redundant.
 - [ ] Add option to expose `ZEWSET` and `ZWNORM` as callback functions
+  **Deferred to a future version (post-1.0.0).**
 - [x] Provide CMake option to use external BLAS; fallback to vendored procedures
   (`ZVODE_LINALG_BACKEND` cache variable: `LAPACK` (default, uses external LAPACK)
   or `LINPACK` (uses vendored routines + external BLAS))
@@ -153,6 +154,14 @@ are compiled the entire run executes without touching the Python interpreter.
     retained for now as a reference / debugging aid; they will be deprecated and
     removed before 1.0.0 once the C path is battle-tested.
   - [ ] GIL-free path: no GIL release yet — requires compiled callbacks (next item)
+- [ ] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
+  its backing store, so the adaptive loop in `drive_adaptive_py` contains no Python
+  C API calls when compiled callbacks are in use.  The final output arrays are
+  constructed from the raw buffer only after the loop exits (and the GIL is
+  reacquired).  This is a prerequisite for releasing the GIL around the entire
+  `drive_adaptive` loop; `drive_knots` is already unblocked because its loop body
+  contains no Python API calls other than inside the `cb.error` branch, which is
+  never taken for compiled callbacks.
 - [x] Enable compiled callbacks (numba `@cfunc`, ctypes `CFUNCTYPE`): wire up the
   `fun_addr` / `jac_addr` path in `solve_complex_ivp` through `drive_knots` /
   `drive_adaptive`, removing the `NotImplementedError` stub added in 0.2.0.
@@ -184,6 +193,11 @@ Python callbacks), so that the entire integration runs in compiled code without 
 round-trips.
 
 - [ ] Procedural interface declared stable (no breaking changes after this point)
+- [ ] Remove the Python-level integration loops (`_zvode_adaptive`, `_zvode_knots`
+  in `solve.py`) that were retained in 0.4.0 as a debugging reference.  Emit a
+  `DeprecationWarning` in an intermediate release first (controlled by the existing
+  `ZVODE_BACKEND` environment variable), then drop the code and the env-var fallback
+  before 1.0.0 once the C path has been sufficiently battle-tested.
 - [~] Minimalistic documentation hosted on GitHub Pages:
   - [x] Sphinx build configured (`docs/conf.py`, `furo` theme)
   - [x] GitHub Actions workflow to build and deploy on each push to `main`
