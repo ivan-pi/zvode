@@ -216,19 +216,12 @@ def my_banded_jac(neq, t, y, ml, mu, pd, nrowpd, ctx):
 `zvode_fun_sig` and `zvode_jac_sig` are constructed on first access (module
 `__getattr__`) so that numba remains an optional dependency.
 
-### Removed from 0.2.x
-
-- `in_place` parameter — gone; callback kind is detected by type.
-- `check_cfunc_signature` — gone; ctypes validates at decoration time,
-  numba at compilation time.
-- `ZvodeCallback` wrapper class — not needed without per-callback user data.
-
 ---
 
 ## Address Extraction (Python layer)
 
 ```python
-def _get_cfunc_address(fun):
+def _cfunc_address(fun):
     """Return integer address if fun is a compiled callback, else None."""
     if isinstance(fun, ctypes._CFuncPtr):
         return ctypes.cast(fun, ctypes.c_void_p).value
@@ -247,59 +240,72 @@ Python first is simpler and keeps the C interface clean.
 ### Callback struct
 
 ```c
-typedef enum { CB_PYTHON = 0, CB_CFUNC = 1 } cb_kind_t;
+/* CB_NONE is used only for jac when no Jacobian is provided. */
+typedef enum { CB_PYTHON = 0, CB_CFUNC = 1, CB_NONE = 2 } cb_kind_t;
 
-typedef struct {
+struct zvode_callbacks {
     /* RHS */
     cb_kind_t fun_kind;
     union {
-        PyObject *pyobj;   /* CB_PYTHON */
-        zvode_fun cfunc;   /* CB_CFUNC  */
+        PyObject  *pyobj;   /* CB_PYTHON */
+        zvode_fun  cfunc;   /* CB_CFUNC  */
     } fun_u;
 
-    /* Jacobian */
+    /* Jacobian — jac_kind == CB_NONE when no Jacobian is provided. */
     cb_kind_t jac_kind;
     union {
-        PyObject *pyobj;   /* CB_PYTHON */
-        zvode_jac cfunc;   /* CB_CFUNC  */
+        PyObject  *pyobj;   /* CB_PYTHON */
+        zvode_jac  cfunc;   /* CB_CFUNC  */
     } jac_u;
 
-    void *ctx;       /* shared user data; NULL when data=None */
-    int   is_banded; /* 1 when miter == 4 */
-    int   error;     /* set to 1 by adaptor on Python exception */
-} zvode_cb_t;
+    void *ctx;            /* shared user data for compiled callbacks; NULL = none */
+    int   jac_is_banded;  /* 1 when abs(mf) % 10 == 4 */
+    int   error;          /* set to 1 by Python adaptor on exception */
+};
 ```
 
 ### Argument parsing
 
 The Python layer normalises before calling C:
 
-- Compiled callback → `_get_cfunc_address(fun)` returns an integer; passed
+- Compiled callback → `_cfunc_address(fun)` returns an integer; passed
   as a Python `int`.
 - Python callable → passed as the `PyObject *` unchanged.
 - `ctx` → `ctypes.c_void_p.value` (an integer) or `0`.
+- `jac=None` → passed as `Py_None`.
 
-`fun_obj` and `jac_obj` are parsed with `O` (generic `PyObject *`).
-The kind is determined by type inspection: a callable is a Python callback;
-anything else is assumed to be a Python `int` holding a function pointer:
+Both `drive_knots` and `drive_adaptive` delegate struct initialisation to
+`cb_init_from_pyobjs`, which populates a `struct zvode_callbacks` from three
+Python objects (`fun_obj`, `jac_obj`, `ctx_obj`) and the `mf` method flag:
 
 ```c
-PyObject *fun_obj, *jac_obj, *ctx_obj;
+static int
+cb_init_from_pyobjs(struct zvode_callbacks *cb,
+                    PyObject *fun_obj, PyObject *jac_obj,
+                    PyObject *ctx_obj, int mf)
+{
+    if (PyCallable_Check(fun_obj)) {
+        cb->fun_kind    = CB_PYTHON;
+        cb->fun_u.pyobj = fun_obj;
+    } else {
+        cb->fun_kind    = CB_CFUNC;
+        cb->fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
+    }
 
-PyArg_ParseTuple(args, "OOO...",
-    &fun_obj, &jac_obj, &ctx_obj, ...);
+    if (jac_obj == Py_None) {
+        cb->jac_kind    = CB_NONE;       /* no Jacobian provided */
+    } else if (PyCallable_Check(jac_obj)) {
+        cb->jac_kind    = CB_PYTHON;
+        cb->jac_u.pyobj = jac_obj;
+    } else {
+        cb->jac_kind    = CB_CFUNC;
+        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
+    }
 
-if (PyCallable_Check(fun_obj)) {
-    cb.fun_kind    = CB_PYTHON;
-    cb.fun_u.pyobj = fun_obj;
-} else {
-    cb.fun_kind    = CB_CFUNC;
-    cb.fun_u.cfunc = (zvode_fun)PyLong_AsVoidPtr(fun_obj);
+    cb->ctx          = PyLong_AsVoidPtr(ctx_obj);  /* 0 → NULL */
+    cb->jac_is_banded = (abs(mf) % 10 == 4);
+    return 0;  /* simplified; real impl checks PyErr_Occurred() */
 }
-
-/* same for jac_obj; Py_None treated as CB_PYTHON with null pyobj */
-
-cb.ctx = PyLong_AsVoidPtr(ctx_obj);  /* Py_None → NULL */
 ```
 
 ### Dispatch inside the adaptor
@@ -329,10 +335,10 @@ The branch is on a value that is constant for the lifetime of the integration;
 branch prediction makes it essentially free.  No static globals are required,
 so this design is safe if the lock is ever relaxed.
 
-### Single C entry point
+### C entry points
 
-The experimental `drive_cfunc_knots` / `drive_cfunc_adaptive` entry points
-(compiled-only, separate from the Python-callable `drive_knots`) are replaced
-by a single `drive_knots` and `drive_adaptive` that each accept a
-`zvode_cb_t` and handle both Python and compiled callbacks through the
-selection mechanism above.
+`drive_knots` and `drive_adaptive` are the sole integration entry points.
+Both accept a `struct zvode_callbacks` (populated by `cb_init_from_pyobjs`)
+and handle Python and compiled callbacks through the dispatch mechanism above.
+The Python fallback loops (`ZVODE_BACKEND=python`) are kept only for
+debugging; all production paths use these C entry points.
