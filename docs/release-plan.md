@@ -86,14 +86,15 @@ and developer-facing conveniences such as type stubs and validation.
   is covered and a regression will fire automatically when 0.4.0 enables the path
   (`test_compiled_callback_not_yet_implemented` in `test_solve_complex_ivp.py`;
   `test_compiled_callback_requires_in_place` covers the `in_place=False` guard)
-- [~] Domain checking of arguments in Python: detect invalid inputs before the
+- [x] Domain checking of arguments in Python: detect invalid inputs before the
   integration loop begins so that proper exceptions with informative messages are
   raised, without duplicating checks across all three layers (Python / C / Fortran).
   ZVODE performs its own runtime checks and reports errors via `istate`; the Python
   layer covers what ZVODE cannot catch early or cannot report clearly.
-  > Constructor-time checks are in place: `_check_tolerances`, `_determine_miter`,
-  > int32 overflow guards, C-layer array validation on `istate==1` in debug mode.
-  > Full domain validation of all parameters is still incomplete.
+  > All user-facing parameters are now validated in Python before the Fortran layer
+  > is reached. Redundant checks in the C wrapper have been downgraded to asserts or
+  > guarded with `ZVODE_DEBUG`. The `_resolve_miter` helper consolidates Jacobian and
+  > band argument validation in one place.
 - [ ] Fix `nfev`/`njev` evaluation counters: `_validate_fun_shape` and
   `_validate_jac_shape` each call the user callback once at construction time to
   probe the return shape, but this call is not counted toward `nfev` / `njev`.
