@@ -215,7 +215,23 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   the exception and its test landed in 0.3.0, but the partial trajectory is
   currently discarded when the exception is raised
 - [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
-  relative to 0.2.0 and to the OdeSolver interface
+  relative to 0.2.0 and to the OdeSolver interface; publish work-precision
+  diagrams (accuracy vs. cost on a few standard stiff complex problems, e.g.
+  the QME demo) as a documentation page
+- [ ] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
+  problems through both wrappers and assert the trajectories agree to tolerance.
+  Both wrap the same Fortran core, so this is a near-free regression guard for
+  the C-layer loops and option mapping.
+- [ ] Memory-safety CI job: build the C extension with ASan/UBSan (or run the
+  test suite under valgrind) in a dedicated workflow.  The hand-written C loops,
+  the growable `StepBuf`, and the raw function-pointer callbacks are the risk
+  surface; the `malloc`/`realloc` refactor above makes this more important,
+  not less.
+- [ ] Wire the standalone Fortran test programs (`test/test_zvode_constant.f`,
+  `test_zvode_decay.F90`, `test_zvode_complex_oscillator.F90`) into CTest and
+  run them in CI — they are currently orphaned (never built or executed).
+  Also a prerequisite for the multi-compiler conformance item in 1.0.0, which
+  needs Fortran-native tests to run.
 - [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
   side still needs work in general — e.g. clean compiles under strict warning
   flags for the C extension and the Fortran layer, and a review of the CMake
@@ -279,6 +295,9 @@ are internal concerns that should not require any user-visible API changes.
 - [ ] Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.
+- [ ] conda-forge feedstock: for the scientific audience, installability via
+  conda is itself a trust signal.  Wait until after 1.0.0 so the recipe tracks
+  a stable API.
 
 
 ---
