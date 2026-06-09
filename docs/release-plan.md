@@ -107,6 +107,7 @@ and developer-facing conveniences such as type stubs and validation.
   > Fortran counter.  `test_counters.py`: `xfail` decorators removed (tests now
   > pass); offset-pinning tests removed as redundant.
 - [ ] Add option to expose `ZEWSET` and `ZWNORM` as callback functions
+  **Deferred to a future version (post-1.0.0).**
 - [x] Provide CMake option to use external BLAS; fallback to vendored procedures
   (`ZVODE_LINALG_BACKEND` cache variable: `LAPACK` (default, uses external LAPACK)
   or `LINPACK` (uses vendored routines + external BLAS))
