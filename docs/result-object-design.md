@@ -59,6 +59,30 @@ and extra attributes do not interfere with duck-typing.  Whether all four
 are kept past 1.0 is still an open release-plan item; this spec does not
 decide it.
 
+### `y` shape and memory layout
+
+Two separate guarantees, one inherited and one stronger than SciPy's:
+
+- **Indexing convention** (part of the API): `y` has shape `(n, m)` —
+  components down the rows, time across the columns — so `y[i, :]` is the
+  time series of component `i` and `y[:, k]` is the full state at `t[k]`.
+  This is the same convention as `scipy.integrate.solve_ivp` (shape
+  `(n, n_points)`) and as DifferentialEquations.jl (`sol[i, :]` is the
+  i-th component at all times).
+- **Memory layout** (guaranteed, unlike SciPy): `y` is column-major
+  (Fortran order, `y.flags.f_contiguous` is `True`).  SciPy documents only
+  the shape; its arrays merely happen to be F-contiguous as an
+  implementation detail.  zvode promises the layout because it is the
+  natural one throughout: the Fortran solver produces each state as a
+  contiguous vector, the knots driver fills its preallocated output one
+  column per knot (`ys[:, i] = ytmp`), and the adaptive driver appends
+  state columns one accepted step at a time.  Column slices `y[:, k]`
+  are therefore contiguous views, and the array can be handed back to
+  Fortran/LAPACK routines without a copy.
+
+In endpoint-only mode (`len(tspan) == 2` and `save_steps=False`) `y` is a
+1-D `(n,)` array and the layout question does not arise.
+
 ### `status` and `success` semantics
 
 `status` follows the `scipy.integrate.solve_ivp` convention, **not** the raw
