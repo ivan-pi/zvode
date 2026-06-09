@@ -87,27 +87,37 @@ def test_success_verdict_fields():
 # ---------------------------------------------------------------------------
 
 
-def test_failure_raises_zvode_error():
-    """Failure raises ZVODEError, which subclasses RuntimeError so old
-    `except RuntimeError` handlers (matching the ISTATE text) keep working."""
+def test_failure_raises_with_partial_result():
+    """The failure-path contract, on one raised error:
+
+    - ZVODEError subclasses RuntimeError, so old `except RuntimeError`
+      handlers keep working;
+    - the exception text equals the result `message` and names the ISTATE
+      detail (here ISTATE=-5, repeated convergence failures);
+    - the trajectory accumulated up to the failure point is preserved (it used
+      to be discarded), aligned, starting at the IC, tracking the exact
+      1/(1 - t) solution, with all counters tallied.
+    """
     assert issubclass(ZVODEError, RuntimeError)
-    with pytest.raises(RuntimeError, match="ISTATE"):
-        solve_complex_ivp(blowup_fun, BLOWUP_KNOTS, BLOWUP_Y0, **TOLS)
-
-
-def test_failure_result_verdict_fields():
-    """The carried result reports the failure verdict; the exception text is
-    the same string as the result's message and names the ISTATE detail."""
     exc = _solve_fail()
+    assert isinstance(exc, RuntimeError)  # an `except RuntimeError` catches it
+
     res = exc.result
     assert isinstance(res, ZVODEResult)
     assert res.success is False
     assert res.status == -1
-    assert "ISTATE" in res.message
-    assert str(exc) == res.message
-    # The blow-up triggers repeated convergence failures (ISTATE=-5); the
-    # detail, not just a bare code, rides along in the message.
+    assert "ISTATE" in res.message and str(exc) == res.message
     assert "convergence" in res.message.lower()
+
+    # More than the initial point, fewer than all requested knots.
+    assert 2 <= len(res.t) < len(BLOWUP_KNOTS)
+    assert res.y.shape == (1, len(res.t))
+    assert res.t[0] == BLOWUP_KNOTS[0]
+    np.testing.assert_allclose(res.y[:, 0], BLOWUP_Y0)
+    np.testing.assert_allclose(res.y[0], 1.0 / (1.0 - res.t), rtol=1e-5)
+    for key in ("nfev", "njev", "nlu", "nsteps", "nni", "ncfn", "netf"):
+        assert isinstance(res[key], int)
+    assert res.nfev > 0
 
 
 def test_documented_try_except_workflow():
@@ -136,23 +146,6 @@ def test_documented_try_except_workflow():
         assert np.isfinite(last)
         assert abs(last - 1.0 / (1.0 - partial.t[-1])) < 1e-4
     assert reached_except, "solve_complex_ivp should have raised ZVODEError"
-
-
-def test_partial_trajectory_recovered():
-    """The trajectory accumulated up to the failure point is preserved on
-    the result (it used to be discarded) and tracks the exact solution."""
-    res = _solve_fail().result
-    # More than just the initial point, fewer than all requested knots.
-    assert 2 <= len(res.t) < len(BLOWUP_KNOTS)
-    assert res.y.shape == (1, len(res.t))
-    assert res.t[0] == BLOWUP_KNOTS[0]
-    np.testing.assert_allclose(res.y[:, 0], BLOWUP_Y0)
-    # Up to the failure point the completed knots track 1/(1 - t).
-    np.testing.assert_allclose(res.y[0], 1.0 / (1.0 - res.t), rtol=1e-5)
-    # Counters are present and tallied even on the failure path.
-    for key in ("nfev", "njev", "nlu", "nsteps", "nni", "ncfn", "netf"):
-        assert isinstance(res[key], int)
-    assert res.nfev > 0
 
 
 # ---------------------------------------------------------------------------
