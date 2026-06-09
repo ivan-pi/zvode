@@ -59,7 +59,8 @@ ZVODE_FUN_CTYPE = ctypes.CFUNCTYPE(
     ctypes.c_void_p,  # double complex *dy        (passed as opaque pointer)
     ctypes.c_void_p,  # void *ctx
 )
-"""``ctypes.CFUNCTYPE`` descriptor for compiled RHS callbacks.
+ZVODE_FUN_CTYPE.__doc__ = """\
+``ctypes.CFUNCTYPE`` descriptor for compiled RHS callbacks.
 
 Use as a decorator to expose a ctypes-based RHS with the expected signature,
 or pass to :func:`ctypes.cast` to wrap a function pointer loaded from a
@@ -85,7 +86,8 @@ ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
     ctypes.c_int,  # nrowpd
     ctypes.c_void_p,  # void *ctx
 )
-"""``ctypes.CFUNCTYPE`` descriptor for compiled Jacobian callbacks.
+ZVODE_JAC_CTYPE.__doc__ = """\
+``ctypes.CFUNCTYPE`` descriptor for compiled Jacobian callbacks.
 
 Use as a decorator to expose a ctypes-based Jacobian with the expected
 signature, or pass to :func:`ctypes.cast` to wrap a function pointer loaded
