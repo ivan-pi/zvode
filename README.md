@@ -29,15 +29,35 @@ The underlying Fortran source has been modified; [`extern/README.md`](https://gi
 
 **Table of Contents:**
 
-- [Quick start](#quick-start)
 - [Installation](#installation)
-- [Solver options](#solver-options)
+- [Quick start](#quick-start)
 - [Limitations](#limitations)
-- [References](#references)
 - [Links](#links)
 - [Building from source](#building-from-source)
+- [Changelog](#changelog)
 - [License](#license)
 - [Contributing](#contributing)
+- [References](#references)
+
+## Installation
+
+```bash
+pip install zvode          # procedural API only (numpy only)
+pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams (requires SciPy)
+```
+
+The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) are a SciPy
+add-on: they subclass `scipy.integrate.OdeSolver` so they can be passed
+as the `method` argument to `scipy.integrate.solve_ivp`.  If your code
+only uses `solve_complex_ivp` you do not need SciPy.
+
+To install locally from source:
+
+```bash
+pip install .              # procedural API only
+pip install ".[scipy]"     # also install SciPy
+pip install ".[test]"      # run the test suite (includes SciPy)
+```
 
 ## Quick start
 
@@ -105,59 +125,6 @@ sol = solve_ivp(
 
 More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tree/main/docs) folder on GitHub.
 
-## Installation
-
-```bash
-pip install zvode          # procedural API only (numpy only)
-pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams (requires SciPy)
-```
-
-The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) are a SciPy
-add-on: they subclass `scipy.integrate.OdeSolver` so they can be passed
-as the `method` argument to `scipy.integrate.solve_ivp`.  If your code
-only uses `solve_complex_ivp` you do not need SciPy.
-
-To install locally from source:
-
-```bash
-pip install .              # procedural API only
-pip install ".[scipy]"     # also install SciPy
-pip install ".[test]"      # run the test suite (includes SciPy)
-```
-
-## Solver options
-
-### `solve_complex_ivp` key parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `fun` | callable or `ctypes._CFuncPtr` | — | RHS `f(t, y) → array_like`, or a compiled C function pointer (ctypes/numba). |
-| `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
-| `y0` | array-like | — | Initial state; cast to `complex128`. |
-| `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-| `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
-
-### OdeSolver API options
-
-Keyword arguments accepted by `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`; passed
-through unchanged when supplied via `solve_ivp`.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed by the `ZVODE_BDF` and `ZVODE_Adams` subclasses. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: `(n, n)` array; banded: `(lband + uband + 1, n)` array. Estimated by finite differences if omitted. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-
-> **Note** — For stiff problems, `f` must be analytic (each component must be
-> an analytic function of each state variable). For stiff systems where `f` is
-> not analytic, use a real-valued solver on the equivalent doubled real system.
-
 ## Limitations
 
 - complex floats (fp64) only
@@ -165,49 +132,21 @@ through unchanged when supplied via `solve_ivp`.
 - not thread-safe (ZVODE uses global Fortran COMMON blocks)
 - no solution back-tracking available
 - only dense or banded Jacobians
-
-## References
-
-<a id="1">[1]</a>
-A. C. Hindmarsh,
-"ODEPACK, A Systematized Collection of ODE Solvers,"
-in *Scientific Computing*, R. S. Stepleman et al. (eds.),
-North-Holland, Amsterdam, 1983 (vol. 1 of IMACS Transactions on Scientific Computation), pp. 55–64.
-https://computing.llnl.gov/projects/odepack
-
-<a id="2">[2]</a>
-P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
-"VODE, A Variable-Coefficient ODE Solver,"
-*SIAM J. Sci. Stat. Comput.*, 10 (1989), pp. 1038–1051.
-https://doi.org/10.1137/0910062
-
-<a id="3">[3]</a>
-G. D. Byrne and A. C. Hindmarsh,
-"A Polyalgorithm for the Numerical Solution of Ordinary Differential Equations,"
-*ACM Trans. Math. Soft.*, 1(1), pp. 71–96, 1975.
-https://doi.org/10.1145/355626.355636
-
-For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
-[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
+- no built-in mass matrix support (a constant mass matrix can be handled by pre-factoring with LU decomposition)
 
 ## Links
 
-### ZVODE upstream
+### ODEPACK & SUNDIALS
 
-| Resource | URL |
-|---|---|
-| ODEPACK | <https://computing.llnl.gov/projects/odepack> |
-| Netlib mirror | <https://netlib.org/ode/zvode.f> |
-| Netlib mirror (Sandia) | <https://netlib.sandia.gov/ode/zvode.f> |
-| SUNDIALS | <https://computing.llnl.gov/projects/sundials> |
+- [ODEPACK](https://computing.llnl.gov/projects/odepack)
+- [Netlib](https://netlib.org/ode/zvode.f) ([Sandia mirror](https://netlib.sandia.gov/ode/zvode.f))
+- [SUNDIALS](https://computing.llnl.gov/projects/sundials)
 
 ### Python / R ecosystem
 
-| Resource | URL |
-|---|---|
-| `scipy.integrate.OdeSolver` (base class) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html> |
-| `scipy.integrate.ode` (legacy ZVODE wrapper) | <https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html> |
-| R wrappers — deSolve `zvode` | <https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode> |
+- [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) — base class used by the OdeSolver API
+- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper
+- [deSolve `zvode`](https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode) — R wrapper
 
 SciPy has historically provided a ZVODE wrapper through
 [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html),
@@ -256,6 +195,10 @@ pip install -v ".[test]" \
   -C "cmake.args=-DCMAKE_C_FLAGS=-DZVODE_DEBUG"
 ```
 
+## Changelog
+
+See [CHANGELOG.md](https://github.com/ivan-pi/zvode/blob/main/CHANGELOG.md) for version history.
+
 ## License
 
 `zvode` is distributed under the BSD license. See [LICENSE](https://github.com/ivan-pi/zvode/blob/main/LICENSE) for details.
@@ -271,3 +214,27 @@ The most useful reports are:
   very helpful.
 - **Feature requests** — even if a feature is not planned, requests help track what practitioners
   actually need.
+
+## References
+
+<a id="1">[1]</a>
+A. C. Hindmarsh,
+"ODEPACK, A Systematized Collection of ODE Solvers,"
+in *Scientific Computing*, R. S. Stepleman et al. (eds.),
+North-Holland, Amsterdam, 1983 (vol. 1 of IMACS Transactions on Scientific Computation), pp. 55–64.
+https://computing.llnl.gov/projects/odepack
+
+<a id="2">[2]</a>
+P. N. Brown, G. D. Byrne, and A. C. Hindmarsh,
+"VODE, A Variable-Coefficient ODE Solver,"
+*SIAM J. Sci. Stat. Comput.*, 10 (1989), pp. 1038–1051.
+https://doi.org/10.1137/0910062
+
+<a id="3">[3]</a>
+G. D. Byrne and A. C. Hindmarsh,
+"A Polyalgorithm for the Numerical Solution of Ordinary Differential Equations,"
+*ACM Trans. Math. Soft.*, 1(1), pp. 71–96, 1975.
+https://doi.org/10.1145/355626.355636
+
+For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
+[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
