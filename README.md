@@ -24,7 +24,7 @@ This package exposes two interfaces to ZVODE:
 
 The underlying Fortran source has been modified; [`extern/README.md`](https://github.com/ivan-pi/zvode/blob/main/extern/README.md) documents the changes.
 
-> **Warning:** This integrator is not thread-safe. You cannot have two threads
+> **Warning:** This integrator is currently not thread-safe. You cannot have two threads
 > using the ZVODE integrator simultaneously.
 
 **Table of Contents:**
