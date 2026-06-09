@@ -115,17 +115,18 @@ _SUCCESS_MESSAGE = (
     "The solver successfully reached the end of the integration interval."
 )
 
-# Per-ISTATE failure detail used to build the human-readable `message`.  The
-# raw ISTATE value is not a field; it is interpolated into the message string
-# (see `_failure_message`), which suffices for bug reports.  Each entry pairs
-# the ZVODE condition with a remedy where one is known.
-_ISTATE_DETAIL = {
-    -1: "Excess work done (try increasing `max_num_steps`).",
-    -2: "Excess accuracy requested (tolerances too tight).",
-    -3: "Illegal input detected.",
-    -4: "Repeated error test failures (singularity, or wrong `method`?).",
-    -5: "Repeated convergence failures (bad Jacobian, or try `method='BDF'`?).",
-    -6: "Error weight became zero (a component vanished with `atol=0`).",
+# Per-ISTATE remedy hint, appended to the base `MESSAGES` text when building
+# the human-readable `message`.  The base condition lives in `MESSAGES`
+# (shared with the class-based API); only the solve-specific remedy — which
+# names `solve_complex_ivp` parameters — is kept here.  The raw ISTATE value
+# is not a field; it is interpolated into the message (see `_failure_message`),
+# which suffices for bug reports.  ISTATE -3 ("Illegal input") has no remedy.
+_ISTATE_REMEDY = {
+    -1: "try increasing `max_num_steps`",
+    -2: "tolerances too tight",
+    -4: "singularity, or wrong `method`?",
+    -5: "bad Jacobian, or try `method='BDF'`?",
+    -6: "a component vanished with `atol=0`",
 }
 
 # Canonical print order: the verdict block first, then the trajectory, then
@@ -203,8 +204,8 @@ class ZVODEResult(dict):
             f"{k:>{width}}: {self._format_value(k, self[k])}" for k in keys
         )
 
-    # The interactive shell shows __repr__; __str__ is identical by contract.
-    __str__ = __repr__
+    # No __str__: dict.__str__ is object.__str__, which delegates to __repr__,
+    # so str() and repr() already render identically (as in SciPy's results).
 
 
 class ZVODEError(RuntimeError):
@@ -232,9 +233,14 @@ def _failure_message(istate, where):
     """Build the human-readable failure message for a negative ISTATE.
 
     Combines the failure location, the raw ISTATE value (verbatim, for bug
-    reports) and the per-ISTATE detail/remedy.
+    reports), the base condition from `MESSAGES`, and a remedy where known.
     """
-    detail = _ISTATE_DETAIL.get(istate, MESSAGES.get(istate, "Unknown error."))
+    detail = MESSAGES.get(istate, "Unknown error.")
+    remedy = _ISTATE_REMEDY.get(istate)
+    if remedy:
+        # Fold the remedy into the base text in place of its trailing period:
+        # "Repeated convergence failures." -> "... failures (try ...)."
+        detail = f"{detail.rstrip('.')} ({remedy})."
     return (
         f"solve_complex_ivp: integration failed {where}. "
         f"ZVODE ISTATE={istate}: {detail}"
