@@ -47,18 +47,18 @@ r = (
 print("scipy.integrate.ode  (step-by-step, reproducing the SciPy docs example):")
 print(f"{'t':>4}   {'w':^26}   {'z':^26}")
 
-t_ode = [t0]
-y_ode = [y0.copy()]
+_t_list = [t0]
+_y_list = [y0.copy()]
 dt = 1.0
 while r.successful() and r.t < t1 - 0.5 * dt:
     r.integrate(r.t + dt)
     w, z = r.y
     print(f"{r.t:4g}   {w.real:+.6f}{w.imag:+.6f}j   {z.real:+.6f}{z.imag:+.6f}j")
-    t_ode.append(r.t)
-    y_ode.append(r.y.copy())
+    _t_list.append(r.t)
+    _y_list.append(r.y.copy())
 
-t_ode = np.array(t_ode)
-y_ode = np.array(y_ode).T  # shape (2, n_steps)
+t_ode = np.array(_t_list)
+y_ode = np.array(_y_list).T  # shape (2, n_steps)
 
 # ---- Same problem via ZVODE + solve_ivp ---------------------------------
 
