@@ -202,12 +202,7 @@ def _zvode_adaptive(
     ts = [t]
     ys = [y0]
 
-    # TODO: replace this Python loop with a call to _zvode.drive() once the
-    # C entry point is implemented.  Moving the loop into compiled code drops
-    # the per-step Python/C boundary crossing AND, when fun/jac are compiled
-    # cfuncs, eliminates argument tuple packing/unpacking on every RHS
-    # evaluation — making the entire integration run without re-entering the
-    # Python interpreter.
+    # Python fallback (ZVODE_BACKEND=python). Production paths use drive_adaptive.
     with ZVODE_LOCK:
         while direction * (float(t_bound) - t) > 0:
             t_old = t
@@ -285,8 +280,7 @@ def _zvode_knots(fun, jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, 
     ys[:, 0] = y0
     t = float(tspan[0])
 
-    # TODO: same as _zvode_adaptive — replace with _zvode.drive() to move the
-    # knot loop into C and fully eliminate Python overhead in the inner loop.
+    # Python fallback (ZVODE_BACKEND=python). Production paths use drive_knots.
     with ZVODE_LOCK:
         for i in range(1, len(tspan)):
             t, istate = _zvode.zvode(
