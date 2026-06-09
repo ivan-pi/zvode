@@ -392,7 +392,7 @@ class ZVODE(OdeSolver):
             self.rwork[4] = self.h0 * np.sign(t_bound - t0)
 
         self.max_step = _validate_max_step(max_step)
-        self.rwork[5] = self.max_step
+        self.rwork[5] = float(self.max_step)
 
         _validate_min_step(min_step)
         self.rwork[6] = float(min_step)
