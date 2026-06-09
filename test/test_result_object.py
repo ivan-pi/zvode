@@ -110,6 +110,34 @@ def test_failure_result_verdict_fields():
     assert "convergence" in res.message.lower()
 
 
+def test_documented_try_except_workflow():
+    """Exercise the recovery pattern promised in the docstring / design spec:
+
+        try:
+            sol = solve_complex_ivp(fun, tspan, y0)
+        except ZVODEError as exc:
+            partial = exc.result   # success=False; plot partial.t, partial.y
+
+    Uses a real try/except (not pytest.raises) so the except branch — the
+    thing users actually write — is what runs.
+    """
+    reached_except = False
+    try:
+        solve_complex_ivp(blowup_fun, BLOWUP_KNOTS, BLOWUP_Y0, **TOLS)
+    except ZVODEError as exc:
+        reached_except = True
+        partial = exc.result
+        assert partial.success is False
+        # The partial trajectory is usable downstream (e.g. plotting): the
+        # arrays line up and the last recovered state is finite and on-curve.
+        assert partial.t.ndim == 1 and partial.t.size >= 2
+        assert partial.y.shape == (1, partial.t.size)
+        last = partial.y[0, -1]
+        assert np.isfinite(last)
+        assert abs(last - 1.0 / (1.0 - partial.t[-1])) < 1e-4
+    assert reached_except, "solve_complex_ivp should have raised ZVODEError"
+
+
 def test_partial_trajectory_recovered():
     """The trajectory accumulated up to the failure point is preserved on
     the result (it used to be discarded) and tracks the exact solution."""
