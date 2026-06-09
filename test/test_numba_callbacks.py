@@ -1,9 +1,8 @@
 """Tests for the numba @cfunc compiled callback path.
 
-The entire module is skipped when numba is not installed.
-
-Numba users pass ``my_rhs.ctypes`` (a ``ctypes._CFuncPtr``) to
-``solve_complex_ivp``; the @cfunc object itself is not passed directly.
+Verifies that numba-compiled callbacks integrate correctly via
+solve_complex_ivp.  Numba users pass ``my_rhs.ctypes`` (a
+``ctypes._CFuncPtr``) rather than the @cfunc object itself.
 
 Two parameterization patterns from the design spec are exercised:
 
@@ -15,6 +14,8 @@ Explicit ctx:
     Parameters are stored in a numpy float64 array (real + imaginary parts
     interleaved) whose address is passed as ``ctx``.  Inside the @cfunc the
     void pointer is reinterpreted as a float64 array via ``numba.carray``.
+
+The entire module is skipped when numba is not installed.
 """
 
 import ctypes
