@@ -64,6 +64,8 @@ print(sol)
 
 Pass a `ZVODE_*` class as the `method` argument to {func}`scipy.integrate.solve_ivp`.
 
+**Non-stiff problem** — rotating complex exponential:
+
 ```python
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -74,6 +76,20 @@ sol = solve_ivp(
     t_span=(0.0, 10.0),
     y0=[1.0 + 0.0j],
     method=ZVODE_Adams,
+)
+```
+
+**Stiff problem** — with a user-supplied Jacobian:
+
+```python
+from zvode import ZVODE_BDF
+
+sol = solve_ivp(
+    fun=lambda t, y: -1j * y,
+    t_span=(0.0, 10.0),
+    y0=[1.0 + 0.0j],
+    method=ZVODE_BDF,
+    jac=lambda t, y: [[-1j]],
 )
 ```
 
@@ -99,6 +115,7 @@ The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) subclass
 - Not thread-safe (ZVODE uses global Fortran COMMON blocks)
 - No solution back-tracking available
 - Only dense or banded Jacobians
+- No built-in mass matrix support (a constant mass matrix can be handled by pre-factoring with LU decomposition)
 
 ---
 
@@ -116,6 +133,9 @@ pp. 1038–1051. <https://doi.org/10.1137/0910062>
 [3] G. D. Byrne and A. C. Hindmarsh, "A Polyalgorithm for the Numerical
 Solution of Ordinary Differential Equations," *ACM Trans. Math. Soft.*,
 1(1), pp. 71–96, 1975. <https://doi.org/10.1145/355626.355636>
+
+For a broader perspective on the history and design philosophy behind ODEPACK and related solvers, see the
+[SIAM oral history interview with Alan C. Hindmarsh](https://history.siam.org/oralhistories/hindmarsh.htm).
 
 ---
 
