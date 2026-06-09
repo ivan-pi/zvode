@@ -15,31 +15,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   numba `@cfunc` function pointers are now accepted for `fun` and `jac`
   (previously raised `NotImplementedError`)
 - C-level integration loops `_zvode.drive_knots` and `_zvode.drive_adaptive`;
-  C backend is now the default; Python fallback selectable via `ZVODE_BACKEND=python`
+  C backend is now the default
 - Python-layer argument validation: all user-facing parameters validated with
   informative exceptions before reaching the Fortran layer; warnings added for
   `max_order` caps and bandwidth mismatches
 - Python type annotations on the `solve_complex_ivp` public signature
-- `Examples` sections added to `solve_complex_ivp` and `ZVODE` docstrings
-- `See Also` section added to `ZVODE` class docstring
-- `ZVODE_LINALG_BACKEND` CMake option: `LAPACK` (default) or `LINPACK`
-  (vendored routines + external BLAS)
-- CI job for debug builds with `-DZVODE_DEBUG` assertions enabled
+- Docstring improvements: `Examples` sections in `solve_complex_ivp` and
+  `ZVODE`, and a `See Also` section in `ZVODE`
 
 ### Fixed
 
 - `nfev` and `njev` counters now correctly account for the shape-probe call
   made during `_validate_fun_shape` / `_validate_jac_shape` at setup
-- `F%NEQ` and `JAC%NEQ` in the C wrapper are now updated when `NEQ` changes
-  on `ISTATE = 3`
-- H₀ sign corrected for backward integration in `solve_complex_ivp`
+- H0 sign corrected for backward integration in `solve_complex_ivp`
 - XERRWD diagnostic output routed to stderr (was stdout); library now silent
   by default (`MESFLG = 0`), matching library convention
 - Three comment typos in `zvode.f` fixed, ported from SciPy's upstream review
 
 ### Changed
 
-- Sphinx extension switched from napoleon to numpydoc
 - Redundant input checks in the C wrapper replaced with debug-only assertions
 
 ## [0.2.0] - 2026-06-03
