@@ -397,7 +397,6 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
      * Python-level integration loop (_zvode_adaptive/_zvode_knots).  It
      * always receives Python callables — never compiled cfuncs. */
     PyObject *fun_obj = NULL, *jac_obj = NULL;
-    struct zvode_callbacks cb;
 
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
        &fun_obj,
@@ -418,7 +417,7 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
     /* zvode_py always uses Python callbacks; cfuncs go through drive_knots/
      * drive_adaptive which handle the dispatch internally. */
-    cb = (struct zvode_callbacks){
+    struct zvode_callbacks cb = {
         .fun_kind      = CB_PYTHON,
         .fun_u         = { .pyobj = fun_obj },
         .jac_kind      = (jac_obj == Py_None) ? CB_NONE : CB_PYTHON,
@@ -751,8 +750,6 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
     int mf, itol, iopt;
     PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
 
-    struct zvode_callbacks cb;
-
     if (!PyArg_ParseTuple(args, "OOOiO!O!O!O!iO!O!iO!O!O!:drive_knots",
             &fun_obj,
             &jac_obj,
@@ -771,6 +768,7 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
             &PyArray_Type, &ap_iwork))
         return NULL;
 
+    struct zvode_callbacks cb;
     if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
         return NULL;
 
@@ -1087,8 +1085,6 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
     int mf, itol, iopt, refine, allow_overshoot;
     PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
 
-    struct zvode_callbacks cb;
-
     if (!PyArg_ParseTuple(args, "OOOiddO!iO!O!iO!O!O!ii:drive_adaptive",
             &fun_obj,
             &jac_obj,
@@ -1107,6 +1103,7 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
             &allow_overshoot))
         return NULL;
 
+    struct zvode_callbacks cb;
     if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
         return NULL;
 
