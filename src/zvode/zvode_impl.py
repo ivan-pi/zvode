@@ -300,29 +300,6 @@ class ZVODE(OdeSolver):
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
-        # ORDERING CONSTRAINT: this check must come before _validate_jac_shape.
-        # _validate_jac_shape calls jac(t0, y0) to probe the return shape; for a
-        # dense Jacobian that allocates an (neq, neq) array.  At neq=46341 that is
-        # ~32 GiB and will raise MemoryError before we can give a useful message.
-        # Keep this block here — do not move it below the jac validation call.
-        _INT32_MAX = 2**31 - 1
-        if self.miter in (1, 2) and self.n**2 > _INT32_MAX:
-            raise ValueError(
-                f"neq = {self.n} exceeds the maximum of 46340 for dense "
-                "Jacobian methods: neq**2 overflows the 32-bit integer "
-                "arithmetic used internally."
-            )
-        if self.miter in (4, 5):
-            _lenwm_max = (3 * self.ml + self.mu + 1) * self.n
-            if _lenwm_max > _INT32_MAX:
-                raise ValueError(
-                    f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
-                )
-
-        if jac is not None and self.miter in (1, 4):
-            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
-            self.njev += 1
-
         if jsv not in (1, -1):
             raise ValueError(
                 "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
@@ -359,6 +336,9 @@ class ZVODE(OdeSolver):
             max_step=self.max_step,
             max_order=max_order,
         )
+        if jac is not None and self.miter in (1, 4):
+            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
+            self.njev += 1
 
     def _step_impl(self):
         """Advance one step; return (success, message)"""
