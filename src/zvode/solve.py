@@ -34,7 +34,6 @@ from ._helpers import (
     _resolve_miter,
     _validate_max_step,
     _validate_min_step,
-    _validate_first_step,
     _validate_fun_shape,
     _validate_jac_shape,
     _wrapped_fun,

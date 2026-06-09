@@ -11,7 +11,6 @@ from ._helpers import (
     _make_workspace,
     _validate_max_step,
     _validate_min_step,
-    _validate_first_step,
     _wrapped_fun,
     _wrapped_jac,
     _check_tolerances,
@@ -328,7 +327,13 @@ class ZVODE(OdeSolver):
                 )
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
-            self.n, self.miter, self.ml, self.mu, self.mf, t0, t_bound,
+            self.n,
+            self.miter,
+            self.ml,
+            self.mu,
+            self.mf,
+            t0,
+            t_bound,
             first_step=first_step,
             min_step=self.min_step,
             max_step=self.max_step,
