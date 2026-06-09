@@ -71,21 +71,24 @@ scope.
 `message` is for humans — code discriminates on `status`, never by
 parsing `message`.  On success it is SciPy's generic text ("The solver
 successfully reached the end of the integration interval.").  On failure
-it gives the failure location plus the ZVODE detail, with a remedy where
-one is known:
+it gives the failure location plus the ZVODE condition text (the shared
+`MESSAGES` table, also used by the class-based API):
 
 | `ISTATE` | `status` | message detail |
 |----------|----------|----------------|
 | `2`      | `0`      | success text |
-| `-1`     | `-1`     | Excess work done (try increasing `max_num_steps`) |
-| `-2`     | `-1`     | Excess accuracy requested (tolerances too tight) |
-| `-3`     | `-1`     | Illegal input detected |
-| `-4`     | `-1`     | Repeated error test failures (singularity, or wrong `method`?) |
-| `-5`     | `-1`     | Repeated convergence failures (bad Jacobian, or try `method='BDF'`?) |
-| `-6`     | `-1`     | Error weight became zero (component vanished with `atol=0`) |
+| `-1`     | `-1`     | Excess work done on this call. |
+| `-2`     | `-1`     | Excess accuracy requested. |
+| `-3`     | `-1`     | Illegal input detected. |
+| `-4`     | `-1`     | Repeated error test failures. |
+| `-5`     | `-1`     | Repeated convergence failures. |
+| `-6`     | `-1`     | Error weight became zero during problem integration. |
 
-Raw `ISTATE` is not a field; it appears verbatim inside `message`, which
-suffices for bug reports.
+No remedy hints are appended: the condition text plus the raw `ISTATE`
+value is enough, and solver-specific advice (which would name
+`solve_complex_ivp` parameters) does not belong in the message text shared
+with the class-based API.  Raw `ISTATE` is not a field; it appears verbatim
+inside `message`, which suffices for bug reports.
 
 ## Failure behaviour: raise, carrying the failed result
 
