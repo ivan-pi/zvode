@@ -31,11 +31,11 @@ The underlying Fortran source has been modified; [`extern/README.md`](https://gi
 
 - [Quick start](#quick-start)
 - [Installation](#installation)
-- [Solver options](#solver-options)
 - [Limitations](#limitations)
 - [References](#references)
 - [Links](#links)
 - [Building from source](#building-from-source)
+- [Changelog](#changelog)
 - [License](#license)
 - [Contributing](#contributing)
 
@@ -125,39 +125,6 @@ pip install ".[scipy]"     # also install SciPy
 pip install ".[test]"      # run the test suite (includes SciPy)
 ```
 
-## Solver options
-
-### `solve_complex_ivp` key parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `fun` | callable or `ctypes._CFuncPtr` | — | RHS `f(t, y) → array_like`, or a compiled C function pointer (ctypes/numba). |
-| `tspan` | array-like | — | `(t0, tf)` collects every accepted step; three or more values output at exactly those times; `(t0, tf)` with `save_steps=False` returns only the endpoint. |
-| `y0` | array-like | — | Initial state; cast to `complex128`. |
-| `method` | `'BDF'` or `'Adams'` | `'BDF'` | BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: return `(n, n)`; banded: return `(lband + uband + 1, n)`. Estimated by finite differences if omitted. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-| `save_steps` | bool | `True` | Collect every accepted step (`True`) or return only the endpoint (`False`). Ignored when `tspan` has three or more elements. |
-
-### OdeSolver API options
-
-Keyword arguments accepted by `ZVODE` / `ZVODE_BDF` / `ZVODE_Adams`; passed
-through unchanged when supplied via `solve_ivp`.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `lmm` | `'BDF'` or `'Adams'` | `'BDF'` | Linear multistep method. BDF (max order 5) for stiff problems; Adams (max order 12) for non-stiff. Fixed by the `ZVODE_BDF` and `ZVODE_Adams` subclasses. |
-| `rtol` | float or array | `1e-3` | Relative error tolerance, per component or global. |
-| `atol` | float or array | `1e-6` | Absolute error tolerance, per component or global. |
-| `jac` | callable or None | `None` | Jacobian `jac(t, y)`. Dense: `(n, n)` array; banded: `(lband + uband + 1, n)` array. Estimated by finite differences if omitted. |
-| `lband`, `uband` | int or None | `None` | Lower/upper half-bandwidths; activates the banded solver path. |
-
-> **Note** — For stiff problems, `f` must be analytic (each component must be
-> an analytic function of each state variable). For stiff systems where `f` is
-> not analytic, use a real-valued solver on the equivalent doubled real system.
-
 ## Limitations
 
 - complex floats (fp64) only
@@ -246,15 +213,9 @@ pip install ... \
 ```
 The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
 
-### Debug build
+## Changelog
 
-Passing `-DZVODE_DEBUG` (equivalent to `-DZVODE_DEBUG=1`) enables extra
-assertions and diagnostic output in the C extension:
-
-```bash
-pip install -v ".[test]" \
-  -C "cmake.args=-DCMAKE_C_FLAGS=-DZVODE_DEBUG"
-```
+See [CHANGELOG.md](https://github.com/ivan-pi/zvode/blob/main/CHANGELOG.md) for version history.
 
 ## License
 
