@@ -28,7 +28,9 @@ from numpy.typing import ArrayLike
 from . import _zvode
 from ._helpers import (
     MESSAGES,
+    _LMM,
     _check_tolerances,
+    _make_workspace,
     _resolve_miter,
     _validate_max_step,
     _validate_min_step,
@@ -150,83 +152,6 @@ def _cfunc_address(fun):
     if isinstance(fun, ctypes._CFuncPtr):
         return ctypes.cast(fun, ctypes.c_void_p).value
     return None
-
-
-# ---------------------------------------------------------------------------
-# Workspace allocation
-# ---------------------------------------------------------------------------
-
-
-def _make_workspace(
-    n,
-    miter,
-    ml,
-    mu,
-    mf,
-    maxord_allowed,
-    first_step,
-    min_step,
-    max_step,
-    max_order,
-    max_num_steps,
-    t0,
-    t_bound,
-):
-    """Allocate and initialise ZVODE's three workspace arrays.
-
-    Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
-    Note: zwork, rwork, and iwork are mutable; the integration drivers update
-    them in place on every step and read diagnostic counters from them on return.
-    """
-    _INT32_MAX = 2**31 - 1
-
-    if miter in (1, 2) and n**2 > _INT32_MAX:
-        raise ValueError(
-            f"neq={n} exceeds the maximum of 46340 for dense Jacobian methods: "
-            "neq**2 overflows the 32-bit integer arithmetic used internally."
-        )
-    if miter in (4, 5):
-        _lenwm_max = (3 * ml + mu + 1) * n
-        if _lenwm_max > _INT32_MAX:
-            raise ValueError(
-                f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
-            )
-
-    if miter == 0:
-        lwm = 0
-    elif miter in (1, 2):
-        lwm = 2 * n**2 if mf > 0 else n**2
-    elif miter == 3:
-        lwm = n
-    elif miter in (4, 5):
-        lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
-    else:
-        raise RuntimeError(f"Unhandled miter={miter}")
-
-    lzw = n * (maxord_allowed + 1) + 2 * n + lwm
-    zwork = np.zeros(lzw, dtype=np.complex128)
-
-    lrw = 20 + n
-    rwork = np.zeros(lrw, dtype=np.float64)
-
-    liw = 30 if miter in (0, 3) else 30 + n
-    iwork = np.zeros(liw, dtype=np.int32)
-
-    if miter in (4, 5):
-        iwork[0] = ml
-        iwork[1] = mu
-
-    rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
-    if first_step is not None:
-        # ZVODE requires H0 to carry the sign of the integration direction.
-        rwork[4] = float(first_step) * np.sign(t_bound - t0)
-    rwork[5] = float(max_step)
-    rwork[6] = float(min_step)
-    if max_order is not None:
-        iwork[4] = int(max_order)
-    iwork[5] = int(max_num_steps)  # MXSTEP: max internal steps per output point
-
-    return zwork, rwork, iwork
 
 
 # ---------------------------------------------------------------------------
@@ -724,12 +649,9 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     # 3.  Method flag
     # ------------------------------------------------------------------
-    if method == "Adams":
-        meth, maxord_allowed = 1, 12
-    elif method == "BDF":
-        meth, maxord_allowed = 2, 5
-    else:
+    if method not in _LMM:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
+    meth, maxord_allowed = _LMM[method]
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
@@ -762,11 +684,10 @@ def solve_complex_ivp(
     if max_order is not None:
         if max_order <= 0:
             raise ValueError("`max_order` must be a positive integer.")
-        max_allowed = maxord_allowed  # 12 for Adams, 5 for BDF
-        if max_order > max_allowed:
+        if max_order > maxord_allowed:
             warnings.warn(
                 f"`max_order` ({max_order}) exceeds the maximum allowed order "
-                f"({max_allowed}) for the selected method; it will be reduced "
+                f"({maxord_allowed}) for the selected method; it will be reduced "
                 "automatically.",
                 stacklevel=2,
             )
@@ -785,14 +706,13 @@ def solve_complex_ivp(
         ml,
         mu,
         mf,
-        maxord_allowed,
-        first_step,
-        min_step,
-        _effective_max_step,
-        max_order,
-        max_num_steps,
-        t0=float(tspan[0]),
-        t_bound=float(tspan[-1]),
+        float(tspan[0]),
+        float(tspan[-1]),
+        first_step=first_step,
+        min_step=min_step,
+        max_step=_effective_max_step,
+        max_order=max_order,
+        max_num_steps=max_num_steps,
     )
 
     # ------------------------------------------------------------------
