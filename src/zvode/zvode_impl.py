@@ -337,10 +337,10 @@ class ZVODE(OdeSolver):
         # Method Flag (MF)
         self.mf = self.jsv * (10 * self.meth + self.miter)
 
-        if abs(self.mf) not in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25):
-            # TODO: we may be able to get rid of this check if
-            #       jsv, meth and miter have been checked before-hand
-            raise RuntimeError("Error setting the method flag")
+        assert abs(self.mf) in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25), (
+            f"mf={self.mf!r} is invalid (jsv={self.jsv!r}, meth={self.meth!r}, "
+            f"miter={self.miter!r}); this is a bug in ZVODE"
+        )
 
         if self.miter == 0:
             lwm = 0
