@@ -14,7 +14,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.napoleon",
+    "numpydoc",
 ]
 
 intersphinx_mapping = {

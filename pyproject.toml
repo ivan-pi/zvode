@@ -39,6 +39,7 @@ docs = [
     "furo",
     "myst-parser",
     "sphinx-copybutton",
+    "numpydoc",
     "scipy>=1.9",
 ]
 
