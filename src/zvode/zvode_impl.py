@@ -380,7 +380,9 @@ class ZVODE(OdeSolver):
             self.iwork[0] = self.ml
             self.iwork[1] = self.mu
 
-        # Optional input settings
+        # Optional input settings; only non-default (non-zero) slots need to be
+        # written explicitly — zwork, rwork, and iwork are zero-initialised by
+        # np.zeros above.
         self.iopt = 1
 
         if self.itask == 5:
