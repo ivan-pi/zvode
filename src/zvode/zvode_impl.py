@@ -279,8 +279,14 @@ class ZVODE(OdeSolver):
 
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
+        self.nfev = 0
+        self.njev = 0
+        self._nfe_last = 0
+        self._nje_last = 0
+
         self.wrap_fun = _wrapped_fun(fun)
         _validate_fun_shape(fun, self.n, t0, self.y)
+        self.nfev += 1
 
         self.miter, self.ml, self.mu = _resolve_miter(
             jac, lband, uband, self.meth, self.n, miter
@@ -321,6 +327,7 @@ class ZVODE(OdeSolver):
 
         if jac is not None and self.miter in (1, 4):
             _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
+            self.njev += 1
 
         if jsv not in (1, -1):
             raise ValueError(
@@ -434,8 +441,12 @@ class ZVODE(OdeSolver):
             self.mf,
         )
 
-        self.nfev = self.iwork[11]  # NFE  IWORK(12): f evaluations
-        self.njev = self.iwork[12]  # NJE  IWORK(13): Jacobian evaluations
+        nfe_new = int(self.iwork[11])  # NFE  IWORK(12): f evaluations
+        nje_new = int(self.iwork[12])  # NJE  IWORK(13): Jacobian evaluations
+        self.nfev += nfe_new - self._nfe_last
+        self.njev += nje_new - self._nje_last
+        self._nfe_last = nfe_new
+        self._nje_last = nje_new
         self.nlu = self.iwork[19]  # NLU  IWORK(20): LU decompositions
 
         if self.istate != 2:

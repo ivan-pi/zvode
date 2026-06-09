@@ -3,23 +3,13 @@
 ZVODE maintains its NFE/NJE counters inside the Fortran COMMON block and
 writes them to iwork[11] / iwork[12] after each accepted step.  The Python
 layer calls the user's fun (and jac) once at construction time to probe the
-return shape (_validate_fun_shape / _validate_jac_shape in _helpers.py), but
-these probe calls happen before the Fortran state is initialised and are
-therefore invisible to the Fortran counter.
+return shape (_validate_fun_shape / _validate_jac_shape in _helpers.py).
+These probe calls are tracked in Python-side counters and added to the
+Fortran readout values, so the reported nfev / njev equal the true total
+number of callback invocations.
 
-Test layout
------------
-xfail tests
-    Document the *correct* expected behaviour: after a complete integration
-    the reported counter should equal the total number of times the callback
-    was invoked, including the constructor probe.  They currently fail because
-    the fix (maintaining a Python-side probe counter and adding it to the
-    Fortran value on readout) has not yet been implemented.  When the fix
-    lands each xfail will become an XPASS, signalling the task is done.
-
-Passing tests
-    * ``test_*_probe_offset_is_one`` — pin the *current* discrepancy to
-      exactly 1 so that a refactor cannot silently introduce a larger offset.
+The fix applies only to the in_place=False Python callback path; compiled
+callbacks (ctypes / numba) skip the shape probe and are already exact.
 """
 
 import numpy as np
@@ -66,10 +56,6 @@ def _make_jac():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="probe in _validate_fun_shape not counted toward nfev; see _helpers.py FIXME",
-    strict=True,
-)
 def test_nfev_includes_probe_out_of_place():
     """result.nfev equals total fun calls including the shape-probe."""
     fun, counter = _make_fun()
@@ -77,36 +63,17 @@ def test_nfev_includes_probe_out_of_place():
     assert result.nfev == counter[0]
 
 
-def test_nfev_probe_offset_is_one():
-    """Out-of-place shape probe adds exactly one uncounted call to the manual counter."""
-    fun, counter = _make_fun()
-    result = solve_complex_ivp(fun, TSPAN, Y0, **TOLS)
-    assert counter[0] == result.nfev + 1
-
-
 # ---------------------------------------------------------------------------
 # solve_complex_ivp — njev
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="probe in _validate_jac_shape not counted toward njev; see _helpers.py FIXME",
-    strict=True,
-)
 def test_njev_includes_probe_out_of_place():
     """result.njev equals total jac calls including the shape-probe (in_place=False)."""
     fun, _ = _make_fun()
     jac, jac_counter = _make_jac()
     result = solve_complex_ivp(fun, TSPAN, Y0, jac=jac, **TOLS)
     assert result.njev == jac_counter[0]
-
-
-def test_njev_probe_offset_is_one():
-    """Out-of-place Jacobian shape probe adds exactly one uncounted call."""
-    fun, _ = _make_fun()
-    jac, jac_counter = _make_jac()
-    result = solve_complex_ivp(fun, TSPAN, Y0, jac=jac, **TOLS)
-    assert jac_counter[0] == result.njev + 1
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +100,10 @@ def test_fd_jacobian_nfev_overhead():
     result_fd = solve_complex_ivp(fun, TSPAN, Y0, method="BDF", **TOLS)
     result_analytic = solve_complex_ivp(fun, TSPAN, Y0, method="BDF", jac=jac, **TOLS)
 
-    assert result_fd.njev == result_analytic.njev, (
-        "both paths should assemble the Jacobian the same number of times "
-        f"(FD: {result_fd.njev}, analytic: {result_analytic.njev})"
-    )
+    # The analytic path has one extra njev for the construction-time shape probe;
+    # during integration both paths assemble the Jacobian the same number of times.
+    assert result_analytic.njev == result_fd.njev + 1
+    # The nfev probe offset is +1 for both paths, so it cancels in the difference.
     assert result_fd.nfev - result_analytic.nfev == n * result_fd.njev
 
 
@@ -154,10 +121,6 @@ def _run_zvode(fun, jac=None):
     return solver
 
 
-@pytest.mark.xfail(
-    reason="probe in _validate_fun_shape not counted toward nfev; see _helpers.py FIXME",
-    strict=True,
-)
 def test_zvode_nfev_includes_probe():
     """ZVODE.nfev equals total fun calls including the constructor probe."""
     fun, counter = _make_fun()
@@ -165,28 +128,9 @@ def test_zvode_nfev_includes_probe():
     assert solver.nfev == counter[0]
 
 
-@pytest.mark.xfail(
-    reason="probe in _validate_jac_shape not counted toward njev; see _helpers.py FIXME",
-    strict=True,
-)
 def test_zvode_njev_includes_probe():
     """ZVODE.njev equals total jac calls including the constructor probe."""
     fun, _ = _make_fun()
     jac, jac_counter = _make_jac()
     solver = _run_zvode(fun, jac=jac)
     assert solver.njev == jac_counter[0]
-
-
-def test_zvode_nfev_probe_offset_is_one():
-    """ZVODE constructor probe adds exactly one uncounted fun call."""
-    fun, counter = _make_fun()
-    solver = _run_zvode(fun)
-    assert counter[0] == solver.nfev + 1
-
-
-def test_zvode_njev_probe_offset_is_one():
-    """ZVODE constructor probe adds exactly one uncounted jac call."""
-    fun, _ = _make_fun()
-    jac, jac_counter = _make_jac()
-    solver = _run_zvode(fun, jac=jac)
-    assert jac_counter[0] == solver.njev + 1
