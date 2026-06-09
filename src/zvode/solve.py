@@ -668,10 +668,6 @@ def solve_complex_ivp(
     nfev = 0
     njev = 0
 
-    if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
-        _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
-        njev = 1
-
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
@@ -714,6 +710,9 @@ def solve_complex_ivp(
         max_order=max_order,
         max_num_steps=max_num_steps,
     )
+    if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
+        _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
+        njev = 1
 
     # ------------------------------------------------------------------
     # 5.  Normalize callbacks
