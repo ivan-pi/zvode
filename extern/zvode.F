@@ -915,7 +915,7 @@ C-----------------------------------------------------------------------
 C Interrupting and Restarting
 C
 C If the integration of a given problem by ZVODE is to be
-C interrrupted and then later continued, such as when restarting
+C interrupted and then later continued, such as when restarting
 C an interrupted run or alternating between two or more ODE problems,
 C the user should save, following the return from the last ZVODE call
 C prior to the interruption, the contents of the call sequence
@@ -1165,7 +1165,7 @@ C
 C The variables stored in the internal COMMON blocks are as follows:
 C
 C ACNRM  = Weighted r.m.s. norm of accumulated correction vectors.
-C CCMXJ  = Threshhold on DRC for updating the Jacobian. (See DRC.)
+C CCMXJ  = Threshold on DRC for updating the Jacobian. (See DRC.)
 C CONP   = The saved value of TQ(5).
 C CRATE  = Estimated corrector convergence rate constant.
 C DRC    = Relative change in H*RL1 since last ZVJAC call.
@@ -1210,7 +1210,7 @@ C                  HMIN, HMXI, N, METH, MITER, and/or matrix parameters.
 C          On return, ZVSTEP sets JSTART = 1.
 C JSV    = Integer flag for Jacobian saving, = sign(MF).
 C KFLAG  = A completion code from ZVSTEP with the following meanings:
-C               0      the step was succesful.
+C               0      the step was successful.
 C              -1      the requested error could not be achieved.
 C              -2      corrector convergence could not be achieved.
 C              -3, -4  fatal error in VNLS (can not occur here).
@@ -3847,7 +3847,7 @@ C The following Fortran-77 declaration is to cause the values of the
 C listed (local) variables to be saved between calls to this routine.
 C-----------------------------------------------------------------------
       SAVE LUNIT, MESFLG
-      DATA LUNIT/-1/, MESFLG/1/
+      DATA LUNIT/-1/, MESFLG/0/
 C
 C***FIRST EXECUTABLE STATEMENT  IXSAV
       IF (IPAR .EQ. 1) THEN
@@ -3866,9 +3866,9 @@ C----------------------- End of Function IXSAV -------------------------
       END FUNCTION
 *DECK IUMACH
       INTEGER FUNCTION IUMACH()
-      USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: OUTPUT_UNIT
+      USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: ERROR_UNIT
 C***BEGIN PROLOGUE  IUMACH
-C***PURPOSE  Provide standard output unit number.
+C***PURPOSE  Provide standard error unit number for diagnostic messages.
 C***CATEGORY  R1
 C***TYPE      INTEGER (IUMACH-I)
 C***KEYWORDS  MACHINE CONSTANTS
@@ -3893,7 +3893,7 @@ C  The built-in value of 6 is standard on a wide range of Fortran
 C  systems.  This may be machine-dependent.
 C**End
 C***FIRST EXECUTABLE STATEMENT  IUMACH
-      IUMACH = OUTPUT_UNIT
+      IUMACH = ERROR_UNIT
 C
       RETURN
 C----------------------- End of Function IUMACH ------------------------
