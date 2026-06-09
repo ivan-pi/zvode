@@ -745,8 +745,12 @@ def solve_complex_ivp(
                 stacklevel=2,
             )
 
+    nfev = 0
+    njev = 0
+
     if jac is not None and _miter in (1, 4) and _cfunc_address(jac) is None:
         _validate_jac_shape(jac, _miter, ml, mu, n, tspan[0], y0)
+        njev = 1
 
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
@@ -837,6 +841,7 @@ def solve_complex_ivp(
     else:
         # Path A fun: SciPy-compatible; validate shape and wrap to in-place
         _validate_fun_shape(fun, n, tspan[0], y0)
+        nfev = 1
         _fun = _wrapped_fun(fun)
 
     if jac is None:
@@ -999,8 +1004,8 @@ def solve_complex_ivp(
             "t": t_out,
             "y": y_out,
             "nsteps": int(iwork[10]),
-            "nfev": int(iwork[11]),
-            "njev": int(iwork[12]),
+            "nfev": nfev + int(iwork[11]),
+            "njev": njev + int(iwork[12]),
             "nlu": int(iwork[19]),
             "nni": int(iwork[20]),
             "ncfn": int(iwork[21]),

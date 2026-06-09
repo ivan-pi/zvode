@@ -143,10 +143,6 @@ def _validate_fun_shape(fun, n, t0, y0):
     mistakes — returning a Python scalar, a 0-D ndarray, or a 2-D array —
     are caught here before any Fortran call is made.
     """
-    # FIXME: this evaluation should be counted toward nfev, but the Fortran
-    # library owns that counter inside iwork and it is only readable after
-    # each accepted step, so incrementing it here would require duplicating
-    # the counter in Python.
     trial = np.asarray(fun(t0, y0))
     expected = (n,)
     if trial.shape != expected:
@@ -163,10 +159,6 @@ def _validate_jac_shape(jac, miter, ml, mu, n, t0, y0):
     internally generated Jacobians (miter=2,3,5) and functional iteration
     (miter=0) where no user callback is involved.
     """
-    # FIXME: this evaluation should be counted toward njev, but the Fortran
-    # library owns that counter inside iwork and it is only readable after
-    # each accepted step, so incrementing it here would require duplicating
-    # the counter in Python.
     trial = np.asarray(jac(t0, y0))
     if miter == 4:
         expected = (ml + mu + 1, n)
