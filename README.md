@@ -132,21 +132,27 @@ More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tr
 - not thread-safe (ZVODE uses global Fortran COMMON blocks)
 - no solution back-tracking available
 - only dense or banded Jacobians
+- no built-in mass matrix support (a constant mass matrix can be handled by pre-factoring with LU decomposition)
 
 ## Links
 
-### ZVODE upstream
+### ODEPACK & SUNDIALS
 
 - [ODEPACK](https://computing.llnl.gov/projects/odepack)
-- [Netlib mirror](https://netlib.org/ode/zvode.f)
-- [Netlib mirror (Sandia)](https://netlib.sandia.gov/ode/zvode.f)
+- [Netlib](https://netlib.org/ode/zvode.f) ([Sandia mirror](https://netlib.sandia.gov/ode/zvode.f))
 - [SUNDIALS](https://computing.llnl.gov/projects/sundials)
 
 ### Python / R ecosystem
 
 - [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) — base class used by the OdeSolver API
-- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper (replaced by a C translation in SciPy 1.17)
+- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper
 - [deSolve `zvode`](https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode) — R wrapper
+
+SciPy has historically provided a ZVODE wrapper through
+[`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html),
+a stateful, class-based interface (`integrator='zvode'`). As of SciPy 1.17,
+the underlying Fortran source was [replaced](https://github.com/scipy/scipy/pull/23963) with a C translation of ZVODE
+that is thread-safe.
 
 ## Building from source
 
