@@ -109,10 +109,54 @@ See :doc:`how-to-compiled-callbacks` for full examples.
 _USE_C_KNOTS: bool = os.environ.get("ZVODE_BACKEND", "C").upper() != "PYTHON"
 
 
+# Generic success text, matching scipy.integrate so duck-typed code that
+# prints `sol.message` reads identically across the two libraries.
+_SUCCESS_MESSAGE = (
+    "The solver successfully reached the end of the integration interval."
+)
+
+# Per-ISTATE failure detail used to build the human-readable `message`.  The
+# raw ISTATE value is not a field; it is interpolated into the message string
+# (see `_failure_message`), which suffices for bug reports.  Each entry pairs
+# the ZVODE condition with a remedy where one is known.
+_ISTATE_DETAIL = {
+    -1: "Excess work done (try increasing `max_num_steps`).",
+    -2: "Excess accuracy requested (tolerances too tight).",
+    -3: "Illegal input detected.",
+    -4: "Repeated error test failures (singularity, or wrong `method`?).",
+    -5: "Repeated convergence failures (bad Jacobian, or try `method='BDF'`?).",
+    -6: "Error weight became zero (a component vanished with `atol=0`).",
+}
+
+# Canonical print order: the verdict block first, then the trajectory, then
+# the solver counters.  Keys outside this list are appended so nothing is
+# silently dropped from the printout.
+_PRINT_ORDER = (
+    "message",
+    "success",
+    "status",
+    "t",
+    "y",
+    "nfev",
+    "njev",
+    "nlu",
+    "nsteps",
+    "nni",
+    "ncfn",
+    "netf",
+)
+
+
 class ZVODEResult(dict):
     """Result of :func:`solve_complex_ivp`; a dict with attribute access.
 
     All fields are accessible both as ``result['key']`` and ``result.key``.
+    A successful solve has ``success is True`` and ``status == 0``; a failed
+    one is carried on :class:`ZVODEError` with ``success is False`` and
+    ``status == -1``.  The field set is a strict superset of the
+    ``scipy.integrate.OdeResult`` fields that exist without dense output and
+    events, so duck-typed code that reads ``t``, ``y``, ``success``,
+    ``status``, ``message``, ``nfev``, ``njev`` and ``nlu`` works verbatim.
     """
 
     def __getattr__(self, name):
@@ -122,21 +166,107 @@ class ZVODEResult(dict):
         except KeyError:
             raise AttributeError(name) from None
 
+    @staticmethod
+    def _format_value(key, value):
+        """Render one field for the printout.
+
+        Arrays become ``[shape dtype]`` placeholders (never dumped); the
+        ``t`` array additionally carries its ``first to last`` interval, the
+        one piece of array content worth showing.  Everything else uses
+        ``repr``.  This rendering is *not* API and may change in any release.
+        """
+        if isinstance(value, np.ndarray):
+            shape = "x".join(str(d) for d in value.shape)
+            placeholder = f"[{shape} {value.dtype}]"
+            if key == "t" and value.size:
+                placeholder += f" {value[0]:g} to {value[-1]:g}"
+            return placeholder
+        # `message` is human-readable prose: show it raw, without repr's
+        # quotes.  Other scalars (bools, ints, a scalar `t`) use repr.
+        if isinstance(value, str):
+            return value
+        return repr(value)
+
     def __repr__(self):
-        """Return a concise string showing t/y shapes and solver counters."""
-        t = self.get("t")
-        y = self.get("y")
-        t_s = f"ndarray(shape={t.shape})" if isinstance(t, np.ndarray) else repr(t)
-        y_s = (
-            f"ndarray(shape={y.shape}, dtype={y.dtype})"
-            if isinstance(y, np.ndarray)
-            else repr(y)
+        """Return a SciPy/MATLAB-aligned ``key: value`` summary.
+
+        Keys are right-justified; the verdict block (``message`` / ``success``
+        / ``status``) comes first, then ``t`` / ``y``, then the counters.
+        Arrays are summarised as ``[shape dtype]`` rather than dumped.
+        """
+        keys = [k for k in _PRINT_ORDER if k in self]
+        keys += [k for k in self if k not in _PRINT_ORDER]
+        if not keys:
+            return "ZVODEResult()"
+        width = max(len(k) for k in keys) + 1
+        return "\n".join(
+            f"{k:>{width}}: {self._format_value(k, self[k])}" for k in keys
         )
-        return (
-            f"ZVODEResult(t={t_s}, y={y_s}, "
-            f"nfev={self.get('nfev')}, njev={self.get('njev')}, "
-            f"nlu={self.get('nlu')})"
-        )
+
+    # The interactive shell shows __repr__; __str__ is identical by contract.
+    __str__ = __repr__
+
+
+class ZVODEError(RuntimeError):
+    """Raised when ZVODE cannot advance to the next output point.
+
+    Subclasses :class:`RuntimeError` so existing ``except RuntimeError``
+    handlers keep working.  The partial integration is not discarded: the
+    fully-populated :class:`ZVODEResult` accumulated up to the failure point
+    is attached as :attr:`result` (``success=False``, ``status=-1``, the
+    failure ``message`` — which is also the exception text — the partial
+    ``t`` / ``y`` trajectory, and all solver counters)::
+
+        try:
+            sol = solve_complex_ivp(fun, tspan, y0)
+        except ZVODEError as exc:
+            partial = exc.result   # success=False; plot partial.t, partial.y
+    """
+
+    def __init__(self, message, result):
+        super().__init__(message)
+        self.result = result
+
+
+def _failure_message(istate, where):
+    """Build the human-readable failure message for a negative ISTATE.
+
+    Combines the failure location, the raw ISTATE value (verbatim, for bug
+    reports) and the per-ISTATE detail/remedy.
+    """
+    detail = _ISTATE_DETAIL.get(istate, MESSAGES.get(istate, "Unknown error."))
+    return (
+        f"solve_complex_ivp: integration failed {where}. "
+        f"ZVODE ISTATE={istate}: {detail}"
+    )
+
+
+def _make_result(t_out, y_out, iwork, nfev, njev, *, success, status, message):
+    """Assemble a :class:`ZVODEResult` at the single result-construction point.
+
+    Both the success path and the failure path (with a truncated ``t`` / ``y``)
+    funnel through here so the field set and counter indexing stay identical.
+
+    Indices follow the ZVODE user documentation (Fortran 1-based -> Python
+    0-based): IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE, IWORK(20)=NLU,
+    IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF.
+    """
+    return ZVODEResult(
+        {
+            "t": t_out,
+            "y": y_out,
+            "success": success,
+            "status": status,
+            "message": message,
+            "nsteps": int(iwork[10]),
+            "nfev": nfev + int(iwork[11]),
+            "njev": njev + int(iwork[12]),
+            "nlu": int(iwork[19]),
+            "nni": int(iwork[20]),
+            "ncfn": int(iwork[21]),
+            "netf": int(iwork[22]),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -444,7 +574,9 @@ def solve_complex_ivp(
     Returns
     -------
     result : ZVODEResult
-        Dict-like object with attribute access.  Always contains:
+        Dict-like object with attribute access.  Duck-type compatible with
+        :class:`scipy.integrate.OdeResult`, so ``if not result.success:
+        print(result.message)`` works verbatim.  Always contains:
 
         result.t : float or ndarray, shape (m,)
             Output time(s).  A scalar float in endpoint-only mode
@@ -454,12 +586,25 @@ def solve_complex_ivp(
             Solution state(s).  A 1-D array in endpoint-only mode; a 2-D
             Fortran-order array with ``result.y[:, k]`` the state at
             ``result.t[k]`` otherwise.
+        result.success : bool
+            ``True`` iff ``status >= 0``.  Always ``True`` for a returned
+            result (failure raises :class:`ZVODEError` instead).
+        result.status : int
+            Termination code with SciPy semantics: ``0`` reached the end of
+            the integration interval, ``-1`` the step failed.
+        result.message : str
+            Human-readable termination reason.  Discriminate on ``status``,
+            never by parsing ``message``.
         result.nfev : int
             Number of right-hand side evaluations.
         result.njev : int
             Number of Jacobian evaluations.
         result.nlu : int
             Number of LU decompositions.
+
+        Also carries the cumulative counters ``nsteps``, ``nni``, ``ncfn``
+        and ``netf`` (internal steps, nonlinear iterations, nonlinear
+        convergence failures, and local error-test failures).
 
     Other Parameters
     ----------------
@@ -522,13 +667,16 @@ def solve_complex_ivp(
         On invalid input.
     TypeError
         If `ctx` is not a ``ctypes.c_void_p`` or ``None``.
-    RuntimeError
+    ZVODEError
         If the solver cannot advance to the next output point.  Possible
         causes include exceeding `max_num_steps` internal steps, overly
         tight tolerances, repeated error-test or convergence failures
         (possibly indicating a bad Jacobian or wrong `method`), or an
         error weight becoming zero because a solution component vanished
-        and ``atol=0``.
+        and ``atol=0``.  ``ZVODEError`` subclasses :class:`RuntimeError`
+        (so ``except RuntimeError`` keeps working) and carries the partial
+        result accumulated up to the failure point on its ``result``
+        attribute (``success=False``, ``status=-1``).
 
     Warns
     -----
@@ -892,32 +1040,25 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     # 8.  Error reporting
     # ------------------------------------------------------------------
+    # Failure raises rather than returning success=False (SciPy's choice):
+    # code that forgets to check `success` gets a loud error instead of
+    # silently consuming a truncated trajectory.  The partial trajectory is
+    # not discarded — it rides along on the exception's `result`.
     if istate < 0:
-        _msg = MESSAGES.get(istate, "Unknown error.")
         if len(tspan) == 2 and save_steps:
             _where = f"at t={t_out[-1]}, before reaching t={tspan[-1]}"
         elif len(tspan) > 2:
             _where = f"after {len(t_out)} of {len(tspan)} requested output point(s)"
         else:
             _where = f"before reaching t={tspan[-1]}"
-        raise RuntimeError(
-            f"solve_complex_ivp: integration failed {_where}. "
-            f"ZVODE ISTATE={istate}: {_msg}"
+        message = _failure_message(istate, _where)
+        result = _make_result(
+            t_out, y_out, iwork, nfev, njev,
+            success=False, status=-1, message=message,
         )
+        raise ZVODEError(message, result)
 
-    # Indices follow the ZVODE user documentation (Fortran 1-based → Python 0-based):
-    #   IWORK(11)=NST, IWORK(12)=NFE, IWORK(13)=NJE,
-    #   IWORK(20)=NLU, IWORK(21)=NNI, IWORK(22)=NCFN, IWORK(23)=NETF.
-    return ZVODEResult(
-        {
-            "t": t_out,
-            "y": y_out,
-            "nsteps": int(iwork[10]),
-            "nfev": nfev + int(iwork[11]),
-            "njev": njev + int(iwork[12]),
-            "nlu": int(iwork[19]),
-            "nni": int(iwork[20]),
-            "ncfn": int(iwork[21]),
-            "netf": int(iwork[22]),
-        }
+    return _make_result(
+        t_out, y_out, iwork, nfev, njev,
+        success=True, status=0, message=_SUCCESS_MESSAGE,
     )
