@@ -300,8 +300,11 @@ class ZVODE(OdeSolver):
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
-        # Guard against int32 overflow in Fortran workspace arithmetic; must
-        # fire before _validate_jac_shape, which would allocate O(neq^2) memory.
+        # ORDERING CONSTRAINT: this check must come before _validate_jac_shape.
+        # _validate_jac_shape calls jac(t0, y0) to probe the return shape; for a
+        # dense Jacobian that allocates an (neq, neq) array.  At neq=46341 that is
+        # ~32 GiB and will raise MemoryError before we can give a useful message.
+        # Keep this block here — do not move it below the jac validation call.
         _INT32_MAX = 2**31 - 1
         if self.miter in (1, 2) and self.n**2 > _INT32_MAX:
             raise ValueError(
