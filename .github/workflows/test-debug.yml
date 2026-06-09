@@ -23,11 +23,10 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y gfortran libopenblas-dev
 
-      - name: Install package and test dependencies from source (Debug + ZVODE_DEBUG)
+      - name: Install package and test dependencies from source (Debug)
         run: |
           pip install -v ".[test]" \
-            --config-settings="cmake.build-type=Debug" \
-            --config-settings="cmake.args=-DZVODE_DEBUG=1"
+            --config-settings="cmake.build-type=Debug"
 
       - name: Run tests
         run: python -m pytest test/ -v
