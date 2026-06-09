@@ -29,8 +29,8 @@ The underlying Fortran source has been modified; [`extern/README.md`](https://gi
 
 **Table of Contents:**
 
-- [Quick start](#quick-start)
 - [Installation](#installation)
+- [Quick start](#quick-start)
 - [Limitations](#limitations)
 - [References](#references)
 - [Links](#links)
@@ -38,6 +38,26 @@ The underlying Fortran source has been modified; [`extern/README.md`](https://gi
 - [Changelog](#changelog)
 - [License](#license)
 - [Contributing](#contributing)
+
+## Installation
+
+```bash
+pip install zvode          # procedural API only (numpy only)
+pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams (requires SciPy)
+```
+
+The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) are a SciPy
+add-on: they subclass `scipy.integrate.OdeSolver` so they can be passed
+as the `method` argument to `scipy.integrate.solve_ivp`.  If your code
+only uses `solve_complex_ivp` you do not need SciPy.
+
+To install locally from source:
+
+```bash
+pip install .              # procedural API only
+pip install ".[scipy]"     # also install SciPy
+pip install ".[test]"      # run the test suite (includes SciPy)
+```
 
 ## Quick start
 
@@ -104,26 +124,6 @@ sol = solve_ivp(
 ```
 
 More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tree/main/docs) folder on GitHub.
-
-## Installation
-
-```bash
-pip install zvode          # procedural API only (numpy only)
-pip install zvode[scipy]   # also enables ZVODE / ZVODE_BDF / ZVODE_Adams (requires SciPy)
-```
-
-The OdeSolver classes (`ZVODE`, `ZVODE_BDF`, `ZVODE_Adams`) are a SciPy
-add-on: they subclass `scipy.integrate.OdeSolver` so they can be passed
-as the `method` argument to `scipy.integrate.solve_ivp`.  If your code
-only uses `solve_complex_ivp` you do not need SciPy.
-
-To install locally from source:
-
-```bash
-pip install .              # procedural API only
-pip install ".[scipy]"     # also install SciPy
-pip install ".[test]"      # run the test suite (includes SciPy)
-```
 
 ## Limitations
 
