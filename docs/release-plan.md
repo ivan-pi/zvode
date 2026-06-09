@@ -95,16 +95,17 @@ and developer-facing conveniences such as type stubs and validation.
   > is reached. Redundant checks in the C wrapper have been downgraded to asserts or
   > guarded with `ZVODE_DEBUG`. The `_resolve_miter` helper consolidates Jacobian and
   > band argument validation in one place.
-- [ ] Fix `nfev`/`njev` evaluation counters: `_validate_fun_shape` and
+- [x] Fix `nfev`/`njev` evaluation counters: `_validate_fun_shape` and
   `_validate_jac_shape` each call the user callback once at construction time to
   probe the return shape, but this call is not counted toward `nfev` / `njev`.
   Applies only to the `in_place=False` Python callback path; `in_place=True` and
   compiled callbacks skip the probe and are already exact.
-  > Fix: maintain a Python-side probe counter inside the `_wrapped_fun` /
-  > `_wrapped_jac` closures and add it to `iwork[11/12]` at readout.  Both probe
-  > calls are marked `FIXME` in `_helpers.py`.
-  > `test_counters.py` documents the expected correct behaviour with `xfail` tests
-  > and pins the current off-by-one discrepancy so a regression is detectable.
+  > `solve_complex_ivp`: local `nfev`/`njev` ints initialised to the probe count
+  > (1 or 0) before integration; Fortran `iwork[11/12]` is added at result
+  > construction.  `ZVODE` class: delta accumulator (`_nfe_last`/`_nje_last`)
+  > carries the probe offset through every step without re-reading the full
+  > Fortran counter.  `test_counters.py`: `xfail` decorators removed (tests now
+  > pass); offset-pinning tests removed as redundant.
 - [ ] Add option to expose `ZEWSET` and `ZWNORM` as callback functions
 - [x] Provide CMake option to use external BLAS; fallback to vendored procedures
   (`ZVODE_LINALG_BACKEND` cache variable: `LAPACK` (default, uses external LAPACK)
