@@ -265,6 +265,13 @@ class ZVODE(OdeSolver):
         self.istate = 1  # start integration
         self.itask = 5  # take one step, without passing t_bound, then return
 
+        self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
+
+        self.nfev = 0
+        self.njev = 0
+        self._nfe_last = 0
+        self._nje_last = 0
+
         # Select method
         if lmm not in _LMM:
             raise ValueError(
@@ -272,13 +279,6 @@ class ZVODE(OdeSolver):
                 "Valid options are 'Adams' or 'BDF'."
             )
         self.meth, maxord_allowed = _LMM[lmm]
-
-        self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
-
-        self.nfev = 0
-        self.njev = 0
-        self._nfe_last = 0
-        self._nje_last = 0
 
         self.wrap_fun = _wrapped_fun(fun)
         _validate_fun_shape(fun, self.n, t0, self.y)
@@ -351,6 +351,7 @@ class ZVODE(OdeSolver):
                     f"automatically reduce it.",
                     stacklevel=2,
                 )
+        self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n, self.miter, self.ml, self.mu, self.mf, t0, t_bound,
             first_step=first_step,
@@ -358,7 +359,6 @@ class ZVODE(OdeSolver):
             max_step=self.max_step,
             max_order=max_order,
         )
-        self.iopt = 1
 
     def _step_impl(self):
         """Advance one step; return (success, message)"""
