@@ -1,6 +1,6 @@
 """Python bindings to the ZVODE ODE solver"""
 
-from .solve import solve_complex_ivp, ZVODEResult, ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE
+from .solve import solve_complex_ivp, ZVODE_FUN_CTYPE, ZVODE_JAC_CTYPE
 
 __all__ = [
     "solve_complex_ivp",

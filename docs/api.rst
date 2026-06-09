@@ -9,7 +9,7 @@ Procedural API
 Result type
 -----------
 
-.. autoclass:: zvode.ZVODEResult
+.. autoclass:: zvode.solve.ZVODEResult
    :members:
 
 Compiled callback types
