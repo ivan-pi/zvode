@@ -131,7 +131,11 @@ def _check_tolerances(rtol, atol, n):
     elif len(rtol) == n and len(atol) == n:
         itol = 4
     else:
-        raise RuntimeError("This should not occur.")
+        assert False, (
+            f"_check_tolerances: unhandled tolerance shape combination "
+            f"(rtol.ndim={rtol.ndim}, rtol.shape={rtol.shape}, "
+            f"atol.ndim={atol.ndim}, atol.shape={atol.shape}, n={n})"
+        )
 
     return itol, rtol, atol
 
@@ -275,3 +279,84 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
             raise ValueError(f"'uband' ({uband}) must be less than neq ({n}).")
 
     return miter, lband, uband
+
+
+# Maps linear multistep method name to (ZVODE integer code, maximum order).
+_LMM = {"Adams": (1, 12), "BDF": (2, 5)}
+# Reverse map: ZVODE integer code → maximum order.
+_METH_MAXORD = {m: o for m, o in _LMM.values()}
+
+
+def _make_workspace(
+    n,
+    miter,
+    ml,
+    mu,
+    mf,
+    t0,
+    t_bound,
+    first_step=None,
+    min_step=0.0,
+    max_step=np.inf,
+    max_order=None,
+    max_num_steps=0,
+):
+    """Allocate and initialise ZVODE's three workspace arrays.
+
+    Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
+    Note: zwork, rwork, and iwork are mutable; the integration drivers update
+    them in place on every step and read diagnostic counters from them on return.
+    """
+    _INT32_MAX = 2**31 - 1
+
+    if miter in (1, 2) and n**2 > _INT32_MAX:
+        raise ValueError(
+            f"neq={n} exceeds the maximum of 46340 for dense Jacobian methods: "
+            "neq**2 overflows the 32-bit integer arithmetic used internally."
+        )
+    if miter in (4, 5):
+        _lenwm_max = (3 * ml + mu + 1) * n
+        if _lenwm_max > _INT32_MAX:
+            raise ValueError(
+                f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
+            )
+
+    if miter == 0:
+        lwm = 0
+    elif miter in (1, 2):
+        lwm = 2 * n**2 if mf > 0 else n**2
+    elif miter == 3:
+        lwm = n
+    elif miter in (4, 5):
+        lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
+    else:
+        raise RuntimeError(f"Unhandled miter={miter}")
+
+    meth = abs(mf) // 10
+    maxord = _METH_MAXORD[meth]
+    lzw = n * (maxord + 1) + 2 * n + lwm
+    zwork = np.zeros(lzw, dtype=np.complex128)
+
+    lrw = 20 + n
+    rwork = np.zeros(lrw, dtype=np.float64)
+
+    liw = 30 if miter in (0, 3) else 30 + n
+    iwork = np.zeros(liw, dtype=np.int32)
+
+    if miter in (4, 5):
+        iwork[0] = ml
+        iwork[1] = mu
+
+    rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
+    if first_step is not None:
+        _validate_first_step(first_step, t0, t_bound)
+        # ZVODE requires H0 to carry the sign of the integration direction.
+        rwork[4] = float(first_step) * np.sign(t_bound - t0)
+    rwork[5] = float(max_step)
+    rwork[6] = float(min_step)
+    if max_order is not None:
+        iwork[4] = int(max_order)
+    if max_num_steps:
+        iwork[5] = int(max_num_steps)  # MXSTEP: max internal steps per output point
+
+    return zwork, rwork, iwork

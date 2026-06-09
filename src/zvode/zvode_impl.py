@@ -6,7 +6,9 @@ from scipy.integrate import OdeSolver, DenseOutput
 from . import _zvode
 from ._helpers import (
     MESSAGES,
+    _LMM,
     _eval_nordsieck,
+    _make_workspace,
     _validate_max_step,
     _validate_min_step,
     _validate_first_step,
@@ -248,7 +250,6 @@ class ZVODE(OdeSolver):
         _warn_extraneous(extraneous)
         super().__init__(fun, t0, y0, t_bound, vectorized=False, support_complex=True)
 
-        self.tout = self.t_bound
         if np.isrealobj(y0):
             warnings.warn(
                 "y0 has a real dtype and will be cast to complex128. "
@@ -264,25 +265,20 @@ class ZVODE(OdeSolver):
         self.istate = 1  # start integration
         self.itask = 5  # take one step, without passing t_bound, then return
 
-        # Select method
-        if lmm == "Adams":
-            self.meth = 1
-            maxord_allowed = 12
-        elif lmm == "BDF":
-            self.meth = 2
-            maxord_allowed = 5
-        else:
-            raise ValueError(
-                f"Invalid linear multistep method (lmm) '{lmm}'. "
-                "Valid options are 'Adams' or 'BDF'."
-            )
-
         self.itol, self.rtol, self.atol = _check_tolerances(rtol, atol, self.n)
 
         self.nfev = 0
         self.njev = 0
         self._nfe_last = 0
         self._nje_last = 0
+
+        # Select method
+        if lmm not in _LMM:
+            raise ValueError(
+                f"Invalid linear multistep method (lmm) {lmm!r}. "
+                "Valid options are 'Adams' or 'BDF'."
+            )
+        self.meth, maxord_allowed = _LMM[lmm]
 
         self.wrap_fun = _wrapped_fun(fun)
         _validate_fun_shape(fun, self.n, t0, self.y)
@@ -304,31 +300,6 @@ class ZVODE(OdeSolver):
 
         self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
 
-        # Check for int32 overflow in Fortran workspace arithmetic before
-        # doing anything that allocates memory proportional to neq (including
-        # the jac shape probe below).
-        _INT32_MAX = 2**31 - 1
-        if self.miter in (1, 2):
-            # worst case: LENWM = 2*N*N  (JSV=1, JCO=1)
-            if self.n**2 > _INT32_MAX:
-                raise ValueError(
-                    f"neq = {self.n} exceeds the maximum of 46340 for dense "
-                    f"Jacobian methods: neq**2 overflows the 32-bit integer "
-                    f"arithmetic used internally by the Fortran library."
-                )
-        elif self.miter in (4, 5):
-            # worst case: LENWM = (2*ML + MU + 1 + ML)*N = (3*ML + MU + 1)*N
-            _lenwm_max = (3 * self.ml + self.mu + 1) * self.n
-            if _lenwm_max > _INT32_MAX:
-                raise ValueError(
-                    f"Banded workspace size ({_lenwm_max:,}) overflows the "
-                    f"32-bit integer arithmetic used internally by the Fortran library."
-                )
-
-        if jac is not None and self.miter in (1, 4):
-            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
-            self.njev += 1
-
         if jsv not in (1, -1):
             raise ValueError(
                 "'jsv' must be 1 (save Jacobian) or -1 (recompute every step)."
@@ -338,85 +309,36 @@ class ZVODE(OdeSolver):
         # Method Flag (MF)
         self.mf = self.jsv * (10 * self.meth + self.miter)
 
-        if abs(self.mf) not in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25):
-            # TODO: we may be able to get rid of this check if
-            #       jsv, meth and miter have been checked before-hand
-            raise RuntimeError("Error setting the method flag")
+        assert abs(self.mf) in (10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25), (
+            f"mf={self.mf!r} is invalid (jsv={self.jsv!r}, meth={self.meth!r}, "
+            f"miter={self.miter!r}); this is a bug in zvode"
+        )
 
-        if self.miter == 0:
-            lwm = 0
-        elif self.miter in (1, 2):
-            if self.mf > 0:
-                lwm = 2 * self.n**2
-            elif self.mf < 0:
-                lwm = self.n**2
-            else:
-                lwm = None
-        elif self.miter == 3:
-            lwm = self.n
-        elif self.miter in (4, 5):
-            if self.mf > 0:
-                lwm = (3 * self.ml + 2 * self.mu + 2) * self.n
-            elif self.mf < 0:
-                lwm = (2 * self.ml + self.mu + 1) * self.n
-            else:
-                lwm = None
-        else:
-            assert False, f"Unhandled miter value {self.miter}."
-
-        if lwm is None:
-            raise ValueError()
-
-        lzw = self.n * (maxord_allowed + 1) + 2 * self.n + lwm
-        self.zwork = np.zeros(lzw, dtype=np.complex128)
-
-        lrw = 20 + self.n
-        self.rwork = np.zeros(lrw, dtype=np.float64)
-
-        liw = 30 if self.miter in (0, 3) else 30 + self.n
-        self.iwork = np.zeros(liw, dtype=np.int32)
-
-        if self.miter in (4, 5):
-            # Banded Jacobian
-            self.iwork[0] = self.ml
-            self.iwork[1] = self.mu
-
-        # Optional input settings
-        self.iopt = 1
-        self.rwork[4:9] = 0.0
-        self.iwork[4:9] = 0
-
-        if self.itask == 5:
-            self.rwork[0] = t_bound
-
-        if first_step is not None:
-            self.h0 = _validate_first_step(first_step, t0, t_bound)
-            # ZVODE requires H0 to carry the sign of the integration direction.
-            self.rwork[4] = self.h0 * np.sign(t_bound - t0)
-
-        if max_step is not None:
-            self.max_step = _validate_max_step(max_step)
-            self.rwork[5] = self.max_step
-
-        if min_step is not None:
-            _validate_min_step(min_step)
-            self.rwork[6] = float(min_step)
-
+        self.max_step = _validate_max_step(max_step)
+        self.min_step = _validate_min_step(min_step)
         if max_order is not None:
             if max_order <= 0:
                 raise ValueError("'max_order' must be a positive integer.")
-
-            max_allowed = 12 if self.meth == 1 else 5
-            if max_order > max_allowed:
+            if max_order > maxord_allowed:
                 warnings.warn(
                     f"'max_order' ({max_order}) exceeds the maximum allowed order "
-                    f"({max_allowed}) for the selected method. The solver will "
+                    f"({maxord_allowed}) for the selected method. The solver will "
                     f"automatically reduce it.",
                     stacklevel=2,
                 )
-
-            # Load the potentially "wrong" value; capping happens inside Fortran
-            self.iwork[4] = max_order
+        self.iopt = 1
+        self.zwork, self.rwork, self.iwork = _make_workspace(
+            self.n, self.miter, self.ml, self.mu, self.mf, t0, t_bound,
+            first_step=first_step,
+            min_step=self.min_step,
+            max_step=self.max_step,
+            max_order=max_order,
+        )
+        # Last: probing jac(t0, y0) may allocate an (neq, neq) array; validate
+        # after _make_workspace so its overflow check fires first for large neq.
+        if jac is not None and self.miter in (1, 4):
+            _validate_jac_shape(jac, self.miter, self.ml, self.mu, self.n, t0, self.y)
+            self.njev += 1
 
     def _step_impl(self):
         """Advance one step; return (success, message)"""
