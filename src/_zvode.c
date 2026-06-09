@@ -413,7 +413,7 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
         return NULL;
     }
 
-    assert(fun_obj != NULL && PyCallable_Check(fun_obj));
+    assert(PyCallable_Check(fun_obj));
     assert(jac_obj == Py_None || PyCallable_Check(jac_obj));
 
     /* zvode_py always uses Python callbacks; cfuncs go through drive_knots/
