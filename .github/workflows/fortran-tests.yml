@@ -1,10 +1,11 @@
 name: Fortran tests
 
-# Build and run the Fortran-native ZVODE test programs through CTest.
-# These exercise the ZVODE Fortran core directly via its functor-based
-# public API (zvode_mod), independent of the Python bindings, and provide
-# the Fortran-native coverage that the multi-compiler conformance work
-# builds on.
+# Build and run the native (non-Python) ZVODE test programs through CTest.
+# The Fortran drivers exercise the core via its functor-based public API
+# (zvode_mod) and the C driver exercises the C API (src/zvode.h, i.e. the
+# bind(c) layer in extern/c_zvode.f90), so the compiled core, linalg backend
+# and C binding are all covered without the Python layer.  This is the
+# native-test coverage that the multi-compiler conformance work builds on.
 
 on:
   push:

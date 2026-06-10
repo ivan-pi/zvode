@@ -40,8 +40,8 @@ endif()
 # Common ZVODE Fortran core library (libzvode)
 # ---------------------------------------------------------------------------
 # Built once from the vendored Fortran in extern/ and consumed by both the
-# `_zvode` Python extension and the Fortran-native test programs, so the
-# sources, backend selection, and link dependencies live in a single place.
+# `_zvode` Python extension and the native test programs, so the sources,
+# backend selection, and link dependencies live in a single place.
 #
 # POSITION_INDEPENDENT_CODE is required because the LAPACK/LINPACK choice and
 # the generated .mod files are PUBLIC: linking this static archive into the
@@ -56,7 +56,19 @@ set(_zvode_moddir ${CMAKE_CURRENT_BINARY_DIR}/zvode_modules)
 set_target_properties(zvode PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   Fortran_MODULE_DIRECTORY ${_zvode_moddir})
-target_include_directories(zvode PUBLIC ${_zvode_moddir})
+
+# Expose the library's interface to consumers (the `_zvode` Python extension
+# and the native C/Fortran tests):
+#   * extern/ holds the public C API header zvode.h, next to the c_zvode.f90
+#     that implements it;
+#   * the module directory holds the generated zvode_mod.mod for the Fortran
+#     callers.
+# Plain paths are fine here because `zvode` is internal to this build and is
+# never installed/exported, so no BUILD_INTERFACE/INSTALL_INTERFACE genexes
+# are needed.
+target_include_directories(zvode PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/extern
+  ${_zvode_moddir})
 
 if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
   target_link_libraries(zvode PUBLIC LAPACK::LAPACK)
@@ -140,7 +152,7 @@ if(SKBUILD)
       "$<${_zvode_gnulike}:-fsanitize=address,undefined>")
   endif()
 
-  target_include_directories(_zvode PRIVATE src)
+  # zvode.h comes in via the `zvode` library's PUBLIC include directories.
   target_link_libraries(_zvode PRIVATE zvode Python::NumPy)
 
   # Install the compiled module INTO the package directory, so it imports
@@ -150,30 +162,40 @@ if(SKBUILD)
 endif() # SKBUILD
 
 # ---------------------------------------------------------------------------
-# Fortran-native test programs (CTest)
+# Native test programs (CTest)
 # ---------------------------------------------------------------------------
-# These exercise the ZVODE Fortran core directly through its functor-based
-# public API (zvode_mod), independent of the Python bindings.  They link the
-# common `zvode` library (picking up zvode_mod.mod via its PUBLIC module
-# directory) and are built only in the standalone CMake configure, not in the
-# wheel build.  Each new Fortran test MUST be added to the list below.
+# These exercise the compiled ZVODE core directly, independent of the Python
+# bindings, by linking the common `zvode` library.  The Fortran drivers use
+# the functor-based public API (zvode_mod, picked up via its PUBLIC module
+# directory); the C driver uses the C API in extern/zvode.h, covering the
+# bind(c) layer in extern/c_zvode.f90 that is otherwise only reached through
+# Python.  Built only in the standalone CMake configure, not the wheel build.
+# Each new test MUST be added to one of the lists below.
 if(DEFINED SKBUILD)
   set(_zvode_tests_default OFF)
 else()
   set(_zvode_tests_default ON)
 endif()
 option(ZVODE_BUILD_TESTS
-  "Build and register the Fortran-native ZVODE test programs"
+  "Build and register the native ZVODE test programs"
   ${_zvode_tests_default})
 
 if(ZVODE_BUILD_TESTS)
   enable_testing()
 
+  # Fortran-native drivers (zvode_mod functor API).
   foreach(_test IN ITEMS
-      test_zvode_constant
       test_zvode_decay
       test_zvode_complex_oscillator)
     add_executable(${_test} test/${_test}.f90)
+    target_link_libraries(${_test} PRIVATE zvode)
+    add_test(NAME ${_test} COMMAND ${_test})
+  endforeach()
+
+  # C-native drivers (C API in extern/zvode.h, inherited from `zvode`).
+  foreach(_test IN ITEMS
+      test_zvode_constant)
+    add_executable(${_test} test/${_test}.c)
     target_link_libraries(${_test} PRIVATE zvode)
     add_test(NAME ${_test} COMMAND ${_test})
   endforeach()

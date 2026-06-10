@@ -25,18 +25,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   build).  Two opt-in CMake options drive these (`ZVODE_SANITIZE`,
   `ZVODE_STRICT_WARNINGS`), both scoped to the C source so the vendored Fortran
   is untouched
-- Fortran-native test programs wired into CTest and run in CI.  Three drivers
-  (`test/test_zvode_constant.f90`, `test_zvode_decay.f90`,
-  `test_zvode_complex_oscillator.f90`) exercise the ZVODE Fortran core directly
-  through its functor-based public API (`zvode_mod`), independent of the Python
-  bindings, using `if (predicate) error stop <n>` assertions.  A standalone
-  CMake configure (`-DZVODE_BUILD_TESTS=ON`, default ON when not building the
-  wheel) builds them against the shared `zvode` Fortran core library
-  (`libzvode`, also linked by the `_zvode` Python extension) and registers
-  each with `add_test`; the new `Fortran tests` workflow
-  (`.github/workflows/fortran-tests.yml`) runs `ctest` under gfortran for both
-  the LAPACK and LINPACK linalg backends.  This is a prerequisite for the
-  planned multi-compiler conformance testing
+- Native (non-Python) test programs wired into CTest and run in CI.  Two
+  Fortran drivers (`test/test_zvode_decay.f90`,
+  `test_zvode_complex_oscillator.f90`) exercise the ZVODE core through its
+  functor-based public API (`zvode_mod`) with `if (predicate) error stop <n>`
+  assertions; one C driver (`test/test_zvode_constant.c`) exercises the C API
+  in `extern/zvode.h`, covering the `bind(c)` layer in `extern/c_zvode.f90` that
+  was otherwise reached only through the Python extension.  Together they cover
+  the compiled core, the linalg backend, and the C binding without activating
+  the Python layer.  A standalone CMake configure (`-DZVODE_BUILD_TESTS=ON`,
+  default ON when not building the wheel) builds them against the shared
+  `zvode` core library (`libzvode`, also linked by the `_zvode` Python
+  extension) and registers each with `add_test`; the new `Fortran tests`
+  workflow (`.github/workflows/fortran-tests.yml`) runs `ctest` under
+  gfortran/gcc for both the LAPACK and LINPACK linalg backends.  This is a
+  prerequisite for the planned multi-compiler conformance testing
 - `numba` optional-dependency extra, kept separate from `test`.  The numba
   callback tests self-skip when numba is absent, so only two CI jobs install
   `.[test,numba]` and exercise them — `Tests (Debug)` (debug build) and the
