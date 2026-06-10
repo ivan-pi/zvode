@@ -36,8 +36,6 @@ from ._helpers import (
     _validate_min_step,
     _validate_fun_shape,
     _validate_jac_shape,
-    _wrapped_fun,
-    _wrapped_jac,
 )
 
 # ZVODE stores solver state in Fortran COMMON blocks that are global to the
@@ -884,10 +882,10 @@ def solve_complex_ivp(
         # Path B fun: pass integer address; C layer calls it directly
         _fun = fun_addr
     else:
-        # Path A fun: SciPy-compatible; validate shape and wrap to in-place
+        # Path A fun: SciPy-compatible; validate shape and forward directly
         _validate_fun_shape(fun, n, tspan[0], y0)
         nfev = 1
-        _fun = _wrapped_fun(fun)
+        _fun = fun
 
     if jac is None:
         _jac = None
@@ -895,8 +893,8 @@ def solve_complex_ivp(
         # Path B jac: pass integer address
         _jac = jac_addr
     else:
-        # Path A jac: SciPy-compatible; wrap to in-place
-        _jac = _wrapped_jac(jac, banded=(_miter == 4))
+        # Path A jac: SciPy-compatible; forward directly
+        _jac = jac
 
     # ------------------------------------------------------------------
     # 6.  Validate refine; check backend compatibility

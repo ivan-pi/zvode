@@ -44,46 +44,6 @@ def _validate_first_step(first_step, t0, t_bound):
     return first_step
 
 
-def _wrapped_fun(fun):
-    """Adapt a SciPy-compatible ``f(t, y) -> array`` callable to the in-place ZVODE signature."""
-
-    def _zvode_fun(t, y, dy):
-        dy[:] = fun(t, y)
-
-    return _zvode_fun
-
-
-def _wrapped_jac(jac, banded=False):
-    """Adapt a ``jac(t, y)`` return-value callable to the in-place ZVODE Jacobian signature.
-
-    ZVODE passes an output array ``pd`` of shape ``(nrowpd, neq)`` in Fortran
-    (column-major) order.  For the dense case ``nrowpd >= neq``.  For the banded
-    case ``nrowpd >= 2*ml + mu + 1``: the extra ``ml`` rows beyond the user band
-    ``ml + mu + 1`` are fill-in workspace that ZGBFA (or the equivalent
-    LAPACK routines) need during LU factorisation and should be ignored
-    by the Jacobian callback.
-
-    Within the user band, ``df(i)/dy(j)`` goes into ``pd[i - j + mu, j]``.
-    The triangular corner entries that correspond to nonexistent matrix elements
-    (where the band extends beyond the matrix) can be set to any value.
-
-    Note: ZVODE's native interface only requires callers to set the non-zero
-    elements of ``pd``; unset entries are ignored.  Because this wrapper copies
-    the return value of ``jac(t, y)`` into ``pd``, the full slice is always
-    overwritten.
-    """
-
-    def _zvode_jac(t, y, pd):
-        n = y.shape[0]
-        pd[:n, :n] = jac(t, y)
-
-    def _zvode_banded_jac(t, y, pd, ml, mu):
-        n = y.shape[0]
-        pd[: ml + mu + 1, :n] = jac(t, y)
-
-    return _zvode_banded_jac if banded else _zvode_jac
-
-
 def _check_tolerances(rtol, atol, n):
     """Validate rtol/atol, warn if too small, and return the ZVODE ITOL flag.
 

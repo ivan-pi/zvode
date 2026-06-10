@@ -11,8 +11,6 @@ from ._helpers import (
     _make_workspace,
     _validate_max_step,
     _validate_min_step,
-    _wrapped_fun,
-    _wrapped_jac,
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -279,7 +277,7 @@ class ZVODE(OdeSolver):
             )
         self.meth, maxord_allowed = _LMM[lmm]
 
-        self.wrap_fun = _wrapped_fun(fun)
+        self.wrap_fun = fun
         _validate_fun_shape(fun, self.n, t0, self.y)
         self.nfev += 1
 
@@ -297,7 +295,7 @@ class ZVODE(OdeSolver):
                     stacklevel=2,
                 )
 
-        self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
+        self.wrap_jac = jac if jac else None
 
         if jsv not in (1, -1):
             raise ValueError(

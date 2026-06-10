@@ -261,7 +261,7 @@ static void fun_adaptor(
 
     const npy_intp dims[1] = { neq };
 
-    /* Wrap the solver-owned buffers as NumPy views (no copy). */
+    /* Wrap the solver-owned y buffer as a read-only NumPy view (no copy). */
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (void *) y);
     if (ap_y == NULL) {
@@ -270,26 +270,42 @@ static void fun_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    PyArrayObject *ap_dy =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, dy);
-    if (ap_dy == NULL) {
+    /* SciPy-style call: fun(t, y) returns the derivative array. */
+    PyObject *result = PyObject_CallFunction(cb->fun_u.pyobj, "dO", t,
+        (PyObject *) ap_y);
+    if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
 
-    /* fun(t, y, dy): Python writes the derivative into dy in place. */
-    PyObject *res = PyObject_CallFunction(cb->fun_u.pyobj, "dOO", t,
-        (PyObject *) ap_y,
-        (PyObject *) ap_dy);
-
-    Py_DECREF(ap_y);
-    Py_DECREF(ap_dy);
-    if (res == NULL) {
+    /* Coerce the result to a contiguous complex128 array.  FORCECAST accepts
+     * Python lists and real arrays, matching the old `dy[:] = fun(t, y)`. */
+    PyArrayObject *arr = (PyArrayObject *) PyArray_FROM_OTF(
+        result, NPY_COMPLEX128, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
+    if (arr == NULL) {
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
-    Py_DECREF(res);
+
+    if (PyArray_SIZE(arr) != (npy_intp) neq) {
+        PyErr_Format(PyExc_ValueError,
+            "fun(t, y) must return an array of size neq=%d; got size %zd.",
+            neq, (Py_ssize_t) PyArray_SIZE(arr));
+        Py_DECREF(arr);
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+
+    memcpy(dy, PyArray_DATA(arr), (size_t) neq * sizeof(double complex));
+
+    Py_DECREF(arr);
+    Py_DECREF(result);
+    Py_DECREF(ap_y);
 }
 
 static void jac_adaptor(
@@ -329,46 +345,56 @@ static void jac_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    /* PD is column-major with leading dimension NROWPD, exactly the layout
-     * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
-     * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
-
-    const npy_intp dims_pd[2] = { (npy_intp) nrowpd, (npy_intp) neq };
-
-    /* Explicitly define strides to achieve Fortran contiguity */
-    const npy_intp strides_pd[2] = {
-        sizeof(double complex),
-        (npy_intp) ((size_t) nrowpd * sizeof(double complex))
-    };
-
-    PyArrayObject *ap_pd = (PyArrayObject *) PyArray_New(
-        &PyArray_Type, 2, dims_pd, NPY_COMPLEX128,
-        strides_pd, (void *)pd, 0, NPY_ARRAY_WRITEABLE, NULL
-    );
-    if (ap_pd == NULL) {
+    /* SciPy-style call: jac(t, y) returns the Jacobian array.
+     *   dense  (miter=1): shape (neq, neq), J[i,j] = df_i/dy_j
+     *   banded (miter=4): shape (ml + mu + 1, neq) */
+    PyObject *result = PyObject_CallFunction(cb->jac_u.pyobj, "dO", t,
+        (PyObject *) ap_y);
+    if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
 
-
-    PyObject *res;
-    if (cb->jac_is_banded) {
-        /* jac(t, y, pd, ml, mu): Python writes the Jacobian into pd in place. */
-        res = PyObject_CallFunction(cb->jac_u.pyobj, "dOOii", t,
-            (PyObject *) ap_y, (PyObject *) ap_pd, ml, mu);
-    } else {
-        /* jac(t, y, pd): Python writes the Jacobian into pd in place. */
-        res = PyObject_CallFunction(cb->jac_u.pyobj, "dOO", t,
-            (PyObject *) ap_y, (PyObject *) ap_pd);
-    }
-    Py_DECREF(ap_y);
-    Py_DECREF(ap_pd);
-    if (res == NULL) {
+    /* Coerce to F-contiguous complex128 so each column is laid out
+     * contiguously, ready to copy into PD's column-major buffer. */
+    PyArrayObject *arr = (PyArrayObject *) PyArray_FROM_OTF(
+        result, NPY_COMPLEX128, NPY_ARRAY_F_CONTIGUOUS | NPY_ARRAY_FORCECAST);
+    if (arr == NULL) {
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
-    Py_DECREF(res);
+
+    const npy_intp rows = cb->jac_is_banded ? (npy_intp) (ml + mu + 1) : (npy_intp) neq;
+    if (PyArray_NDIM(arr) != 2 ||
+        PyArray_DIM(arr, 0) != rows ||
+        PyArray_DIM(arr, 1) != (npy_intp) neq) {
+        PyErr_Format(PyExc_ValueError,
+            "jac(t, y) must return an array of shape (%zd, %d); "
+            "got shape with ndim=%d.",
+            (Py_ssize_t) rows, neq, PyArray_NDIM(arr));
+        Py_DECREF(arr);
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+
+    /* PD is column-major with leading dimension NROWPD.  Copy each column of
+     * the user Jacobian into the first `rows` entries of PD's column; the
+     * remaining nrowpd - rows rows are LAPACK fill workspace, left untouched. */
+    const double complex *src = (const double complex *) PyArray_DATA(arr);
+    for (npy_intp j = 0; j < (npy_intp) neq; ++j) {
+        memcpy(pd + (size_t) j * (size_t) nrowpd,
+               src + (size_t) j * (size_t) rows,
+               (size_t) rows * sizeof(double complex));
+    }
+
+    Py_DECREF(arr);
+    Py_DECREF(result);
+    Py_DECREF(ap_y);
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,8 +409,10 @@ PyDoc_STRVAR(zvode_doc,
 "\n"
 "`y`, `zwork`, `rwork`, `iwork` are modified in place and must be\n"
 "contiguous arrays of dtype ``complex128``, ``complex128``, ``float64`` and ``int32``.\n"
-"`fun` is called as ``fun(t, y, dy)`` and must fill `dy`; `jac` (or None) is\n"
-"called as ``jac(t, y, pd)``.  Returns the advanced time and the ZVODE istate.\n");
+"`fun` is called as ``fun(t, y) -> array`` of shape ``(neq,)``; `jac` (or None)\n"
+"is called as ``jac(t, y) -> array`` of shape ``(neq, neq)`` (dense) or\n"
+"``(ml + mu + 1, neq)`` (banded).  Compiled cfunc callbacks instead use the\n"
+"in-place C ABI.  Returns the advanced time and the ZVODE istate.\n");
 
 static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
