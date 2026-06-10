@@ -196,14 +196,18 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   constructed from the raw buffer only after the loop exits (and the GIL is
   reacquired).  This is a prerequisite for releasing the GIL around the entire
   `drive_adaptive` loop.
-- [~] API hardening: review and stabilise the procedural interface signatures,
+- [x] API hardening: review and stabilise the procedural interface signatures,
   return types, and error reporting ahead of the 1.0.0 API freeze.
   > Type annotations on `solve_complex_ivp` are done (landed in 0.3.0).
   > `ZVODEResult.__repr__` implemented; fields `t`, `y`, `nfev`, `njev`, `nlu`,
   > `nsteps`, `nni`, `ncfn`, `netf` are all exposed.  `ZVODEResult` itself was
   > removed from the public namespace (importable from `zvode.solve`, not
-  > re-exported from `zvode`).  Final decision on which of `nsteps`, `nni`,
-  > `ncfn`, `netf` to keep vs. drop is still pending.
+  > re-exported from `zvode`).  Counter set decided: all four of `nsteps`,
+  > `nni`, `ncfn`, `netf` are kept.  They are niche — most users will only
+  > look at `nfev`/`njev`/`nlu` — but they come free from `iwork`, are
+  > already implemented and tested, and cost nothing to carry.  Adding a
+  > counter later is non-breaking; removing one after the freeze would not
+  > be, so the kept set is the one to commit to now.
 - [x] Finish the `ZVODEResult` struct: add `success` (bool) and `message` (str)
   fields so users do not have to interpret raw `istate` values themselves; aligns
   the return type with the conventions set by `scipy.integrate.OdeResult`.

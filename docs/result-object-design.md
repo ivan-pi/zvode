@@ -36,8 +36,11 @@ containing:
 
 This is a strict superset of the `OdeResult` fields that can exist without
 dense output and events.  The ZVODE-specific counters stay flat alongside
-the SciPy ones (no nested `stats` object); whether all four survive past
-1.0 is an open release-plan item.
+the SciPy ones (no nested `stats` object).  All four (`nsteps`, `nni`,
+`ncfn`, `netf`) are kept in the frozen field set.  They are niche — most
+users will only read `nfev`/`njev`/`nlu` — but they come free from `iwork`
+and cost nothing to carry, and adding a counter later is non-breaking while
+removing one after 1.0 would not be.
 
 All counters are cumulative tallies over the entire `solve_complex_ivp`
 call (ZVODE zeroes them on the initial call only, and the drivers carry
