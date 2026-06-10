@@ -277,7 +277,10 @@ class ZVODE(OdeSolver):
             )
         self.meth, maxord_allowed = _LMM[lmm]
 
-        self.wrap_fun = fun
+        # OdeSolver.__init__ already stored the (complex-coerced) RHS as
+        # self.fun_single; reuse it as the C callback.  nfev is tracked from
+        # ZVODE's NFE counter in _step_impl, so we deliberately use the
+        # non-counting fun_single rather than self.fun (which increments nfev).
         _validate_fun_shape(fun, self.n, t0, self.y)
         self.nfev += 1
 
@@ -349,7 +352,7 @@ class ZVODE(OdeSolver):
         # Python evaluates the full RHS before any assignment, so the current
         # self.t and self.istate are safely read as inputs before being overwritten.
         self.t, self.istate = _zvode.zvode(
-            self.wrap_fun,
+            self.fun_single,
             self._ytmp,
             self.t,
             self.t_bound,

@@ -259,6 +259,13 @@ static void fun_adaptor(
     /* CB_PYTHON path */
     assert(cb->fun_u.pyobj != NULL);
 
+    /* A previous callback already raised a Python exception; short-circuit so
+     * the original exception is preserved rather than clobbered by calling
+     * back into Python with an error already pending. */
+    if (cb->error) {
+        return;
+    }
+
     const npy_intp dims[1] = { neq };
 
     /* Wrap the solver-owned y buffer as a read-only NumPy view (no copy). */
@@ -336,6 +343,13 @@ static void jac_adaptor(
     assert(cb->jac_kind == CB_PYTHON);
     assert(cb->jac_u.pyobj != NULL);
 
+    /* A previous callback already raised a Python exception; short-circuit so
+     * the original exception is preserved rather than clobbered by calling
+     * back into Python with an error already pending. */
+    if (cb->error) {
+        return;
+    }
+
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_y, NPY_COMPLEX128, (void *) y);
@@ -371,10 +385,19 @@ static void jac_adaptor(
     if (PyArray_NDIM(arr) != 2 ||
         PyArray_DIM(arr, 0) != rows ||
         PyArray_DIM(arr, 1) != (npy_intp) neq) {
-        PyErr_Format(PyExc_ValueError,
-            "jac(t, y) must return an array of shape (%zd, %d); "
-            "got shape with ndim=%d.",
-            (Py_ssize_t) rows, neq, PyArray_NDIM(arr));
+        if (PyArray_NDIM(arr) != 2) {
+            PyErr_Format(PyExc_ValueError,
+                "jac(t, y) must return a 2-D array of shape (%zd, %d); "
+                "got an array with ndim=%d.",
+                (Py_ssize_t) rows, neq, PyArray_NDIM(arr));
+        } else {
+            PyErr_Format(PyExc_ValueError,
+                "jac(t, y) must return an array of shape (%zd, %d); "
+                "got shape (%zd, %zd).",
+                (Py_ssize_t) rows, neq,
+                (Py_ssize_t) PyArray_DIM(arr, 0),
+                (Py_ssize_t) PyArray_DIM(arr, 1));
+        }
         Py_DECREF(arr);
         Py_DECREF(result);
         Py_DECREF(ap_y);
@@ -387,8 +410,8 @@ static void jac_adaptor(
      * remaining nrowpd - rows rows are LAPACK fill workspace, left untouched. */
     const double complex *src = (const double complex *) PyArray_DATA(arr);
     for (npy_intp j = 0; j < (npy_intp) neq; ++j) {
-        memcpy(pd + (size_t) j * (size_t) nrowpd,
-               src + (size_t) j * (size_t) rows,
+        memcpy(&pd[(size_t) j * (size_t) nrowpd],
+               &src[(size_t) j * (size_t) rows],
                (size_t) rows * sizeof(double complex));
     }
 

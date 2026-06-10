@@ -889,12 +889,9 @@ def solve_complex_ivp(
 
     if jac is None:
         _jac = None
-    elif jac_addr is not None:
-        # Path B jac: pass integer address
-        _jac = jac_addr
     else:
-        # Path A jac: SciPy-compatible; forward directly
-        _jac = jac
+        # Path B passes an integer address; Path A forwards the callable directly.
+        _jac = jac_addr if jac_addr is not None else jac
 
     # ------------------------------------------------------------------
     # 6.  Validate refine; check backend compatibility
