@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   build).  Two opt-in CMake options drive these (`ZVODE_SANITIZE`,
   `ZVODE_STRICT_WARNINGS`), both scoped to the C source so the vendored Fortran
   is untouched
+- `numba` optional-dependency extra, kept separate from `test`.  The numba
+  callback tests self-skip when numba is absent, so only the `Tests (Debug)` CI
+  job installs `.[test,numba]` and exercises them; every other job stays lean
+  and avoids the heavier numba + llvmlite download
 
 ### Changed
 

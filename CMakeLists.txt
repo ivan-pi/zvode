@@ -72,6 +72,11 @@ option(ZVODE_STRICT_WARNINGS
 option(ZVODE_SANITIZE
   "Build the C extension with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
+# These flags are GCC/Clang spellings; guard them with a generator expression
+# on the C compiler id so a different C compiler (MSVC, Intel, ...) simply
+# ignores them instead of failing on an unknown option.
+set(_zvode_gnulike "$<C_COMPILER_ID:GNU,Clang,AppleClang>")
+
 if(ZVODE_STRICT_WARNINGS)
   # Scope the strict flags to the C binding layer only; the vendored Fortran
   # is upstream code and is not held to these warnings.
@@ -82,7 +87,7 @@ if(ZVODE_STRICT_WARNINGS)
   # ctypes/numba callback addresses, which is unavoidable and harmless on
   # every platform we target.  Every other warning remains a hard error.
   set_property(SOURCE src/_zvode.c APPEND PROPERTY COMPILE_OPTIONS
-    -Wall -Wextra -Wpedantic -Werror -Wno-error=pedantic)
+    "$<${_zvode_gnulike}:-Wall;-Wextra;-Wpedantic;-Werror;-Wno-error=pedantic>")
 endif()
 
 if(ZVODE_SANITIZE)
@@ -90,8 +95,9 @@ if(ZVODE_SANITIZE)
   # -fno-sanitize-recover=all turns UBSan findings into hard failures so the
   # CI job goes red instead of merely printing a diagnostic.
   set_property(SOURCE src/_zvode.c APPEND PROPERTY COMPILE_OPTIONS
-    -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
-  target_link_options(_zvode PRIVATE -fsanitize=address,undefined)
+    "$<${_zvode_gnulike}:-fsanitize=address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer>")
+  target_link_options(_zvode PRIVATE
+    "$<${_zvode_gnulike}:-fsanitize=address,undefined>")
 endif()
 
 target_include_directories(

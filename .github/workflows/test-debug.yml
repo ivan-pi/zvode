@@ -24,8 +24,11 @@ jobs:
           sudo apt-get install -y gfortran libopenblas-dev
 
       - name: Install package and test dependencies from source (Debug)
+        # This is the one job that pulls in numba (via the `numba` extra), so
+        # test/test_numba_callbacks.py actually runs here instead of self-skipping.
+        # Every other job installs `.[test]` only and skips the numba path.
         run: |
-          pip install -v ".[test]" \
+          pip install -v ".[test,numba]" \
             --config-settings="cmake.build-type=Debug"
 
       - name: Run tests
