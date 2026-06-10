@@ -242,10 +242,10 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > the suite with the ASan runtime `LD_PRELOAD`ed (`detect_leaks=0`, since
   > CPython retains allocations at shutdown).  Job `strict-warnings` compiles the
   > C layer under `-Wall -Wextra -Wpedantic -Werror` against both gcc and clang
-  > via the `ZVODE_STRICT_WARNINGS` option.  Both options are scoped to the C
-  > source so the vendored Fortran is untouched.  Fixing the only two findings
-  > (the `void *`→function-pointer callback casts) made the layer `-Wpedantic`
-  > clean.
+  > via the `ZVODE_STRICT_WARNINGS` option (with `-Wno-error=pedantic`, so the
+  > one unavoidable `void *`→function-pointer callback cast still warns but does
+  > not fail the build).  Both options are scoped to the C source so the
+  > vendored Fortran is untouched.
 - [ ] Wire the standalone Fortran test programs (`test/test_zvode_constant.f`,
   `test_zvode_decay.F90`, `test_zvode_complex_oscillator.F90`) into CTest and
   run them in CI — they are currently orphaned (never built or executed).

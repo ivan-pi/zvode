@@ -75,8 +75,14 @@ option(ZVODE_SANITIZE
 if(ZVODE_STRICT_WARNINGS)
   # Scope the strict flags to the C binding layer only; the vendored Fortran
   # is upstream code and is not held to these warnings.
+  #
+  # -Wno-error=pedantic keeps -Wpedantic emitting diagnostics (so they stay
+  # visible in the build log) but does not let them fail the build: the only
+  # pedantic finding is the void *->function-pointer cast used to accept raw
+  # ctypes/numba callback addresses, which is unavoidable and harmless on
+  # every platform we target.  Every other warning remains a hard error.
   set_property(SOURCE src/_zvode.c APPEND PROPERTY COMPILE_OPTIONS
-    -Wall -Wextra -Wpedantic -Werror)
+    -Wall -Wextra -Wpedantic -Werror -Wno-error=pedantic)
 endif()
 
 if(ZVODE_SANITIZE)
