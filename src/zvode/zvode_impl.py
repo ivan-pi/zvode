@@ -97,11 +97,6 @@ class ZVODE(OdeSolver):
     fun : callable
         Right-hand side of the system, ``f(t, y)``.  The output must be
         array-like with the same shape as `y`.
-
-        ``y`` is a read-only view onto the solver's internal workspace, valid
-        only for the duration of the call; its contents are overwritten as the
-        integration advances.  Copy it with ``y.copy()`` if you need to retain
-        the state (e.g. to log a trajectory).
     t0 : float
         Initial value of the independent variable.
     y0 : array_like, shape (n,)
@@ -206,6 +201,14 @@ class ZVODE(OdeSolver):
     :meth:`step` with a single process-wide ``threading.Lock``.  Running
     multiple independent integrations in separate *processes* (e.g. via
     ``multiprocessing``) is safe.
+
+    **Lifetime of the callback** ``y``\\ **:** the ``y`` passed to `fun` (and
+    to `jac`) is a read-only view onto the solver's internal workspace, valid
+    only for the duration of that call; its contents are overwritten as the
+    integration advances.  Reading ``y`` and returning a freshly computed
+    array is always safe; only retaining a reference to ``y`` past the call is
+    not.  Copy it with ``y.copy()`` if you need to keep the state (e.g. to log
+    a trajectory).
 
     References
     ----------
