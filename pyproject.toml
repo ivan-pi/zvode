@@ -63,7 +63,6 @@ sdist.include = [
     "CMakeLists.txt",
     "extern/**",
     "src/_zvode.c",
-    "src/zvode.h",
 ]
 sdist.exclude = [
     ".claude/**",

@@ -250,11 +250,27 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > one unavoidable `void *`→function-pointer callback cast still warns but does
   > not fail the build).  Both options are scoped to the C source so the
   > vendored Fortran is untouched.
-- [ ] Wire the standalone Fortran test programs (`test/test_zvode_constant.f`,
-  `test_zvode_decay.F90`, `test_zvode_complex_oscillator.F90`) into CTest and
-  run them in CI — they are currently orphaned (never built or executed).
-  Also a prerequisite for the multi-compiler conformance item in 1.0.0, which
-  needs Fortran-native tests to run.
+- [x] Wire the standalone Fortran test programs into CTest and run them in CI.
+  > The three orphaned drivers targeted ZVODE calling conventions (legacy F77
+  > `external` and a raw `bind(c)` procedure) that the current functor-based
+  > `zvode_mod` API no longer provides, so they could never have compiled.  They
+  > were rewritten as native drivers and split across both compiled APIs: two
+  > free-form `.f90` drivers (`test/test_zvode_decay.f90`,
+  > `test_zvode_complex_oscillator.f90`) extend the abstract `zvode_fun` /
+  > `zvode_jac` types and assert with `if (predicate) error stop <n>`, while
+  > `test/test_zvode_coupled.c` drives the C API in `extern/zvode.h` on a
+  > coupled 2x2 complex system with MF=21, covering the `bind(c)` layer in
+  > `extern/c_zvode.f90` — callbacks, the user-supplied dense Jacobian, and the
+  > `ctx` user-data pointer (the model coefficients ride through `ctx`) — that
+  > was otherwise exercised only through Python.  This covers the compiled core,
+  > the linalg backend, and the C binding without the Python layer.  A
+  > standalone CMake configure
+  > (`-DZVODE_BUILD_TESTS=ON`, default ON outside the scikit-build wheel build)
+  > builds them against the shared `zvode` core library (`libzvode`, also linked
+  > by the `_zvode` Python extension so the sources and linalg-backend deps are
+  > defined once) and registers each with `add_test`; the `Fortran tests`
+  > workflow runs `ctest` under gfortran/gcc for both the LAPACK and LINPACK
+  > backends.  This unblocks the multi-compiler conformance item below.
 - [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
   side still needs work in general — e.g. clean compiles under strict warning
   flags for the C extension and the Fortran layer, and a review of the CMake

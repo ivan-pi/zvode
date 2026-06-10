@@ -1,0 +1,42 @@
+name: Fortran tests
+
+# Build and run the native (non-Python) ZVODE test programs through CTest.
+# The Fortran drivers exercise the core via its functor-based public API
+# (zvode_mod) and the C driver exercises the C API (src/zvode.h, i.e. the
+# bind(c) layer in extern/c_zvode.f90), so the compiled core, linalg backend
+# and C binding are all covered without the Python layer.  This is the
+# native-test coverage that the multi-compiler conformance work builds on.
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  ctest:
+    name: CTest / ubuntu-latest / gfortran / ${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [LAPACK, LINPACK]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gfortran, OpenBLAS and CMake
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gfortran libopenblas-dev cmake ninja-build
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-fortran -G Ninja
+          -DZVODE_BUILD_TESTS=ON
+          -DZVODE_LINALG_BACKEND=${{ matrix.backend }}
+
+      - name: Build
+        run: cmake --build build-fortran
+
+      - name: Test
+        run: ctest --test-dir build-fortran --output-on-failure
