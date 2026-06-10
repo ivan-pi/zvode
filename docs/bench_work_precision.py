@@ -51,6 +51,7 @@ import importlib.metadata
 import platform
 import subprocess
 import timeit
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -59,6 +60,10 @@ import scipy
 from scipy.integrate import ode, solve_ivp
 
 from zvode import ZVODE_BDF, solve_complex_ivp
+
+# solve_ivp always forwards vectorized= to the OdeSolver; ZVODE_BDF ignores it
+# and warns once per call.  It is harmless here and only clutters the output.
+warnings.filterwarnings("ignore", message=".*vectorized.*")
 
 # ---------------------------------------------------------------------------
 # Problem definition
@@ -85,12 +90,25 @@ def rhs(t, y):
 
 # ---------------------------------------------------------------------------
 # Solver drivers — each returns the state vector at t = tf
+#
+# Output mode is each interface's idiomatic, lowest-overhead one:
+#
+#   * solve_complex_ivp and both solve_ivp drivers collect the full trajectory
+#     (every accepted step).  This is solve_ivp's standard mode, and it is the
+#     *cheapest* one for it: forcing endpoint-only via t_eval=(tf,) is actually
+#     slower, because solve_ivp then runs an np.searchsorted per step.
+#     solve_complex_ivp collects in C, so trajectory vs. endpoint-only makes
+#     essentially no difference.  The three lines therefore have matching
+#     output semantics and are directly comparable.
+#
+#   * ode("zvode") integrates straight to tf in a single Fortran call.  That is
+#     its natural low-overhead mode; making it collect a trajectory would
+#     require a manual Python step loop, defeating its role as the bare-core
+#     reference.  Its per-step Fortran storage is not exposed to Python.
 # ---------------------------------------------------------------------------
 def run_solve_complex_ivp(tol):
-    sol = solve_complex_ivp(
-        rhs, (t0, tf), y0, method="BDF", rtol=tol, atol=tol, save_steps=False
-    )
-    return sol.y
+    sol = solve_complex_ivp(rhs, (t0, tf), y0, method="BDF", rtol=tol, atol=tol)
+    return sol.y[:, -1]
 
 
 def run_zvode_bdf(tol):
@@ -130,6 +148,11 @@ CONFIGS = [
 ref = solve_ivp(rhs, (t0, tf), y0, method=ZVODE_BDF, rtol=1e-12, atol=1e-13)
 assert ref.success, ref.message
 u_ref = ref.y[:, -1]
+
+# Cross-check with SciPy's *independent* BDF so the reference is not biased
+# toward the ZVODE-backed solvers (which share the Fortran core).
+ref_scipy = solve_ivp(rhs, (t0, tf), y0, method="BDF", rtol=1e-12, atol=1e-13)
+assert np.linalg.norm(ref_scipy.y[:, -1] - u_ref) < 1e-9, "reference solvers disagree"
 
 # ---------------------------------------------------------------------------
 # Tolerance sweep

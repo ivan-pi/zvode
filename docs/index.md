@@ -157,13 +157,6 @@ how-to-compiled-callbacks
 
 :::{toctree}
 :maxdepth: 1
-:caption: Benchmarks
-
-benchmarks
-:::
-
-:::{toctree}
-:maxdepth: 1
 :caption: Internals
 
 compiled-callbacks-design
