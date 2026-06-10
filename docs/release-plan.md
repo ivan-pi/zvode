@@ -203,10 +203,11 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > `nsteps`, `nni`, `ncfn`, `netf` are all exposed.  `ZVODEResult` itself was
   > removed from the public namespace (importable from `zvode.solve`, not
   > re-exported from `zvode`).  Counter set decided: all four of `nsteps`,
-  > `nni`, `ncfn`, `netf` are kept — they are the standard CVODE/SUNDIALS
-  > diagnostic set, come free from `iwork`, and are already implemented and
-  > tested.  (Adding a counter later is non-breaking; removing one after the
-  > freeze would not be — so the kept set is the one to commit to now.)
+  > `nni`, `ncfn`, `netf` are kept.  They are niche — most users will only
+  > look at `nfev`/`njev`/`nlu` — but they come free from `iwork`, are
+  > already implemented and tested, and cost nothing to carry.  Adding a
+  > counter later is non-breaking; removing one after the freeze would not
+  > be, so the kept set is the one to commit to now.
 - [x] Finish the `ZVODEResult` struct: add `success` (bool) and `message` (str)
   fields so users do not have to interpret raw `istate` values themselves; aligns
   the return type with the conventions set by `scipy.integrate.OdeResult`.
