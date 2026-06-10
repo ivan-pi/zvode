@@ -5,23 +5,22 @@ solver (the algorithm is identical -- SciPy ships its own implementation, a
 rewritten C core as of SciPy 1.17, but that is an implementation detail), so
 running identical problems through both is a near-free regression guard for our
 C-layer integration loops and our option/MITER mapping: if a refactor silently
-changes how an option is forwarded to ZVODE (tolerances, method, band widths,
-the iteration-method flag, ...), the two trajectories will diverge.
+changes how an option reaches ZVODE (tolerances, method, band widths, the
+iteration-method flag, ...), the two trajectories diverge.
 
-The forward comparison is run for every combination of
+The forward comparison covers every
 
-    {linear coupled, tridiagonal, nonlinear} problem
+    {coupled-linear, tridiagonal, nonlinear} problem
         x {Adams, BDF} method
             x {no-jac, dense-jac, banded-jac} Jacobian mode
 
-(skipping banded for the dense 2x2 nonlinear system).  A small curated set of
-*backward* (strictly decreasing knots) cases is added on top -- one per
-problem, spanning banded/dense/no-jac and both methods -- to confirm ZVODE's
+(banded is skipped for the dense 2x2 nonlinear system).  A small curated set of
+*backward* (strictly decreasing knots) cases is added on top to confirm ZVODE's
 H0 sign handling is mapped identically, without doubling the whole matrix.
 
-All problems are **holomorphic** (each f[i] is an analytic function of every
-y[j] -- a hard requirement of ZVODE's complex arithmetic): the linear systems
-are entire, and the nonlinear one is polynomial in ``y``.
+All problems are **holomorphic** (each f[i] is analytic in every y[j], a hard
+requirement of ZVODE's complex arithmetic): the linear systems are entire and
+the nonlinear one is polynomial in ``y``.
 
 Option mapping is aligned so both wrappers select the same ZVODE method flag
 ``MF = 10*METH + MITER``:
@@ -32,17 +31,15 @@ Option mapping is aligned so both wrappers select the same ZVODE method flag
     dense     MITER=1 (MF=11)     MITER=1 (MF=21)
     banded    MITER=4 (MF=14)     MITER=4 (MF=24)
 
-For the no-jac case SciPy chooses functional iteration (MITER=0) unless
+SciPy picks functional iteration (MITER=0) for the no-jac case unless
 ``with_jacobian=True``, whereas ``solve_complex_ivp`` defaults BDF to an
-internally generated Jacobian (MITER=2).  We therefore pass
-``with_jacobian=(method == 'BDF')`` to SciPy so both land on the same MF.
+internally generated Jacobian (MITER=2); we pass ``with_jacobian=(method ==
+'BDF')`` to SciPy so both land on the same MF.
 
-With identical MF, tolerances, output knots and (Python) callbacks the two
-drivers should agree very closely -- the algorithm is the same -- but we do
-*not* assert exact equality: the two are independent implementations with
-their own wrapper code and build/compilation options, so bit-for-bit agreement
-is not guaranteed.  The tolerance below leaves headroom for those benign
-differences while still catching any real divergence in option handling.
+The two are independent implementations with their own wrapper code and build
+options, so we do not assert bit-for-bit equality -- only close agreement (in
+practice they match to near machine precision).  The tolerance leaves headroom
+for benign differences while still catching any real divergence.
 """
 
 from __future__ import annotations
@@ -58,58 +55,70 @@ from zvode import solve_complex_ivp
 # scipy.integrate.ode is the reference; skip the whole module if absent.
 ode = pytest.importorskip("scipy.integrate").ode
 
-# ---------------------------------------------------------------------------
-# Tolerances
-# ---------------------------------------------------------------------------
-
-# Solver tolerances: tight, so both wrappers track the true solution closely
-# and the comparison reflects integrator behaviour rather than discretisation.
+# Solver tolerances: tight, so the comparison reflects integrator behaviour
+# rather than discretisation error.
 RTOL = 1e-9
 ATOL = 1e-12
 
-# Step budget per output point.  solve_complex_ivp defaults to 1e6; SciPy's
-# ode defaults to only 500, so we raise it to match and avoid spurious
-# IDID=-1 failures at this tolerance.
+# Step budget per output point.  solve_complex_ivp defaults to 1e6; SciPy's ode
+# defaults to only 500, so we raise it to match.
 NSTEPS = 1_000_000
 
-# Agreement tolerance between the two wrappers.  ~100x looser than the solver
-# tolerance: comfortably satisfied (in practice the two agree to near machine
-# precision) yet still a meaningful guard against option-mapping regressions.
+# Agreement tolerance between the two wrappers (~100x looser than the solver
+# tolerance): comfortably met, yet a meaningful option-mapping guard.
 CMP_RTOL = 1e-7
 CMP_ATOL = 1e-9
 
-# Sanity tolerance against the independent analytic / matrix-exponential
-# reference, where one is available.
+# Sanity tolerance against the analytic / matrix-exponential reference.
 REF_RTOL = 1e-5
 REF_ATOL = 1e-7
 
+# Shared output knots: every problem starts at t=0 and reports at KNOTS points.
+KNOTS = 9
 
-# ---------------------------------------------------------------------------
-# Problem definitions
-# ---------------------------------------------------------------------------
+
+def pack_banded(a, lband, uband):
+    """Pack a dense matrix into ZVODE band storage ``packed[i-j+uband, j]``.
+
+    This is the layout shared verbatim by ``solve_complex_ivp`` and
+    ``scipy.integrate.ode('zvode')``; shape ``(lband + uband + 1, n)``.
+    """
+    n = a.shape[0]
+    pd = np.zeros((lband + uband + 1, n), dtype=np.complex128)
+    for j in range(n):
+        for i in range(max(0, j - uband), min(n, j + lband + 1)):
+            pd[i - j + uband, j] = a[i, j]
+    return pd
 
 
 @dataclass(frozen=True)
 class Problem:
     """A holomorphic complex IVP and its callbacks.
 
-    ``jac_banded`` returns ZVODE packed storage ``packed[i-j+uband, j] = J[i,j]``
-    of shape ``(lband + uband + 1, n)`` -- the convention shared verbatim by
-    both ``solve_complex_ivp`` and ``scipy.integrate.ode('zvode')``.
-    ``reference`` returns the exact solution sampled at the knots, or ``None``
-    when no closed form is used.
+    ``jac`` is the dense Jacobian; the banded variant is derived from it via
+    ``pack_banded`` using ``band = (lband, uband)``, or skipped when ``band`` is
+    ``None``.  ``reference`` returns the exact solution sampled at the knots, or
+    ``None`` when no closed form is used.
     """
 
     name: str
     fun: Callable
-    jac_dense: Callable
-    jac_banded: Callable | None
-    lband: int | None
-    uband: int | None
+    jac: Callable
+    band: tuple[int, int] | None
     y0: np.ndarray
-    t_eval: np.ndarray
+    tf: float
     reference: Callable | None
-    variants: tuple[str, ...]
+
+    @property
+    def t_eval(self):
+        return np.linspace(0.0, self.tf, KNOTS)
+
+    @property
+    def variants(self):
+        v = ["no_jac", "dense"]
+        if self.band is not None:
+            v.append("banded")
+        return v
 
 
 # --- P1: coupled 2-component linear system (upper-triangular band) ----------
@@ -127,22 +136,11 @@ P1_A = P1_Y0[0] - P1_B
 
 
 def p1_fun(t, y):
-    dy = np.empty(2, dtype=np.complex128)
-    dy[0] = L1 * y[0] + C * y[1]
-    dy[1] = L2 * y[1]
-    return dy
+    return np.array([L1 * y[0] + C * y[1], L2 * y[1]], dtype=np.complex128)
 
 
-def p1_jac_dense(t, y):
+def p1_jac(t, y):
     return np.array([[L1, C], [0.0, L2]], dtype=np.complex128)
-
-
-def p1_jac_banded(t, y):  # lband=0, uband=1
-    pd = np.zeros((2, 2), dtype=np.complex128)
-    pd[1, 0] = L1  # J[0, 0]
-    pd[0, 1] = C   # J[0, 1]
-    pd[1, 1] = L2  # J[1, 1]
-    return pd
 
 
 def p1_reference(t_eval):
@@ -160,33 +158,18 @@ def p1_reference(t_eval):
 
 N = 8
 LMAT = (
-    np.diag(np.full(N, -2.0))
-    + np.diag(np.ones(N - 1), 1)
-    + np.diag(np.ones(N - 1), -1)
+    np.diag(np.full(N, -2.0)) + np.diag(np.ones(N - 1), 1) + np.diag(np.ones(N - 1), -1)
 )
 A2 = 1j * LMAT
-P2_Y0 = (np.linspace(1.0, -1.0, N) + 1j * np.cos(np.arange(N))).astype(
-    np.complex128
-)
+P2_Y0 = (np.linspace(1.0, -1.0, N) + 1j * np.cos(np.arange(N))).astype(np.complex128)
 
 
 def p2_fun(t, y):
     return A2 @ y
 
 
-def p2_jac_dense(t, y):
+def p2_jac(t, y):
     return A2.copy()
-
-
-def p2_jac_banded(t, y):  # lband=1, uband=1 (tridiagonal)
-    pd = np.zeros((3, N), dtype=np.complex128)
-    for j in range(N):
-        pd[1, j] = A2[j, j]              # main diagonal
-        if j + 1 < N:
-            pd[0, j + 1] = A2[j, j + 1]  # super-diagonal
-        if j - 1 >= 0:
-            pd[2, j - 1] = A2[j, j - 1]  # sub-diagonal
-    return pd
 
 
 def p2_reference(t_eval):
@@ -207,13 +190,13 @@ P3_Y0 = np.array([0.5 + 0j, 0.3j], dtype=np.complex128)
 
 
 def p3_fun(t, y):
-    dy = np.empty(2, dtype=np.complex128)
-    dy[0] = 1j * y[0] - 0.2 * y[0] * y[1]
-    dy[1] = -0.5j * y[1] + 0.2 * y[0] ** 2
-    return dy
+    return np.array(
+        [1j * y[0] - 0.2 * y[0] * y[1], -0.5j * y[1] + 0.2 * y[0] ** 2],
+        dtype=np.complex128,
+    )
 
 
-def p3_jac_dense(t, y):
+def p3_jac(t, y):
     return np.array(
         [[1j - 0.2 * y[1], -0.2 * y[0]], [0.4 * y[0], -0.5j]],
         dtype=np.complex128,
@@ -221,42 +204,9 @@ def p3_jac_dense(t, y):
 
 
 PROBLEMS = [
-    Problem(
-        name="coupled2",
-        fun=p1_fun,
-        jac_dense=p1_jac_dense,
-        jac_banded=p1_jac_banded,
-        lband=0,
-        uband=1,
-        y0=P1_Y0,
-        t_eval=np.linspace(0.0, 2.0, 9),
-        reference=p1_reference,
-        variants=("no_jac", "dense", "banded"),
-    ),
-    Problem(
-        name="tridiag8",
-        fun=p2_fun,
-        jac_dense=p2_jac_dense,
-        jac_banded=p2_jac_banded,
-        lband=1,
-        uband=1,
-        y0=P2_Y0,
-        t_eval=np.linspace(0.0, 1.0, 9),
-        reference=p2_reference,
-        variants=("no_jac", "dense", "banded"),
-    ),
-    Problem(
-        name="nonlinear2",
-        fun=p3_fun,
-        jac_dense=p3_jac_dense,
-        jac_banded=None,
-        lband=None,
-        uband=None,
-        y0=P3_Y0,
-        t_eval=np.linspace(0.0, 2.0, 9),
-        reference=None,
-        variants=("no_jac", "dense"),
-    ),
+    Problem("coupled2", p1_fun, p1_jac, (0, 1), P1_Y0, 2.0, p1_reference),
+    Problem("tridiag8", p2_fun, p2_jac, (1, 1), P2_Y0, 1.0, p2_reference),
+    Problem("nonlinear2", p3_fun, p3_jac, None, P3_Y0, 2.0, None),
 ]
 
 
@@ -265,16 +215,27 @@ PROBLEMS = [
 # ---------------------------------------------------------------------------
 
 
-def direction_setup(prob: Problem, direction: str):
-    """Return ``(t_eval, y0)`` for a forward or backward integration.
+def jac_for(prob, variant):
+    """Resolve ``(jac_callable, lband, uband)`` for a Jacobian variant."""
+    if variant == "dense":
+        return prob.jac, None, None
+    if variant == "banded":
+        lband, uband = prob.band
 
-    Backward reverses the knots (strictly decreasing) and starts from the
-    state at the largest time: the exact value from the reference when one
-    exists, otherwise the problem's own ``y0`` re-anchored at the end time
-    (fine, since the backward case is cross-validated solver-vs-solver).
+        def banded(t, y):
+            return pack_banded(np.asarray(prob.jac(t, y)), lband, uband)
+
+        return banded, lband, uband
+    return None, None, None
+
+
+def backward(prob):
+    """``(t_eval, y0)`` for integrating ``prob`` over strictly decreasing knots.
+
+    Starts from the state at the largest time: the exact reference value when
+    one exists, else the problem's own ``y0`` re-anchored at the end time (fine,
+    since backward cases are cross-validated solver-vs-solver).
     """
-    if direction == "forward":
-        return prob.t_eval, prob.y0
     t_eval = prob.t_eval[::-1].copy()
     if prob.reference is not None:
         y0 = np.ascontiguousarray(prob.reference(prob.t_eval)[:, -1])
@@ -283,43 +244,41 @@ def direction_setup(prob: Problem, direction: str):
     return t_eval, y0
 
 
-def zvode_trajectory(prob, method, variant, t_eval, y0) -> np.ndarray:
+def zvode_trajectory(prob, method, variant, t_eval, y0):
     """Trajectory at ``t_eval`` via ``solve_complex_ivp`` (knot mode)."""
-    kwargs = dict(method=method, rtol=RTOL, atol=ATOL, max_num_steps=NSTEPS)
-    if variant == "dense":
-        kwargs["jac"] = prob.jac_dense
-    elif variant == "banded":
-        kwargs["jac"] = prob.jac_banded
-        kwargs["lband"] = prob.lband
-        kwargs["uband"] = prob.uband
-    sol = solve_complex_ivp(prob.fun, t_eval, y0, **kwargs)
+    jac, lband, uband = jac_for(prob, variant)
+    sol = solve_complex_ivp(
+        prob.fun,
+        t_eval,
+        y0,
+        method=method,
+        rtol=RTOL,
+        atol=ATOL,
+        max_num_steps=NSTEPS,
+        jac=jac,
+        lband=lband,
+        uband=uband,
+    )
     assert sol.success
     np.testing.assert_array_equal(sol.t, t_eval)
     return sol.y
 
 
-def scipy_trajectory(prob, method, variant, t_eval, y0) -> np.ndarray:
+def scipy_trajectory(prob, method, variant, t_eval, y0):
     """Trajectory at ``t_eval`` via the stateful ``scipy.integrate.ode``.
 
-    The integrator is configured to land on the same ZVODE method flag as
-    ``solve_complex_ivp`` for the corresponding ``variant`` (see module
-    docstring), then advanced knot-by-knot to mirror knot-mode output.
+    Configured to land on the same ZVODE MF as ``solve_complex_ivp`` for the
+    variant, then advanced knot-by-knot to mirror knot-mode output.
     """
-    integrator_kw = dict(
-        method=method.lower(), rtol=RTOL, atol=ATOL, nsteps=NSTEPS
-    )
-    jac = None
-    if variant == "dense":
-        jac = prob.jac_dense
-    elif variant == "banded":
-        jac = prob.jac_banded
-        integrator_kw["lband"] = prob.lband
-        integrator_kw["uband"] = prob.uband
-    else:  # no_jac: match MITER (0 for Adams, 2 for BDF)
-        integrator_kw["with_jacobian"] = method == "BDF"
+    jac, lband, uband = jac_for(prob, variant)
+    kw = dict(method=method.lower(), rtol=RTOL, atol=ATOL, nsteps=NSTEPS)
+    if variant == "banded":
+        kw.update(lband=lband, uband=uband)
+    elif variant == "no_jac":
+        kw["with_jacobian"] = method == "BDF"  # MITER=2 for BDF, else MITER=0
 
     r = ode(prob.fun, jac)
-    r.set_integrator("zvode", **integrator_kw)
+    r.set_integrator("zvode", **kw)
     r.set_initial_value(y0, t_eval[0])
 
     out = np.empty((len(y0), len(t_eval)), dtype=np.complex128)
@@ -331,30 +290,12 @@ def scipy_trajectory(prob, method, variant, t_eval, y0) -> np.ndarray:
     return out
 
 
-def forward_cases():
-    for prob in PROBLEMS:
-        for method in ("Adams", "BDF"):
-            for variant in prob.variants:
-                yield pytest.param(
-                    prob, method, variant, id=f"{prob.name}-{method}-{variant}"
-                )
-
-
-# One backward case per problem, chosen to span banded/dense/no-jac and both
-# methods.  PROBLEMS is [coupled2, tridiag8, nonlinear2].
-BACKWARD_CASES = [
-    pytest.param(PROBLEMS[0], "BDF", "banded", id="coupled2-BDF-banded"),
-    pytest.param(PROBLEMS[1], "Adams", "dense", id="tridiag8-Adams-dense"),
-    pytest.param(PROBLEMS[2], "BDF", "no_jac", id="nonlinear2-BDF-no_jac"),
-]
-
-
 def assert_wrappers_agree(prob, method, variant, t_eval, y0):
     """Run both wrappers over ``(t_eval, y0)`` and assert they agree.
 
-    Where a closed form exists, also confirm *both* track the true solution,
-    so a bug shared by the two implementations of the algorithm (or a mistake
-    in the problem setup) cannot make the test pass silently.
+    Where a closed form exists, also confirm *both* track the true solution, so
+    a bug shared by the two implementations (or a mistake in the problem setup)
+    cannot make the test pass silently.
     """
     y_zvode = zvode_trajectory(prob, method, variant, t_eval, y0)
     y_scipy = scipy_trajectory(prob, method, variant, t_eval, y0)
@@ -362,8 +303,7 @@ def assert_wrappers_agree(prob, method, variant, t_eval, y0):
     assert y_zvode.shape == y_scipy.shape == (len(y0), len(t_eval))
     max_diff = np.max(np.abs(y_zvode - y_scipy))
     assert np.allclose(y_zvode, y_scipy, rtol=CMP_RTOL, atol=CMP_ATOL), (
-        f"{prob.name}/{method}/{variant}: trajectories diverge, "
-        f"max|Δy|={max_diff:.3e}"
+        f"{prob.name}/{method}/{variant}: trajectories diverge, max|d|={max_diff:.3e}"
     )
 
     if prob.reference is not None:
@@ -376,32 +316,41 @@ def assert_wrappers_agree(prob, method, variant, t_eval, y0):
 # Tests
 # ---------------------------------------------------------------------------
 
+FORWARD_CASES = [
+    pytest.param(prob, method, variant, id=f"{prob.name}-{method}-{variant}")
+    for prob in PROBLEMS
+    for method in ("Adams", "BDF")
+    for variant in prob.variants
+]
 
-# The 2x2 banded problem (coupled2) has bandwidth 2 == neq, which trips a
-# benign "verify a banded solver is appropriate" UserWarning; it is expected
-# here and irrelevant to the cross-validation.
+# One backward case per problem, spanning banded/dense/no-jac and both methods.
+BACKWARD_CASES = [
+    pytest.param(PROBLEMS[0], "BDF", "banded", id="coupled2-BDF-banded"),
+    pytest.param(PROBLEMS[1], "Adams", "dense", id="tridiag8-Adams-dense"),
+    pytest.param(PROBLEMS[2], "BDF", "no_jac", id="nonlinear2-BDF-no_jac"),
+]
+
+
+# coupled2's 2x2 band has bandwidth 2 == neq, tripping a benign "verify a banded
+# solver is appropriate" warning that is expected and irrelevant here.
 @pytest.mark.filterwarnings("ignore:Bandwidth.*exceeds half:UserWarning")
-@pytest.mark.parametrize("prob, method, variant", list(forward_cases()))
-def test_matches_scipy_ode(prob: Problem, method: str, variant: str):
+@pytest.mark.parametrize("prob, method, variant", FORWARD_CASES)
+def test_matches_scipy_ode(prob, method, variant):
     """solve_complex_ivp and scipy.integrate.ode('zvode') agree to tolerance."""
-    t_eval, y0 = direction_setup(prob, "forward")
-    assert_wrappers_agree(prob, method, variant, t_eval, y0)
+    assert_wrappers_agree(prob, method, variant, prob.t_eval, prob.y0)
 
 
 @pytest.mark.filterwarnings("ignore:Bandwidth.*exceeds half:UserWarning")
 @pytest.mark.parametrize("prob, method, variant", BACKWARD_CASES)
-def test_matches_scipy_ode_backward(prob: Problem, method: str, variant: str):
+def test_matches_scipy_ode_backward(prob, method, variant):
     """Backward (decreasing-knot) cross-check: the H0 sign mapping must match."""
-    t_eval, y0 = direction_setup(prob, "backward")
+    t_eval, y0 = backward(prob)
     assert t_eval[0] > t_eval[-1]
     assert_wrappers_agree(prob, method, variant, t_eval, y0)
 
 
-def test_problem_matrix_is_exhaustive():
-    """Guard the parametrisation: jac x no-jac and dense x banded are covered."""
-    variants = {v for prob in PROBLEMS for v in prob.variants}
-    assert {"no_jac", "dense", "banded"} <= variants
-    # At least one problem exercises each banded half-bandwidth layout.
-    banded = [p for p in PROBLEMS if "banded" in p.variants]
-    assert any(p.uband and not p.lband for p in banded)  # triangular band
-    assert any(p.lband and p.uband for p in banded)       # symmetric band
+def test_banded_layouts_covered():
+    """Both a triangular and a symmetric band layout are exercised."""
+    bands = [p.band for p in PROBLEMS if p.band is not None]
+    assert any(ub and not lb for lb, ub in bands)  # triangular band
+    assert any(lb and ub for lb, ub in bands)  # symmetric band
