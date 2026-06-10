@@ -207,8 +207,7 @@ class ZVODE(OdeSolver):
     only for the duration of that call; its contents are overwritten as the
     integration advances.  Reading ``y`` and returning a freshly computed
     array is always safe; only retaining a reference to ``y`` past the call is
-    not.  Copy it with ``y.copy()`` if you need to keep the state (e.g. to log
-    a trajectory).
+    not.
 
     References
     ----------

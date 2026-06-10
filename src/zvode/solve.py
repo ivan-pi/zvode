@@ -719,8 +719,7 @@ def solve_complex_ivp(
     released when the solver returns.  This matches ``scipy.integrate.ode``.
     The normal usage of reading ``y`` and returning a freshly computed array
     is always safe; only retaining a reference to ``y`` (or a slice/view of
-    it) past the call is not — copy it with ``y.copy()`` if you need to keep
-    the state.
+    it) past the call is not.
 
     References
     ----------
