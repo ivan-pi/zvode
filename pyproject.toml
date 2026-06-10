@@ -34,12 +34,6 @@ dependencies = [
 [project.optional-dependencies]
 scipy = ["scipy>=1.9"]
 test = ["pytest>=9", "scipy>=1.9"]
-# numba is kept out of the `test` extra on purpose: the numba callback tests
-# (test/test_numba_callbacks.py) self-skip via pytest.importorskip when numba
-# is absent, so the bulk of CI runs the rest of the suite without paying for
-# the heavy numba + llvmlite download.  A single CI job installs `.[test,numba]`
-# to actually exercise the compiled-callback path.  Use `pip install '.[test,numba]'`
-# locally to run those tests.
 numba = ["numba>=0.59"]
 docs = [
     "sphinx>=7",
