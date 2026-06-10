@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define NPY_TARGET_VERSION NPY_1_23_API_VERSION
@@ -858,39 +859,45 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
 /*   stepbuf_free(&buf)                  -- release backing arrays   */
 /*                                                                    */
-/* ts is float64 shape (capacity,); ys is complex128 shape           */
-/* (capacity*neq,) in column-major order: column k occupies          */
-/* ys[k*neq .. (k+1)*neq-1].  Both are PyArrayObjects owned by the  */
-/* struct; stepbuf_free decrefs them.                                 */
+/* The backing store is plain malloc/realloc memory, NOT NumPy        */
+/* arrays.  This keeps init/append/grow/free free of any Python C    */
+/* API call, so they may run with the GIL released — a prerequisite  */
+/* for releasing the GIL around the whole adaptive loop.  Only        */
+/* stepbuf_finalize touches the Python/NumPy C API, and it is called  */
+/* exactly once after the loop exits (with the GIL held).             */
+/*                                                                    */
+/* ts is float64, length capacity; ys is complex128, length           */
+/* capacity*neq, in column-major order: column k occupies             */
+/* ys[k*neq .. (k+1)*neq-1].                                          */
 /* ------------------------------------------------------------------ */
 
 /* Initial column capacity.  Doubled on each overflow. */
 #define STEPBUF_INIT_CAP 10
 
 typedef struct {
-    PyArrayObject *ts;  /* float64, 1-D, length = capacity             */
-    PyArrayObject *ys;  /* complex128, 1-D, length = capacity * neq    */
-                        /* column k occupies ys[k*neq .. (k+1)*neq-1]  */
+    double         *ts;  /* float64, length = capacity                  */
+    double complex *ys;  /* complex128, length = capacity * neq         */
+                         /* column k occupies ys[k*neq .. (k+1)*neq-1]  */
     int neq;
-    int size;           /* columns filled so far                        */
-    int capacity;       /* allocated columns                            */
+    int size;            /* columns filled so far                       */
+    int capacity;        /* allocated columns                           */
 } StepBuf;
 
-/* Allocate backing arrays.  Returns 0 on success, -1 on failure (exception set). */
+/* Allocate backing buffers.  Returns 0 on success, -1 on failure.
+ * No Python C API is used: on failure the caller is responsible for
+ * raising an exception (with the GIL held). */
 static int
 stepbuf_init(StepBuf *buf, int neq, int init_cap)
 {
     assert(neq > 0);
     assert(init_cap > 0);
 
-    npy_intp dt[1] = { init_cap };
-    npy_intp dy[1] = { (npy_intp)init_cap * neq };
-
-    buf->ts = (PyArrayObject *) PyArray_EMPTY(1, dt, NPY_FLOAT64,   0);
+    buf->ts = (double *) malloc((size_t)init_cap * sizeof(double));
     if (!buf->ts) return -1;
 
-    buf->ys = (PyArrayObject *) PyArray_EMPTY(1, dy, NPY_COMPLEX128, 0);
-    if (!buf->ys) { Py_DECREF(buf->ts); buf->ts = NULL; return -1; }
+    buf->ys = (double complex *)
+        malloc((size_t)init_cap * neq * sizeof(double complex));
+    if (!buf->ys) { free(buf->ts); buf->ts = NULL; return -1; }
 
     buf->neq      = neq;
     buf->size     = 0;
@@ -898,48 +905,43 @@ stepbuf_init(StepBuf *buf, int neq, int init_cap)
     return 0;
 }
 
-/* Release backing arrays (safe to call even after a partial init). */
+/* Release backing buffers (safe to call even after a partial init). */
 static void
 stepbuf_free(StepBuf *buf)
 {
-    Py_XDECREF(buf->ts); buf->ts = NULL;
-    Py_XDECREF(buf->ys); buf->ys = NULL;
+    free(buf->ts); buf->ts = NULL;
+    free(buf->ys); buf->ys = NULL;
 }
 
-/* Double capacity, allocating fresh arrays and copying existing data.
- * Returns 0 on success, -1 on failure (exception set; buf unchanged). */
+/* Double capacity via realloc, preserving existing data.
+ * Returns 0 on success, -1 on failure (buf left valid and unchanged). */
 static int
 stepbuf_grow(StepBuf *buf)
 {
     assert(buf->ts != NULL && buf->ys != NULL);
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
-#ifndef NDEBUG
-    int old_cap  = buf->capacity;
-    int old_size = buf->size;
-#endif
 
-    StepBuf tmp;
-    if (stepbuf_init(&tmp, buf->neq, buf->capacity * 2) < 0)
-        return -1;  /* buf unchanged */
+    int new_cap = buf->capacity * 2;
 
-    memcpy(PyArray_DATA(tmp.ts), PyArray_DATA(buf->ts),
-           (size_t)buf->size * sizeof(double));
-    memcpy(PyArray_DATA(tmp.ys), PyArray_DATA(buf->ys),
-           (size_t)buf->size * buf->neq * sizeof(double complex));
-    tmp.size = buf->size;
+    double *new_ts = (double *)
+        realloc(buf->ts, (size_t)new_cap * sizeof(double));
+    if (!new_ts) return -1;          /* buf->ts still valid at old capacity */
+    buf->ts = new_ts;
 
-    StepBuf old = *buf;
-    *buf = tmp;
-    stepbuf_free(&old);
+    double complex *new_ys = (double complex *)
+        realloc(buf->ys, (size_t)new_cap * buf->neq * sizeof(double complex));
+    if (!new_ys) return -1;          /* buf->ys still valid; ts merely larger */
+    buf->ys = new_ys;
 
-    assert(buf->capacity == old_cap  * 2);
-    assert(buf->size     == old_size);
+    buf->capacity = new_cap;
+
+    assert(buf->capacity == buf->size * 2);
     return 0;
 }
 
 /* Append one (t, y[neq]) pair, growing if needed.
- * Returns 0 on success, -1 on failure (exception set). */
+ * Returns 0 on success, -1 on failure (allocation). No Python C API. */
 static int
 stepbuf_append(StepBuf *buf, double t, const double complex *y)
 {
@@ -955,10 +957,8 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
             return -1;
     }
 
-    double        *tp = (double *)         PyArray_DATA(buf->ts);
-    double complex *yp = (double complex *) PyArray_DATA(buf->ys);
-    tp[buf->size] = t;
-    memcpy(yp + (npy_intp)buf->size * buf->neq, y,
+    buf->ts[buf->size] = t;
+    memcpy(buf->ys + (size_t)buf->size * buf->neq, y,
            (size_t)buf->neq * sizeof(double complex));
     buf->size++;
 
@@ -967,16 +967,14 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
     return 0;
 }
 
-/* Transfer ownership of the filled portion of the buffer into output arrays.
+/* Build the output arrays from the filled portion of the raw buffer.
  *   *ts_out : shape (size,)       float64
  *   *ys_out : shape (neq, size)   complex128, F-contiguous
  * Returns 0 on success, -1 on failure (exception set).
  *
- * Trims the backing arrays to buf->size and transfers ownership to the
- * caller via *ts_out and *ys_out.  PyArray_Resize is a shrinking realloc
- * that could in principle move the data (invalidating any raw PyArray_DATA
- * pointer held across the call); safe here because only PyArrayObject *
- * handles are retained.  buf remains valid if this function returns -1. */
+ * Allocates fresh NumPy arrays and copies the buffered data into them.
+ * Uses the Python/NumPy C API, so it must be called with the GIL held;
+ * buf is left unchanged (still owned by the caller) in all cases. */
 static int
 stepbuf_finalize(StepBuf *buf,
                  PyArrayObject **ts_out,
@@ -986,39 +984,23 @@ stepbuf_finalize(StepBuf *buf,
     assert(buf->size > 0);           /* nothing to export from an empty buffer */
     assert(buf->size <= buf->capacity);
 
-    PyObject *ret;
-
-    /* Trim ts to buf->size elements. */
     npy_intp ts_shape[1] = { buf->size };
-    PyArray_Dims ts_dims  = { ts_shape, 1 };
-    ret = PyArray_Resize(buf->ts, &ts_dims, 0, NPY_CORDER);
-    if (!ret) return -1;
-    Py_DECREF(ret);  /* PyArray_Resize returns Py_None on success */
+    PyArrayObject *ts = (PyArrayObject *)
+        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
+    if (!ts) return -1;
+    memcpy(PyArray_DATA(ts), buf->ts, (size_t)buf->size * sizeof(double));
 
-    /* Trim ys to size*neq elements. */
-    npy_intp ys_flat[1] = { (npy_intp)buf->neq * buf->size };
-    PyArray_Dims ys_flat_dims = { ys_flat, 1 };
-    ret = PyArray_Resize(buf->ys, &ys_flat_dims, 0, NPY_CORDER);
-    if (!ret) return -1;
-    Py_DECREF(ret);
+    /* F-contiguous (neq, size): column k at offset k*neq matches the
+     * column-major layout in the raw buffer, so a flat memcpy suffices. */
+    npy_intp ys_shape[2] = { buf->neq, buf->size };
+    PyArrayObject *ys = (PyArrayObject *)
+        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
+    if (!ys) { Py_DECREF(ts); return -1; }
+    memcpy(PyArray_DATA(ys), buf->ys,
+           (size_t)buf->size * buf->neq * sizeof(double complex));
 
-    /* Reshape 1-D (size*neq,) → (neq, size) F-contiguous.  The column-major
-     * layout in StepBuf (column k at offset k*neq) matches F-contiguous
-     * strides exactly, so Newshape returns a view with no data copy. */
-    npy_intp ys_2d_shape[2] = { buf->neq, buf->size };
-    PyArray_Dims ys_2d_dims  = { ys_2d_shape, 2 };
-    PyArrayObject *ys_2d = (PyArrayObject *)
-        PyArray_Newshape(buf->ys, &ys_2d_dims, NPY_FORTRANORDER);
-    if (!ys_2d) return -1;
-
-    /* Transfer ownership.  ys_2d holds buf->ys as its base (refcount 2→1
-     * after the Py_DECREF), so the data outlives the buf fields. */
-    *ts_out = buf->ts;  buf->ts = NULL;
-    *ys_out = ys_2d;
-    Py_DECREF(buf->ys); buf->ys = NULL;
-
-    assert(buf->ts   == NULL && buf->ys == NULL);  /* ownership fully transferred */
-    assert(*ts_out   != NULL && *ys_out != NULL);
+    *ts_out = ts;
+    *ys_out = ys;
     return 0;
 }
 
@@ -1134,18 +1116,31 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
     }
 
     StepBuf buf = {0};
-    if (stepbuf_init(&buf, neq, STEPBUF_INIT_CAP) < 0)
+    if (stepbuf_init(&buf, neq, STEPBUF_INIT_CAP) < 0) {
+        PyErr_NoMemory();
         goto cleanup;
+    }
 
     /* Store initial condition. */
     double t = t0;
-    if (stepbuf_append(&buf, t, y) < 0)
+    if (stepbuf_append(&buf, t, y) < 0) {
+        PyErr_NoMemory();
         goto cleanup;
+    }
 
     const int itask   = allow_overshoot ? 2 : 5;
     int       istate  = 1;
     assert(t_bound != t0);  /* Python layer guarantees strict monotonicity of tspan */
     double    direction = (t_bound > t0) ? 1.0 : -1.0;
+
+    /* Deferred error state.  The loop below performs no Python C API calls
+     * (with compiled callbacks); any failure records its cause here and
+     * leaves the loop, and the exception is raised afterwards once the GIL
+     * is guaranteed held.  This is what makes the loop safe to run with the
+     * GIL released in a later step. */
+    int    alloc_failed = 0;     /* StepBuf ran out of memory               */
+    int    zvindy_iflag = 0;     /* nonzero => ZVINDY interpolation failure  */
+    double zvindy_t     = 0.0;   /* t at which ZVINDY failed (for message)   */
 
     while (direction * (t_bound - t) > 0.0) {
         double t_old = t;
@@ -1164,10 +1159,8 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
             &cb
         );
 
-        if (cb.error) {
-            assert(PyErr_Occurred());
-            goto cleanup;
-        }
+        if (cb.error)
+            break;  /* callback raised — exception already pending */
 
         if (istate < 0)
             break;  /* solver error — return what we have so far */
@@ -1183,18 +1176,38 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
                 double t_i = t_old + (double)i * (t - t_old) / refine;
                 int iflag = c_zvindy(neq, t_i, zwork, neq, 0, dky, &step);
                 if (iflag != 0) {
-                    PyErr_Format(PyExc_RuntimeError,
-                        "ZVINDY failed (iflag=%d) interpolating at t=%.17g",
-                        iflag, t_i);
-                    goto cleanup;
+                    zvindy_iflag = iflag;
+                    zvindy_t     = t_i;
+                    goto loop_done;
                 }
-                if (stepbuf_append(&buf, t_i, dky) < 0)
-                    goto cleanup;
+                if (stepbuf_append(&buf, t_i, dky) < 0) {
+                    alloc_failed = 1;
+                    goto loop_done;
+                }
             }
         }
 
-        if (stepbuf_append(&buf, t, y) < 0)
-            goto cleanup;
+        if (stepbuf_append(&buf, t, y) < 0) {
+            alloc_failed = 1;
+            goto loop_done;
+        }
+    }
+loop_done:
+
+    /* Raise any deferred error now (GIL held). */
+    if (cb.error) {
+        assert(PyErr_Occurred());
+        goto cleanup;
+    }
+    if (alloc_failed) {
+        PyErr_NoMemory();
+        goto cleanup;
+    }
+    if (zvindy_iflag != 0) {
+        PyErr_Format(PyExc_RuntimeError,
+            "ZVINDY failed (iflag=%d) interpolating at t=%.17g",
+            zvindy_iflag, zvindy_t);
+        goto cleanup;
     }
 
     /* Build the final output arrays from the filled portion of the buffer. */
