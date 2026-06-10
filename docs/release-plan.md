@@ -340,21 +340,12 @@ are internal concerns that should not require any user-visible API changes.
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.
 - [ ] (tentative) Stride-aware single-pass Jacobian copy in `jac_adaptor`
-  (`src/_zvode.c`).  The adaptor currently coerces the user's returned Jacobian
-  to F-contiguous (`PyArray_FROM_OTF(..., NPY_ARRAY_F_CONTIGUOUS)`) and then
-  `memcpy`s it column-by-column into the column-major `PD` workspace.  For the
-  common C-contiguous return this costs an intermediate buffer plus a transpose
-  pass *and* a second copy pass.  Both could be folded into one stride-aware
-  loop that reads `PyArray_STRIDE`s directly into `PD` (handling C/F/strided and
-  the dtype-cast case uniformly, with no intermediate buffer) — this is exactly
-  what SciPy's rewritten `_dzvodemodule.c` does in `copy_complex_array_to_fortran`.
-  The transpose itself is fundamental (`PD` is Fortran-ordered for ZGETRF/ZGBTRF),
-  so this only removes the extra buffer + pass, and only on the C-contiguous
-  path.  Deferred because `jac` is a cold path — ZVODE factors the Jacobian once
-  and reuses it across many steps, so it runs far less often than `fun` and is
-  dominated by the factorization that follows.  `test/test_dense_jacobian_layout.py`
-  (C/F/list return layouts) already pins the behaviour a switch would have to
-  preserve, so this can be done safely if profiling ever shows it matters.
+  (`src/_zvode.c`): drop the F-contiguous coercion + per-column `memcpy` in
+  favour of one stride-aware loop transposing the user's Jacobian directly into
+  the column-major `PD`, saving the intermediate buffer + extra pass on the
+  common C-contiguous return.  Low priority — `jac` is a cold path dominated by
+  the factorization; `test/test_dense_jacobian_layout.py` already pins the
+  behaviour a switch must preserve.
 - [ ] conda-forge feedstock: for the scientific audience, installability via
   conda is itself a trust signal.  Wait until after 1.0.0 so the recipe tracks
   a stable API.
