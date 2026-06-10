@@ -1,0 +1,80 @@
+name: Memory Safety
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+# The hand-written C binding layer (src/_zvode.c) — the integration loops,
+# the growable StepBuf, and the raw function-pointer callbacks — is the main
+# memory-safety risk surface.  These jobs build that layer with the sanitizers
+# and with strict warning flags.  Both are scoped to the C source; the vendored
+# upstream Fortran is left untouched (see the ZVODE_SANITIZE / ZVODE_STRICT_WARNINGS
+# options in CMakeLists.txt).
+
+jobs:
+  sanitizers:
+    name: ASan+UBSan / ubuntu-latest / Python 3.12
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Fortran compiler and BLAS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gfortran libopenblas-dev
+
+      - name: Build the C extension with AddressSanitizer + UndefinedBehaviorSanitizer
+        run: |
+          pip install -v ".[test]" \
+            --config-settings="cmake.build-type=Debug" \
+            --config-settings="cmake.define.ZVODE_SANITIZE=ON"
+
+      - name: Run tests under the sanitizers
+        run: |
+          # Python itself is not instrumented, so the ASan runtime must be
+          # preloaded before the interpreter starts.  Leaks are disabled
+          # because CPython intentionally retains allocations at shutdown.
+          ASAN_RT=$(gcc -print-file-name=libasan.so)
+          LD_PRELOAD="$ASAN_RT" \
+          ASAN_OPTIONS=detect_leaks=0:verify_asan_link_order=0:halt_on_error=1:abort_on_error=1 \
+          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            python -m pytest test/ -v
+
+  strict-warnings:
+    name: Strict warnings / ${{ matrix.cc }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install compilers and BLAS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gfortran libopenblas-dev ${{ matrix.cc }}
+
+      - name: Build src/_zvode.c with -Wall -Wextra -Wpedantic -Werror
+        env:
+          CC: ${{ matrix.cc }}
+          FC: gfortran
+        run: |
+          pip install -v ".[test]" \
+            --config-settings="cmake.define.ZVODE_STRICT_WARNINGS=ON"
+
+      - name: Run tests
+        run: python -m pytest test/ -v

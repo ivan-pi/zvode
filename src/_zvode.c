@@ -620,6 +620,22 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
 /* cb_init_from_pyobjs — shared callback-struct initialiser           */
 /* ------------------------------------------------------------------ */
 
+/* Converting a data pointer (returned by PyLong_AsVoidPtr) to a function
+ * pointer is forbidden by ISO C, but it is exactly what is required to accept
+ * a raw ctypes/numba callback address, and it works on every platform zvode
+ * targets (POSIX guarantees round-tripping through void *).  Isolate the cast
+ * in these two helpers so -Wpedantic can stay enabled for the rest of the
+ * file. */
+#if defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+static zvode_fun void_to_zvode_fun(void *p) { return (zvode_fun) p; }
+static zvode_jac void_to_zvode_jac(void *p) { return (zvode_jac) p; }
+#if defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#endif
+
 /* Populate *cb from the three Python objects that drive_knots_py and
  * drive_adaptive_py both receive as their first three arguments.
  *
@@ -645,7 +661,7 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
         cb->fun_u.pyobj = fun_obj;
     } else {
         cb->fun_kind    = CB_CFUNC;
-        cb->fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
+        cb->fun_u.cfunc = void_to_zvode_fun(PyLong_AsVoidPtr(fun_obj));
         if (PyErr_Occurred()) return -1;
         assert(cb->fun_u.cfunc != NULL);
     }
@@ -658,7 +674,7 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
         cb->jac_u.pyobj = jac_obj;
     } else {
         cb->jac_kind    = CB_CFUNC;
-        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
+        cb->jac_u.cfunc = void_to_zvode_jac(PyLong_AsVoidPtr(jac_obj));
         if (PyErr_Occurred()) return -1;
         assert(cb->jac_u.cfunc != NULL);
     }

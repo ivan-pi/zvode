@@ -231,11 +231,21 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   problems through both wrappers and assert the trajectories agree to tolerance.
   Both wrap the same Fortran core, so this is a near-free regression guard for
   the C-layer loops and option mapping.
-- [ ] Memory-safety CI job: build the C extension with ASan/UBSan (or run the
+- [x] Memory-safety CI job: build the C extension with ASan/UBSan (or run the
   test suite under valgrind) in a dedicated workflow.  The hand-written C loops,
   the growable `StepBuf`, and the raw function-pointer callbacks are the risk
   surface; the `malloc`/`realloc` refactor above makes this more important,
   not less.
+  > `.github/workflows/memory-safety.yml` (ubuntu-latest, gfortran/gcc).  Job
+  > `sanitizers` builds `src/_zvode.c` with `-fsanitize=address,undefined`
+  > (`-fno-sanitize-recover=all`) via the `ZVODE_SANITIZE` CMake option and runs
+  > the suite with the ASan runtime `LD_PRELOAD`ed (`detect_leaks=0`, since
+  > CPython retains allocations at shutdown).  Job `strict-warnings` compiles the
+  > C layer under `-Wall -Wextra -Wpedantic -Werror` against both gcc and clang
+  > via the `ZVODE_STRICT_WARNINGS` option.  Both options are scoped to the C
+  > source so the vendored Fortran is untouched.  Fixing the only two findings
+  > (the `void *`→function-pointer callback casts) made the layer `-Wpedantic`
+  > clean.
 - [ ] Wire the standalone Fortran test programs (`test/test_zvode_constant.f`,
   `test_zvode_decay.F90`, `test_zvode_complex_oscillator.F90`) into CTest and
   run them in CI — they are currently orphaned (never built or executed).

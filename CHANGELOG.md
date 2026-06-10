@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   carries the partial trajectory accumulated up to the failure point on its
   `result` attribute (`success=False`, `status=-1`), instead of discarding it.
   Existing `except RuntimeError` handlers keep working
+- `Memory Safety` CI workflow (`.github/workflows/memory-safety.yml`):
+  builds the C binding layer with AddressSanitizer + UndefinedBehaviorSanitizer
+  and runs the test suite under them, plus a strict-warnings job that compiles
+  `src/_zvode.c` with `-Wall -Wextra -Wpedantic -Werror` under both gcc and
+  clang.  Two opt-in CMake options drive these (`ZVODE_SANITIZE`,
+  `ZVODE_STRICT_WARNINGS`), both scoped to the C source so the vendored Fortran
+  is untouched
 
 ### Changed
 
@@ -23,6 +30,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `key: value` layout: a `message` / `success` / `status` verdict block, then
   `t` / `y`, then the solver counters; arrays render as `[shape dtype]`
   placeholders (the printout is not API and may change in any release)
+
+### Fixed
+
+- `src/_zvode.c` compiles cleanly under `-Wpedantic`: the two
+  object-pointer-to-function-pointer casts required to accept ctypes/numba
+  callback addresses are now isolated behind small helpers with a localized
+  diagnostic suppression, instead of tripping the warning at each call site
 
 ## [0.3.0] - 2026-06-09
 
