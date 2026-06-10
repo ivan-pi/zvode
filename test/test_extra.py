@@ -10,6 +10,8 @@ cross-validation against SciPy, and solver option behaviour:
   5. Single-element (n=1) system: decay, damped oscillation, pure rotation
   6. refine > 1 interpolation accuracy (refine=2, refine=5)
   7. max_order constrains Adams solver order (n=2, complex eigenvalues)
+  8. Adaptive step-buffer (StepBuf) growth and structure, with and without
+     refinement (exercises the malloc/realloc backing store in drive_adaptive)
 
 Note on real-in-complex problems
 ---------------------------------
@@ -241,3 +243,111 @@ def test_max_order_constraint():
         f"max_order=1 should need more steps than default "
         f"(got {sol_order1.nsteps} vs {sol_default.nsteps})"
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Adaptive step-buffer (StepBuf) growth and output structure
+#
+# These tests target the malloc/realloc-backed StepBuf used by
+# drive_adaptive.  The adaptive path is taken when tspan has exactly two
+# elements and save_steps=True (the default).  A long, accurate integration
+# records well over a thousand accepted steps, forcing the buffer to grow
+# (realloc-double) many times past its initial capacity of 10 — so these
+# tests exercise stepbuf_init/append/grow/finalize end to end.
+# ---------------------------------------------------------------------------
+
+# Underdamped oscillator written as a genuinely-complex first order system;
+# tight tolerances guarantee many (~1000) accepted steps.
+BUF_LAM = -0.5 + 4j
+
+
+def buf_fun(t, y):
+    return np.array([BUF_LAM * y[0]], dtype=complex)
+
+
+def buf_exact(t):
+    return np.array([np.exp(BUF_LAM * t)])
+
+
+def test_adaptive_buffer_no_refine():
+    """Adaptive path (refine=1) records the IC plus every accepted step.
+
+    Asserts the buffer grew well past its initial capacity (so realloc ran
+    repeatedly), that the time column is strictly increasing and spans the
+    full interval, and that the value column is F-contiguous complex128 with
+    the interpolation-free endpoints matching the exact solution.
+    """
+    y0 = np.array([1.0 + 0j])
+    sol = solve_complex_ivp(
+        buf_fun, [0.0, 12.0], y0, rtol=1e-11, atol=1e-13, refine=1
+    )
+
+    assert sol.success, sol.message
+
+    # Output structure produced by stepbuf_finalize.
+    assert sol.t.dtype == np.float64
+    assert sol.y.dtype == np.complex128
+    assert sol.y.flags["F_CONTIGUOUS"]
+    assert sol.y.shape == (1, sol.t.size)
+
+    # Far more points than STEPBUF_INIT_CAP (=10): the buffer reallocated
+    # several times.  This is the whole point of the growth path.
+    assert sol.t.size > 100
+
+    # IC at index 0, strictly increasing time, exact endpoints.
+    assert sol.t[0] == 0.0
+    assert sol.t[-1] == pytest.approx(12.0)
+    assert np.all(np.diff(sol.t) > 0.0)
+    assert sol.y[0, 0] == y0[0]
+    assert_allclose(sol.y[0], buf_exact(sol.t)[0], rtol=1e-6, atol=1e-9)
+
+
+@pytest.mark.parametrize("refine", [1, 3, 4])
+def test_adaptive_buffer_point_count_scales_with_refine(refine):
+    """With N accepted steps, the buffer holds exactly 1 + N*refine points.
+
+    Each accepted step appends (refine - 1) interpolated points followed by
+    the step endpoint; the leading IC is appended once.  Holding the problem
+    and tolerances fixed keeps N constant across refine, so the total point
+    count scales linearly — a direct check that stepbuf_append is called the
+    expected number of times on both the refine and non-refine branches.
+    """
+    y0 = np.array([1.0 + 0j])
+    kw = dict(rtol=1e-11, atol=1e-13)
+
+    sol1 = solve_complex_ivp(buf_fun, [0.0, 12.0], y0, refine=1, **kw)
+    sol = solve_complex_ivp(buf_fun, [0.0, 12.0], y0, refine=refine, **kw)
+
+    n_steps = sol1.t.size - 1  # points excluding the initial condition
+    assert sol.t.size == 1 + n_steps * refine
+
+    # Structure and accuracy hold on the refined output too.
+    assert sol.y.flags["F_CONTIGUOUS"]
+    assert sol.t[0] == 0.0
+    assert sol.t[-1] == pytest.approx(12.0)
+    assert np.all(np.diff(sol.t) > 0.0)
+    assert_allclose(sol.y[0], buf_exact(sol.t)[0], rtol=1e-6, atol=1e-9)
+
+
+def test_adaptive_buffer_refine_inserts_interior_points():
+    """Refinement inserts the requested interior points between step endpoints.
+
+    Compares the refine=1 step grid against refine=3: every refine=1 time must
+    still appear, and exactly (refine - 1) extra points must fall strictly
+    inside each step — confirming the interpolated samples are appended to the
+    buffer in order, not appended at the boundaries.
+    """
+    y0 = np.array([1.0 + 0j])
+    kw = dict(rtol=1e-10, atol=1e-12)
+
+    endpoints = solve_complex_ivp(buf_fun, [0.0, 12.0], y0, refine=1, **kw).t
+    refined = solve_complex_ivp(buf_fun, [0.0, 12.0], y0, refine=3, **kw).t
+
+    # The endpoint grid is a subsequence of the refined grid (steps unchanged).
+    assert np.all(np.isin(endpoints, refined))
+
+    # Between consecutive step endpoints there are exactly two interior points.
+    for a, b in zip(endpoints[:-1], endpoints[1:]):
+        interior = refined[(refined > a) & (refined < b)]
+        assert interior.size == 2
+        assert np.all(np.diff(interior) > 0.0)

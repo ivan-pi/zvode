@@ -33,6 +33,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `drive_adaptive`'s internal `StepBuf` now uses a plain `malloc`/`realloc`
+  backing store instead of NumPy arrays.  The adaptive stepping loop performs
+  no Python/NumPy C API calls on its hot path (and defers any error reporting
+  to after the loop exits); the NumPy output arrays are built from the raw
+  buffer once, after the loop.  This removes the last per-step Python C API
+  dependency from the loop, a prerequisite for releasing the GIL around the
+  whole `drive_adaptive` integration.  No behavioural change
 - `ZVODEResult.__repr__` / `__str__` reworked to a SciPy/MATLAB-aligned
   `key: value` layout: a `message` / `success` / `status` verdict block, then
   `t` / `y`, then the solver counters; arrays render as `[shape dtype]`
