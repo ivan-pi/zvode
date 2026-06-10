@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `ZVODEResult` gains `success` (bool), `status` (int, SciPy semantics), and
+  `message` (str) fields, so callers no longer interpret raw ZVODE `ISTATE`
+  values; the result is now duck-type compatible with
+  `scipy.integrate.OdeResult` (`if not sol.success: print(sol.message)`)
+- `ZVODEError` (subclass of `RuntimeError`) raised on solver failure; it
+  carries the partial trajectory accumulated up to the failure point on its
+  `result` attribute (`success=False`, `status=-1`), instead of discarding it.
+  Existing `except RuntimeError` handlers keep working
+
+### Changed
+
+- `ZVODEResult.__repr__` / `__str__` reworked to a SciPy/MATLAB-aligned
+  `key: value` layout: a `message` / `success` / `status` verdict block, then
+  `t` / `y`, then the solver counters; arrays render as `[shape dtype]`
+  placeholders (the printout is not API and may change in any release)
+
 ## [0.3.0] - 2026-06-09
 
 ### Added

@@ -19,7 +19,7 @@ where B = C*y0[1]/(LAM2 - LAM1), A = y0[0] - B.
 import numpy as np
 import pytest
 
-from zvode import solve_complex_ivp
+from zvode import solve_complex_ivp, ZVODEError
 
 # ---------------------------------------------------------------------------
 # Problem parameters
@@ -235,15 +235,25 @@ def test_allow_overshoot_true():
 
 
 def test_max_num_steps_exceeded():
-    """Solver raises RuntimeError when max_num_steps is too small.
+    """Solver raises ZVODEError when max_num_steps is too small.
 
     save_steps=False asks the solver to reach TF in one shot, requiring far
-    more than 2 internal steps, so the step limit is hit and RuntimeError is
+    more than 2 internal steps, so the step limit is hit and the error is
     raised.  With save_steps=True the solver advances one step per call, so
     the per-output-point limit would never be reached with max_num_steps=2.
+
+    ZVODEError subclasses RuntimeError (the historical contract) and carries
+    the failure verdict on its `result`; here the endpoint-only path reports
+    ISTATE=-1 (excess work), complementing the knots-mode failure exercised
+    in test_result_object.py.
     """
-    with pytest.raises(RuntimeError, match="ISTATE"):
+    with pytest.raises(ZVODEError, match="ISTATE") as excinfo:
         solve_complex_ivp(fun, [T0, TF], Y0, save_steps=False, max_num_steps=2)
+
+    res = excinfo.value.result
+    assert res.success is False
+    assert res.status == -1
+    assert str(excinfo.value) == res.message
 
 
 # ---------------------------------------------------------------------------
@@ -251,36 +261,29 @@ def test_max_num_steps_exceeded():
 # ---------------------------------------------------------------------------
 
 
-def test_result_type():
-    """solve_complex_ivp returns an object with the expected attributes."""
+def test_result_object():
+    """The result exposes the documented fields and the success verdict, keeps
+    the solver counters always present (no opt-in), and supports both attribute
+    and dict access (one solve covers all of these)."""
     sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    assert hasattr(sol, "t")
-    assert hasattr(sol, "y")
-    assert hasattr(sol, "nfev")
-    assert hasattr(sol, "njev")
-    assert hasattr(sol, "nlu")
 
-
-def test_stats_always_present():
-    """Solver statistics are always present on the result, no opt-in needed."""
-    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    assert sol.nsteps > 0
-    assert sol.nfev > 0
-    assert sol.njev >= 0
-    assert sol.nlu >= 0
-    # Names below are provisional and may be revised before stabilisation.
-    assert sol.nni >= 0
-    assert sol.ncfn >= 0
-    assert sol.netf >= 0
-
-
-def test_result_dict_access():
-    """Result fields accessible both as attributes and dict keys."""
-    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
+    # Documented fields present, reachable as attributes and as dict keys.
+    for attr in ("t", "y", "success", "status", "message", "nfev", "njev", "nlu"):
+        assert hasattr(sol, attr)
     np.testing.assert_array_equal(sol["t"], sol.t)
     np.testing.assert_array_equal(sol["y"], sol.y)
-    assert sol["nfev"] == sol.nfev
-    assert sol["nlu"] == sol.nlu
+    assert sol["nfev"] == sol.nfev and sol["nlu"] == sol.nlu
+
+    # Success verdict.
+    assert sol.success is True
+    assert sol.status == 0
+    assert isinstance(sol.message, str) and sol.message
+
+    # Solver counters always present.  nni/ncfn/netf names are provisional and
+    # may be revised before stabilisation.
+    assert sol.nsteps > 0 and sol.nfev > 0
+    assert sol.njev >= 0 and sol.nlu >= 0
+    assert sol.nni >= 0 and sol.ncfn >= 0 and sol.netf >= 0
 
 
 # ---------------------------------------------------------------------------

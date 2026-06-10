@@ -147,6 +147,8 @@ def test_scipy_bdf_comparison():
     )
     sol_scipy = solve_ivp(coupled_complex_fun, [0.0, 2.0], y0, method="BDF", **tols)
 
+    # Both result objects expose the same success/message duck type.
+    assert sol_zvode.success, f"ZVODE BDF failed: {sol_zvode.message}"
     assert sol_scipy.success, f"SciPy BDF failed: {sol_scipy.message}"
     assert_allclose(sol_zvode.y, sol_scipy.y[:, -1], rtol=1e-5)
 

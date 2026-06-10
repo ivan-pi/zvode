@@ -204,22 +204,25 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > removed from the public namespace (importable from `zvode.solve`, not
   > re-exported from `zvode`).  Final decision on which of `nsteps`, `nni`,
   > `ncfn`, `netf` to keep vs. drop is still pending.
-- [ ] Finish the `ZVODEResult` struct: add `success` (bool) and `message` (str)
+- [x] Finish the `ZVODEResult` struct: add `success` (bool) and `message` (str)
   fields so users do not have to interpret raw `istate` values themselves; aligns
   the return type with the conventions set by `scipy.integrate.OdeResult`.
   Before freezing the field set, also compare with what diffrax does
   (`diffrax.Solution`: a `result` enum plus a `stats` dict) and borrow whatever
   conventions make sense.
-  > Design spec drafted in `docs/result-object-design.md`: adds `success`,
-  > `status` (SciPy semantics), and `message`; failure raises `ZVODEError`
-  > carrying the partial result; `sol` / `t_events` / `y_events` reserved.
-  > The spec records the diffrax / DifferentialEquations.jl comparison:
-  > counters stay flat rather than nested in a `stats` object, and
-  > `success` is defined as `status >= 0` (the `successful_retcode` lesson).
-- [ ] Make the partial trajectory accumulated up to the failure point accessible
+  > Implemented per `docs/result-object-design.md`: `success`, `status`
+  > (SciPy semantics, `success := status >= 0`), and `message` added; failure
+  > raises `ZVODEError` carrying the partial result; counters stay flat (no
+  > nested `stats` object); `sol` / `t_events` / `y_events` remain reserved.
+  > `__repr__` / `__str__` reworked to the SciPy/MATLAB-aligned layout.
+  > Covered by `test/test_result_object.py`.
+- [x] Make the partial trajectory accumulated up to the failure point accessible
   from the `RuntimeError` raised on solver failure (or from a result object);
   the exception and its test landed in 0.3.0, but the partial trajectory is
   currently discarded when the exception is raised
+  > `solve_complex_ivp` now raises `ZVODEError` (a `RuntimeError` subclass)
+  > whose `result` attribute holds the truncated `t` / `y` trajectory plus all
+  > counters; verified in `test/test_result_object.py`.
 - [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
   relative to 0.2.0 and to the OdeSolver interface; publish work-precision
   diagrams (accuracy vs. cost on a few standard stiff complex problems, e.g.
