@@ -7,13 +7,16 @@ mapping: if a refactor silently changes how an option is forwarded to ZVODE
 (tolerances, method, band widths, the iteration-method flag, ...), the two
 trajectories will diverge.
 
-The comparison is run for every combination of
+The forward comparison is run for every combination of
 
     {linear coupled, tridiagonal, nonlinear} problem
         x {Adams, BDF} method
             x {no-jac, dense-jac, banded-jac} Jacobian mode
 
-(skipping banded for the dense 2x2 nonlinear system).
+(skipping banded for the dense 2x2 nonlinear system).  A small curated set of
+*backward* (strictly decreasing knots) cases is added on top -- one per
+problem, spanning banded/dense/no-jac and both methods -- to confirm ZVODE's
+H0 sign handling is mapped identically, without doubling the whole matrix.
 
 All problems are **holomorphic** (each f[i] is an analytic function of every
 y[j] -- a hard requirement of ZVODE's complex arithmetic): the linear systems
@@ -115,35 +118,35 @@ class Problem:
 # Analytic: y1 = y0_1*exp(L2 t); y0 = A*exp(L1 t) + B*exp(L2 t),
 # with B = C*y0_1/(L2-L1), A = y0_0 - B.
 
-_L1, _L2, _C = -1 + 2j, -2 + 1j, 0.5j
-_P1_Y0 = np.array([1.0 + 0j, 0.0 + 1j], dtype=np.complex128)
-_P1_B = _C * _P1_Y0[1] / (_L2 - _L1)
-_P1_A = _P1_Y0[0] - _P1_B
+L1, L2, C = -1 + 2j, -2 + 1j, 0.5j
+P1_Y0 = np.array([1.0 + 0j, 0.0 + 1j], dtype=np.complex128)
+P1_B = C * P1_Y0[1] / (L2 - L1)
+P1_A = P1_Y0[0] - P1_B
 
 
-def _p1_fun(t, y):
+def p1_fun(t, y):
     dy = np.empty(2, dtype=np.complex128)
-    dy[0] = _L1 * y[0] + _C * y[1]
-    dy[1] = _L2 * y[1]
+    dy[0] = L1 * y[0] + C * y[1]
+    dy[1] = L2 * y[1]
     return dy
 
 
-def _p1_jac_dense(t, y):
-    return np.array([[_L1, _C], [0.0, _L2]], dtype=np.complex128)
+def p1_jac_dense(t, y):
+    return np.array([[L1, C], [0.0, L2]], dtype=np.complex128)
 
 
-def _p1_jac_banded(t, y):  # lband=0, uband=1
+def p1_jac_banded(t, y):  # lband=0, uband=1
     pd = np.zeros((2, 2), dtype=np.complex128)
-    pd[1, 0] = _L1  # J[0, 0]
-    pd[0, 1] = _C   # J[0, 1]
-    pd[1, 1] = _L2  # J[1, 1]
+    pd[1, 0] = L1  # J[0, 0]
+    pd[0, 1] = C   # J[0, 1]
+    pd[1, 1] = L2  # J[1, 1]
     return pd
 
 
-def _p1_reference(t_eval):
+def p1_reference(t_eval):
     t = np.asarray(t_eval, dtype=float)
-    y0 = _P1_A * np.exp(_L1 * t) + _P1_B * np.exp(_L2 * t)
-    y1 = _P1_Y0[1] * np.exp(_L2 * t)
+    y0 = P1_A * np.exp(L1 * t) + P1_B * np.exp(L2 * t)
+    y1 = P1_Y0[1] * np.exp(L2 * t)
     return np.array([y0, y1])
 
 
@@ -153,41 +156,41 @@ def _p1_reference(t_eval):
 #
 # Linear, holomorphic; reference via the matrix exponential exp(i L t) y0.
 
-_N = 8
-_LMAT = (
-    np.diag(np.full(_N, -2.0))
-    + np.diag(np.ones(_N - 1), 1)
-    + np.diag(np.ones(_N - 1), -1)
+N = 8
+LMAT = (
+    np.diag(np.full(N, -2.0))
+    + np.diag(np.ones(N - 1), 1)
+    + np.diag(np.ones(N - 1), -1)
 )
-_A2 = 1j * _LMAT
-_P2_Y0 = (np.linspace(1.0, -1.0, _N) + 1j * np.cos(np.arange(_N))).astype(
+A2 = 1j * LMAT
+P2_Y0 = (np.linspace(1.0, -1.0, N) + 1j * np.cos(np.arange(N))).astype(
     np.complex128
 )
 
 
-def _p2_fun(t, y):
-    return _A2 @ y
+def p2_fun(t, y):
+    return A2 @ y
 
 
-def _p2_jac_dense(t, y):
-    return _A2.copy()
+def p2_jac_dense(t, y):
+    return A2.copy()
 
 
-def _p2_jac_banded(t, y):  # lband=1, uband=1 (tridiagonal)
-    pd = np.zeros((3, _N), dtype=np.complex128)
-    for j in range(_N):
-        pd[1, j] = _A2[j, j]              # main diagonal
-        if j + 1 < _N:
-            pd[0, j + 1] = _A2[j, j + 1]  # super-diagonal
+def p2_jac_banded(t, y):  # lband=1, uband=1 (tridiagonal)
+    pd = np.zeros((3, N), dtype=np.complex128)
+    for j in range(N):
+        pd[1, j] = A2[j, j]              # main diagonal
+        if j + 1 < N:
+            pd[0, j + 1] = A2[j, j + 1]  # super-diagonal
         if j - 1 >= 0:
-            pd[2, j - 1] = _A2[j, j - 1]  # sub-diagonal
+            pd[2, j - 1] = A2[j, j - 1]  # sub-diagonal
     return pd
 
 
-def _p2_reference(t_eval):
+def p2_reference(t_eval):
     from scipy.linalg import expm
 
-    return np.column_stack([expm(_A2 * t) @ _P2_Y0 for t in t_eval])
+    return np.column_stack([expm(A2 * t) @ P2_Y0 for t in t_eval])
 
 
 # --- P3: nonlinear holomorphic 2-component system --------------------------
@@ -198,17 +201,17 @@ def _p2_reference(t_eval):
 # Polynomial in y => holomorphic, with a genuinely state-dependent Jacobian.
 # No closed form: cross-validated solver-vs-solver only.
 
-_P3_Y0 = np.array([0.5 + 0j, 0.3j], dtype=np.complex128)
+P3_Y0 = np.array([0.5 + 0j, 0.3j], dtype=np.complex128)
 
 
-def _p3_fun(t, y):
+def p3_fun(t, y):
     dy = np.empty(2, dtype=np.complex128)
     dy[0] = 1j * y[0] - 0.2 * y[0] * y[1]
     dy[1] = -0.5j * y[1] + 0.2 * y[0] ** 2
     return dy
 
 
-def _p3_jac_dense(t, y):
+def p3_jac_dense(t, y):
     return np.array(
         [[1j - 0.2 * y[1], -0.2 * y[0]], [0.4 * y[0], -0.5j]],
         dtype=np.complex128,
@@ -218,36 +221,36 @@ def _p3_jac_dense(t, y):
 PROBLEMS = [
     Problem(
         name="coupled2",
-        fun=_p1_fun,
-        jac_dense=_p1_jac_dense,
-        jac_banded=_p1_jac_banded,
+        fun=p1_fun,
+        jac_dense=p1_jac_dense,
+        jac_banded=p1_jac_banded,
         lband=0,
         uband=1,
-        y0=_P1_Y0,
+        y0=P1_Y0,
         t_eval=np.linspace(0.0, 2.0, 9),
-        reference=_p1_reference,
+        reference=p1_reference,
         variants=("no_jac", "dense", "banded"),
     ),
     Problem(
         name="tridiag8",
-        fun=_p2_fun,
-        jac_dense=_p2_jac_dense,
-        jac_banded=_p2_jac_banded,
+        fun=p2_fun,
+        jac_dense=p2_jac_dense,
+        jac_banded=p2_jac_banded,
         lband=1,
         uband=1,
-        y0=_P2_Y0,
+        y0=P2_Y0,
         t_eval=np.linspace(0.0, 1.0, 9),
-        reference=_p2_reference,
+        reference=p2_reference,
         variants=("no_jac", "dense", "banded"),
     ),
     Problem(
         name="nonlinear2",
-        fun=_p3_fun,
-        jac_dense=_p3_jac_dense,
+        fun=p3_fun,
+        jac_dense=p3_jac_dense,
         jac_banded=None,
         lband=None,
         uband=None,
-        y0=_P3_Y0,
+        y0=P3_Y0,
         t_eval=np.linspace(0.0, 2.0, 9),
         reference=None,
         variants=("no_jac", "dense"),
@@ -260,8 +263,26 @@ PROBLEMS = [
 # ---------------------------------------------------------------------------
 
 
-def _zvode_trajectory(prob: Problem, method: str, variant: str) -> np.ndarray:
-    """Trajectory at ``prob.t_eval`` via ``solve_complex_ivp`` (knot mode)."""
+def direction_setup(prob: Problem, direction: str):
+    """Return ``(t_eval, y0)`` for a forward or backward integration.
+
+    Backward reverses the knots (strictly decreasing) and starts from the
+    state at the largest time: the exact value from the reference when one
+    exists, otherwise the problem's own ``y0`` re-anchored at the end time
+    (fine, since the backward case is cross-validated solver-vs-solver).
+    """
+    if direction == "forward":
+        return prob.t_eval, prob.y0
+    t_eval = prob.t_eval[::-1].copy()
+    if prob.reference is not None:
+        y0 = np.ascontiguousarray(prob.reference(prob.t_eval)[:, -1])
+    else:
+        y0 = prob.y0
+    return t_eval, y0
+
+
+def zvode_trajectory(prob, method, variant, t_eval, y0) -> np.ndarray:
+    """Trajectory at ``t_eval`` via ``solve_complex_ivp`` (knot mode)."""
     kwargs = dict(method=method, rtol=RTOL, atol=ATOL, max_num_steps=NSTEPS)
     if variant == "dense":
         kwargs["jac"] = prob.jac_dense
@@ -269,14 +290,14 @@ def _zvode_trajectory(prob: Problem, method: str, variant: str) -> np.ndarray:
         kwargs["jac"] = prob.jac_banded
         kwargs["lband"] = prob.lband
         kwargs["uband"] = prob.uband
-    sol = solve_complex_ivp(prob.fun, prob.t_eval, prob.y0, **kwargs)
+    sol = solve_complex_ivp(prob.fun, t_eval, y0, **kwargs)
     assert sol.success
-    np.testing.assert_array_equal(sol.t, prob.t_eval)
+    np.testing.assert_array_equal(sol.t, t_eval)
     return sol.y
 
 
-def _scipy_trajectory(prob: Problem, method: str, variant: str) -> np.ndarray:
-    """Trajectory at ``prob.t_eval`` via the stateful ``scipy.integrate.ode``.
+def scipy_trajectory(prob, method, variant, t_eval, y0) -> np.ndarray:
+    """Trajectory at ``t_eval`` via the stateful ``scipy.integrate.ode``.
 
     The integrator is configured to land on the same ZVODE method flag as
     ``solve_complex_ivp`` for the corresponding ``variant`` (see module
@@ -297,24 +318,56 @@ def _scipy_trajectory(prob: Problem, method: str, variant: str) -> np.ndarray:
 
     r = ode(prob.fun, jac)
     r.set_integrator("zvode", **integrator_kw)
-    r.set_initial_value(prob.y0, prob.t_eval[0])
+    r.set_initial_value(y0, t_eval[0])
 
-    out = np.empty((len(prob.y0), len(prob.t_eval)), dtype=np.complex128)
-    out[:, 0] = prob.y0
-    for i, t in enumerate(prob.t_eval[1:], start=1):
+    out = np.empty((len(y0), len(t_eval)), dtype=np.complex128)
+    out[:, 0] = y0
+    for i, t in enumerate(t_eval[1:], start=1):
         r.integrate(t)
         assert r.successful(), f"scipy ode failed (code {r.get_return_code()})"
         out[:, i] = r.y
     return out
 
 
-def _cases():
+def forward_cases():
     for prob in PROBLEMS:
         for method in ("Adams", "BDF"):
             for variant in prob.variants:
                 yield pytest.param(
                     prob, method, variant, id=f"{prob.name}-{method}-{variant}"
                 )
+
+
+# One backward case per problem, chosen to span banded/dense/no-jac and both
+# methods.  PROBLEMS is [coupled2, tridiag8, nonlinear2].
+BACKWARD_CASES = [
+    pytest.param(PROBLEMS[0], "BDF", "banded", id="coupled2-BDF-banded"),
+    pytest.param(PROBLEMS[1], "Adams", "dense", id="tridiag8-Adams-dense"),
+    pytest.param(PROBLEMS[2], "BDF", "no_jac", id="nonlinear2-BDF-no_jac"),
+]
+
+
+def assert_wrappers_agree(prob, method, variant, t_eval, y0):
+    """Run both wrappers over ``(t_eval, y0)`` and assert they agree.
+
+    Where a closed form exists, also confirm *both* track the true solution,
+    so a shared bug in the common Fortran core cannot make the test pass
+    silently.
+    """
+    y_zvode = zvode_trajectory(prob, method, variant, t_eval, y0)
+    y_scipy = scipy_trajectory(prob, method, variant, t_eval, y0)
+
+    assert y_zvode.shape == y_scipy.shape == (len(y0), len(t_eval))
+    max_diff = np.max(np.abs(y_zvode - y_scipy))
+    assert np.allclose(y_zvode, y_scipy, rtol=CMP_RTOL, atol=CMP_ATOL), (
+        f"{prob.name}/{method}/{variant}: trajectories diverge, "
+        f"max|Δy|={max_diff:.3e}"
+    )
+
+    if prob.reference is not None:
+        ref = prob.reference(t_eval)
+        assert np.allclose(y_zvode, ref, rtol=REF_RTOL, atol=REF_ATOL)
+        assert np.allclose(y_scipy, ref, rtol=REF_RTOL, atol=REF_ATOL)
 
 
 # ---------------------------------------------------------------------------
@@ -326,25 +379,20 @@ def _cases():
 # benign "verify a banded solver is appropriate" UserWarning; it is expected
 # here and irrelevant to the cross-validation.
 @pytest.mark.filterwarnings("ignore:Bandwidth.*exceeds half:UserWarning")
-@pytest.mark.parametrize("prob, method, variant", list(_cases()))
+@pytest.mark.parametrize("prob, method, variant", list(forward_cases()))
 def test_matches_scipy_ode(prob: Problem, method: str, variant: str):
     """solve_complex_ivp and scipy.integrate.ode('zvode') agree to tolerance."""
-    y_zvode = _zvode_trajectory(prob, method, variant)
-    y_scipy = _scipy_trajectory(prob, method, variant)
+    t_eval, y0 = direction_setup(prob, "forward")
+    assert_wrappers_agree(prob, method, variant, t_eval, y0)
 
-    assert y_zvode.shape == y_scipy.shape == (len(prob.y0), len(prob.t_eval))
-    max_diff = np.max(np.abs(y_zvode - y_scipy))
-    assert np.allclose(y_zvode, y_scipy, rtol=CMP_RTOL, atol=CMP_ATOL), (
-        f"{prob.name}/{method}/{variant}: trajectories diverge, "
-        f"max|Δy|={max_diff:.3e}"
-    )
 
-    # Where a closed form exists, confirm *both* track the true solution, so a
-    # shared bug in the common Fortran core cannot make the test pass silently.
-    if prob.reference is not None:
-        ref = prob.reference(prob.t_eval)
-        assert np.allclose(y_zvode, ref, rtol=REF_RTOL, atol=REF_ATOL)
-        assert np.allclose(y_scipy, ref, rtol=REF_RTOL, atol=REF_ATOL)
+@pytest.mark.filterwarnings("ignore:Bandwidth.*exceeds half:UserWarning")
+@pytest.mark.parametrize("prob, method, variant", BACKWARD_CASES)
+def test_matches_scipy_ode_backward(prob: Problem, method: str, variant: str):
+    """Backward (decreasing-knot) cross-check: the H0 sign mapping must match."""
+    t_eval, y0 = direction_setup(prob, "backward")
+    assert t_eval[0] > t_eval[-1]
+    assert_wrappers_agree(prob, method, variant, t_eval, y0)
 
 
 def test_problem_matrix_is_exhaustive():
