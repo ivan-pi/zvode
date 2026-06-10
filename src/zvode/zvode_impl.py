@@ -11,8 +11,6 @@ from ._helpers import (
     _make_workspace,
     _validate_max_step,
     _validate_min_step,
-    _wrapped_fun,
-    _wrapped_jac,
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -204,6 +202,13 @@ class ZVODE(OdeSolver):
     multiple independent integrations in separate *processes* (e.g. via
     ``multiprocessing``) is safe.
 
+    **Lifetime of the callback** ``y``\\ **:** the ``y`` passed to `fun` (and
+    to `jac`) is a read-only view onto the solver's internal workspace, valid
+    only for the duration of that call; its contents are overwritten as the
+    integration advances.  Reading ``y`` and returning a freshly computed
+    array is always safe; only retaining a reference to ``y`` past the call is
+    not.
+
     References
     ----------
     .. [Brown1989ZVODE] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
@@ -279,7 +284,10 @@ class ZVODE(OdeSolver):
             )
         self.meth, maxord_allowed = _LMM[lmm]
 
-        self.wrap_fun = _wrapped_fun(fun)
+        # OdeSolver.__init__ already stored the (complex-coerced) RHS as
+        # self.fun_single; reuse it as the C callback.  nfev is tracked from
+        # ZVODE's NFE counter in _step_impl, so we deliberately use the
+        # non-counting fun_single rather than self.fun (which increments nfev).
         _validate_fun_shape(fun, self.n, t0, self.y)
         self.nfev += 1
 
@@ -297,7 +305,7 @@ class ZVODE(OdeSolver):
                     stacklevel=2,
                 )
 
-        self.wrap_jac = _wrapped_jac(jac, banded=(self.miter == 4)) if jac else None
+        self.wrap_jac = jac if jac else None
 
         if jsv not in (1, -1):
             raise ValueError(
@@ -351,7 +359,7 @@ class ZVODE(OdeSolver):
         # Python evaluates the full RHS before any assignment, so the current
         # self.t and self.istate are safely read as inputs before being overwritten.
         self.t, self.istate = _zvode.zvode(
-            self.wrap_fun,
+            self.fun_single,
             self._ytmp,
             self.t,
             self.t_bound,

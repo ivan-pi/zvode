@@ -339,6 +339,13 @@ are internal concerns that should not require any user-visible API changes.
 - [ ] Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.
+- [ ] (tentative) Stride-aware single-pass Jacobian copy in `jac_adaptor`
+  (`src/_zvode.c`): drop the F-contiguous coercion + per-column `memcpy` in
+  favour of one stride-aware loop transposing the user's Jacobian directly into
+  the column-major `PD`, saving the intermediate buffer + extra pass on the
+  common C-contiguous return.  Low priority — `jac` is a cold path dominated by
+  the factorization; `test/test_dense_jacobian_layout.py` already pins the
+  behaviour a switch must preserve.
 - [ ] conda-forge feedstock: for the scientific audience, installability via
   conda is itself a trust signal.  Wait until after 1.0.0 so the recipe tracks
   a stable API.

@@ -36,8 +36,6 @@ from ._helpers import (
     _validate_min_step,
     _validate_fun_shape,
     _validate_jac_shape,
-    _wrapped_fun,
-    _wrapped_jac,
 )
 
 # ZVODE stores solver state in Fortran COMMON blocks that are global to the
@@ -714,6 +712,15 @@ def solve_complex_ivp(
     integration loops, bypassing the Python interpreter on every RHS or
     Jacobian evaluation.
 
+    **Lifetime of the callback** ``y`` — The ``y`` passed to a Python
+    `fun` or `jac` callback is a read-only view onto the solver's internal
+    workspace, valid only for the duration of that call; its contents are
+    overwritten as the integration advances and the underlying buffer is
+    released when the solver returns.  This matches ``scipy.integrate.ode``.
+    The normal usage of reading ``y`` and returning a freshly computed array
+    is always safe; only retaining a reference to ``y`` (or a slice/view of
+    it) past the call is not.
+
     References
     ----------
     .. [Brown1989] P. N. Brown, G. D. Byrne, and A. C. Hindmarsh, "VODE: A
@@ -884,19 +891,16 @@ def solve_complex_ivp(
         # Path B fun: pass integer address; C layer calls it directly
         _fun = fun_addr
     else:
-        # Path A fun: SciPy-compatible; validate shape and wrap to in-place
+        # Path A fun: SciPy-compatible; validate shape and forward directly
         _validate_fun_shape(fun, n, tspan[0], y0)
         nfev = 1
-        _fun = _wrapped_fun(fun)
+        _fun = fun
 
     if jac is None:
         _jac = None
-    elif jac_addr is not None:
-        # Path B jac: pass integer address
-        _jac = jac_addr
     else:
-        # Path A jac: SciPy-compatible; wrap to in-place
-        _jac = _wrapped_jac(jac, banded=(_miter == 4))
+        # Path B passes an integer address; Path A forwards the callable directly.
+        _jac = jac_addr if jac_addr is not None else jac
 
     # ------------------------------------------------------------------
     # 6.  Validate refine; check backend compatibility
