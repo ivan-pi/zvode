@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Cross-validation test suite (`test/test_scipy_cross_validation.py`) that runs
+  identical holomorphic problems through both `solve_complex_ivp` and
+  `scipy.integrate.ode('zvode')` and asserts the trajectories agree to
+  tolerance.  Both wrap the same ZVODE Fortran core, so this is a near-free
+  regression guard for the C-layer integration loops and the option/MITER
+  mapping.  Parametrised over three problems (coupled-linear, tridiagonal,
+  nonlinear) x {Adams, BDF} x {no-jac, dense, banded}, with each wrapper
+  configured to land on the same ZVODE `MF` flag; closed-form references guard
+  against a shared bug in the common core.
+
 - `ZVODEResult` gains `success` (bool), `status` (int, SciPy semantics), and
   `message` (str) fields, so callers no longer interpret raw ZVODE `ISTATE`
   values; the result is now duck-type compatible with
