@@ -866,6 +866,9 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* stepbuf_finalize touches the Python/NumPy C API, and it is called  */
 /* exactly once after the loop exits (with the GIL held).             */
 /*                                                                    */
+/* On allocation failure init/append/grow return -1 without setting   */
+/* a Python exception; the caller raises one once the GIL is held.    */
+/*                                                                    */
 /* ts is float64, length capacity; ys is complex128, length           */
 /* capacity*neq, in column-major order: column k occupies             */
 /* ys[k*neq .. (k+1)*neq-1].                                          */
@@ -883,9 +886,7 @@ typedef struct {
     int capacity;        /* allocated columns                           */
 } StepBuf;
 
-/* Allocate backing buffers.  Returns 0 on success, -1 on failure.
- * No Python C API is used: on failure the caller is responsible for
- * raising an exception (with the GIL held). */
+/* Allocate backing buffers.  Returns 0 on success, -1 on failure. */
 static int
 stepbuf_init(StepBuf *buf, int neq, int init_cap)
 {
@@ -941,7 +942,7 @@ stepbuf_grow(StepBuf *buf)
 }
 
 /* Append one (t, y[neq]) pair, growing if needed.
- * Returns 0 on success, -1 on failure (allocation). No Python C API. */
+ * Returns 0 on success, -1 on failure (allocation). */
 static int
 stepbuf_append(StepBuf *buf, double t, const double complex *y)
 {
@@ -1178,21 +1179,22 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
                 if (iflag != 0) {
                     zvindy_iflag = iflag;
                     zvindy_t     = t_i;
-                    goto loop_done;
+                    break;
                 }
                 if (stepbuf_append(&buf, t_i, dky) < 0) {
                     alloc_failed = 1;
-                    goto loop_done;
+                    break;
                 }
             }
+            if (zvindy_iflag != 0 || alloc_failed)
+                break;  /* refinement failed — escape the step loop */
         }
 
         if (stepbuf_append(&buf, t, y) < 0) {
             alloc_failed = 1;
-            goto loop_done;
+            break;
         }
     }
-loop_done:
 
     /* Raise any deferred error now (GIL held). */
     if (cb.error) {
