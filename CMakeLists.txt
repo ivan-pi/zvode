@@ -168,8 +168,9 @@ endif() # SKBUILD
 # bindings, by linking the common `zvode` library.  The Fortran drivers use
 # the functor-based public API (zvode_mod, picked up via its PUBLIC module
 # directory); the C driver uses the C API in extern/zvode.h, covering the
-# bind(c) layer in extern/c_zvode.f90 that is otherwise only reached through
-# Python.  Built only in the standalone CMake configure, not the wheel build.
+# bind(c) layer in extern/c_zvode.f90 (callbacks, user Jacobian, and ctx
+# forwarding) that is otherwise only reached through Python.  Built only in
+# the standalone CMake configure, not the wheel build.
 # Each new test MUST be added to one of the lists below.
 if(DEFINED SKBUILD)
   set(_zvode_tests_default OFF)
@@ -194,7 +195,7 @@ if(ZVODE_BUILD_TESTS)
 
   # C-native drivers (C API in extern/zvode.h, inherited from `zvode`).
   foreach(_test IN ITEMS
-      test_zvode_constant)
+      test_zvode_coupled)
     add_executable(${_test} test/${_test}.c)
     target_link_libraries(${_test} PRIVATE zvode)
     add_test(NAME ${_test} COMMAND ${_test})

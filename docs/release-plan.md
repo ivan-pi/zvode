@@ -254,10 +254,13 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > free-form `.f90` drivers (`test/test_zvode_decay.f90`,
   > `test_zvode_complex_oscillator.f90`) extend the abstract `zvode_fun` /
   > `zvode_jac` types and assert with `if (predicate) error stop <n>`, while
-  > `test/test_zvode_constant.c` drives the C API in `extern/zvode.h`, covering the
-  > `bind(c)` layer in `extern/c_zvode.f90` that was otherwise exercised only
-  > through Python.  This covers the compiled core, the linalg backend, and the
-  > C binding without the Python layer.  A standalone CMake configure
+  > `test/test_zvode_coupled.c` drives the C API in `extern/zvode.h` on a
+  > coupled 2x2 complex system with MF=21, covering the `bind(c)` layer in
+  > `extern/c_zvode.f90` — callbacks, the user-supplied dense Jacobian, and the
+  > `ctx` user-data pointer (the model coefficients ride through `ctx`) — that
+  > was otherwise exercised only through Python.  This covers the compiled core,
+  > the linalg backend, and the C binding without the Python layer.  A
+  > standalone CMake configure
   > (`-DZVODE_BUILD_TESTS=ON`, default ON outside the scikit-build wheel build)
   > builds them against the shared `zvode` core library (`libzvode`, also linked
   > by the `_zvode` Python extension so the sources and linalg-backend deps are
