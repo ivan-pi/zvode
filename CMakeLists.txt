@@ -63,6 +63,43 @@ else()
       COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
 endif()
 
+# Developer-only diagnostics for the hand-written C binding layer
+# (src/_zvode.c).  Both are OFF by default and are exercised by the
+# memory-safety CI workflow; they are intentionally scoped to the C source
+# so the upstream Fortran is left untouched.
+option(ZVODE_STRICT_WARNINGS
+  "Compile src/_zvode.c with -Wall -Wextra -Wpedantic -Werror" OFF)
+option(ZVODE_SANITIZE
+  "Build the C extension with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+
+# These flags are GCC/Clang spellings; guard them with a generator expression
+# on the C compiler id so a different C compiler (MSVC, Intel, ...) simply
+# ignores them instead of failing on an unknown option.
+set(_zvode_gnulike "$<C_COMPILER_ID:GNU,Clang,AppleClang>")
+
+if(ZVODE_STRICT_WARNINGS)
+  # Scope the strict flags to the C binding layer only; the vendored Fortran
+  # is upstream code and is not held to these warnings.
+  #
+  # -Wno-error=pedantic keeps -Wpedantic emitting diagnostics (so they stay
+  # visible in the build log) but does not let them fail the build: the only
+  # pedantic finding is the void *->function-pointer cast used to accept raw
+  # ctypes/numba callback addresses, which is unavoidable and harmless on
+  # every platform we target.  Every other warning remains a hard error.
+  set_property(SOURCE src/_zvode.c APPEND PROPERTY COMPILE_OPTIONS
+    "$<${_zvode_gnulike}:-Wall;-Wextra;-Wpedantic;-Werror;-Wno-error=pedantic>")
+endif()
+
+if(ZVODE_SANITIZE)
+  # Instrument the C source and link the sanitizer runtimes into the module.
+  # -fno-sanitize-recover=all turns UBSan findings into hard failures so the
+  # CI job goes red instead of merely printing a diagnostic.
+  set_property(SOURCE src/_zvode.c APPEND PROPERTY COMPILE_OPTIONS
+    "$<${_zvode_gnulike}:-fsanitize=address,undefined;-fno-sanitize-recover=all;-fno-omit-frame-pointer>")
+  target_link_options(_zvode PRIVATE
+    "$<${_zvode_gnulike}:-fsanitize=address,undefined>")
+endif()
+
 target_include_directories(
   _zvode
   PRIVATE src)

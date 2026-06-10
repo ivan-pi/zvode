@@ -19,6 +19,13 @@ jobs:
         include:
           - os: macos-latest
             FC: gfortran-14
+          # Exercise the numba compiled-callback tests in a release build, on
+          # one cell only.  This merges into the existing ubuntu-latest / 3.12
+          # job (no extra job) and pulls in numba via the `numba` extra; the
+          # Tests (Debug) workflow covers the same path in a debug build.
+          - os: ubuntu-latest
+            python-version: "3.12"
+            extras: "test,numba"
 
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +42,7 @@ jobs:
           sudo apt-get install -y gfortran libopenblas-dev
 
       - name: Install package and test dependencies from source
-        run: pip install -v ".[test]"
+        run: pip install -v ".[${{ matrix.extras || 'test' }}]"
 
       - name: Run tests
         run: python -m pytest test/ -v

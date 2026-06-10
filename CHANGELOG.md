@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   carries the partial trajectory accumulated up to the failure point on its
   `result` attribute (`success=False`, `status=-1`), instead of discarding it.
   Existing `except RuntimeError` handlers keep working
+- `Memory Safety` CI workflow (`.github/workflows/memory-safety.yml`):
+  builds the C binding layer with AddressSanitizer + UndefinedBehaviorSanitizer
+  and runs the test suite under them, plus a strict-warnings job that compiles
+  `src/_zvode.c` with `-Wall -Wextra -Wpedantic -Werror` under both gcc and
+  clang (with `-Wno-error=pedantic`, so the one unavoidable
+  `void *`->function-pointer callback cast still warns but does not fail the
+  build).  Two opt-in CMake options drive these (`ZVODE_SANITIZE`,
+  `ZVODE_STRICT_WARNINGS`), both scoped to the C source so the vendored Fortran
+  is untouched
+- `numba` optional-dependency extra, kept separate from `test`.  The numba
+  callback tests self-skip when numba is absent, so only two CI jobs install
+  `.[test,numba]` and exercise them — `Tests (Debug)` (debug build) and the
+  ubuntu-latest / Python 3.12 cell of the `Tests` matrix (release build); every
+  other job stays lean and avoids the heavier numba + llvmlite download
 
 ### Changed
 

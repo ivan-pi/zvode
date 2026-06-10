@@ -645,6 +645,10 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
         cb->fun_u.pyobj = fun_obj;
     } else {
         cb->fun_kind    = CB_CFUNC;
+        /* PyLong_AsVoidPtr returns void *; converting it to a function
+         * pointer is forbidden by ISO C (hence the -Wpedantic warning) but
+         * is required to accept a raw ctypes/numba callback address and works
+         * on every platform zvode targets. */
         cb->fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
         if (PyErr_Occurred()) return -1;
         assert(cb->fun_u.cfunc != NULL);
@@ -658,7 +662,7 @@ cb_init_from_pyobjs(struct zvode_callbacks *cb,
         cb->jac_u.pyobj = jac_obj;
     } else {
         cb->jac_kind    = CB_CFUNC;
-        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);
+        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);  /* see note above */
         if (PyErr_Occurred()) return -1;
         assert(cb->jac_u.cfunc != NULL);
     }
