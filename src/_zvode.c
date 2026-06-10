@@ -277,9 +277,18 @@ static void fun_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    /* SciPy-style call: fun(t, y) returns the derivative array. */
-    PyObject *result = PyObject_CallFunction(cb->fun_u.pyobj, "dO", t,
-        (PyObject *) ap_y);
+    /* SciPy-style call: fun(t, y) returns the derivative array.  Use the
+     * vectorcall protocol with a small C stack to skip the format-string
+     * parsing and the intermediate args tuple PyObject_CallFunction builds. */
+    PyObject *t_obj = PyFloat_FromDouble(t);
+    if (t_obj == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+    PyObject *stack[2] = { t_obj, (PyObject *) ap_y };
+    PyObject *result = PyObject_Vectorcall(cb->fun_u.pyobj, stack, 2, NULL);
+    Py_DECREF(t_obj);
     if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
@@ -362,8 +371,15 @@ static void jac_adaptor(
     /* SciPy-style call: jac(t, y) returns the Jacobian array.
      *   dense  (miter=1): shape (neq, neq), J[i,j] = df_i/dy_j
      *   banded (miter=4): shape (ml + mu + 1, neq) */
-    PyObject *result = PyObject_CallFunction(cb->jac_u.pyobj, "dO", t,
-        (PyObject *) ap_y);
+    PyObject *t_obj = PyFloat_FromDouble(t);
+    if (t_obj == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+    PyObject *stack[2] = { t_obj, (PyObject *) ap_y };
+    PyObject *result = PyObject_Vectorcall(cb->jac_u.pyobj, stack, 2, NULL);
+    Py_DECREF(t_obj);
     if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
