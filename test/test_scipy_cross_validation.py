@@ -1,11 +1,12 @@
 """Cross-validation of ``solve_complex_ivp`` against ``scipy.integrate.ode``.
 
-Both this package and SciPy's stateful ``ode`` class wrap the *same* ZVODE
-Fortran core, so running identical problems through both is a near-free
-regression guard for our C-layer integration loops and our option/MITER
-mapping: if a refactor silently changes how an option is forwarded to ZVODE
-(tolerances, method, band widths, the iteration-method flag, ...), the two
-trajectories will diverge.
+Both this package and SciPy's stateful ``ode`` class expose the *same* ZVODE
+solver (the algorithm is identical -- SciPy ships its own implementation, a
+rewritten C core as of SciPy 1.17, but that is an implementation detail), so
+running identical problems through both is a near-free regression guard for our
+C-layer integration loops and our option/MITER mapping: if a refactor silently
+changes how an option is forwarded to ZVODE (tolerances, method, band widths,
+the iteration-method flag, ...), the two trajectories will diverge.
 
 The forward comparison is run for every combination of
 
@@ -37,10 +38,11 @@ internally generated Jacobian (MITER=2).  We therefore pass
 ``with_jacobian=(method == 'BDF')`` to SciPy so both land on the same MF.
 
 With identical MF, tolerances, output knots and (Python) callbacks the two
-drivers are in fact bit-for-bit identical today, but -- as requested -- we do
-*not* assert exact equality; the tolerance below leaves headroom for benign
-floating-point reordering in either driver while still catching any real
-divergence in option handling.
+drivers should agree very closely -- the algorithm is the same -- but we do
+*not* assert exact equality: the two are independent implementations with
+their own wrapper code and build/compilation options, so bit-for-bit agreement
+is not guaranteed.  The tolerance below leaves headroom for those benign
+differences while still catching any real divergence in option handling.
 """
 
 from __future__ import annotations
@@ -71,8 +73,8 @@ ATOL = 1e-12
 NSTEPS = 1_000_000
 
 # Agreement tolerance between the two wrappers.  ~100x looser than the solver
-# tolerance: comfortably satisfied (the cores agree to machine precision) yet
-# still a meaningful guard against option-mapping regressions.
+# tolerance: comfortably satisfied (in practice the two agree to near machine
+# precision) yet still a meaningful guard against option-mapping regressions.
 CMP_RTOL = 1e-7
 CMP_ATOL = 1e-9
 
@@ -351,8 +353,8 @@ def assert_wrappers_agree(prob, method, variant, t_eval, y0):
     """Run both wrappers over ``(t_eval, y0)`` and assert they agree.
 
     Where a closed form exists, also confirm *both* track the true solution,
-    so a shared bug in the common Fortran core cannot make the test pass
-    silently.
+    so a bug shared by the two implementations of the algorithm (or a mistake
+    in the problem setup) cannot make the test pass silently.
     """
     y_zvode = zvode_trajectory(prob, method, variant, t_eval, y0)
     y_scipy = scipy_trajectory(prob, method, variant, t_eval, y0)
