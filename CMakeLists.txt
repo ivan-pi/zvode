@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.17)
 # Both consume the common `zvode` Fortran core library defined below; the
 # Python-extension pieces are guarded with SKBUILD so the standalone path does
 # not require scikit-build's injected variables.
-if(DEFINED SKBUILD_PROJECT_NAME)
+if(SKBUILD)
   project(
     ${SKBUILD_PROJECT_NAME}
     VERSION ${SKBUILD_PROJECT_VERSION}
@@ -158,6 +158,7 @@ if(SKBUILD)
 
   # zvode.h comes in via the `zvode` library's PUBLIC include directories.
   target_link_libraries(_zvode PRIVATE zvode Python::NumPy)
+  target_compile_features(_zvode PRIVATE c_std_11)
 
   # Install the compiled module INTO the package directory, so it imports
   # as `zvode._zvode`.
@@ -176,7 +177,7 @@ endif() # SKBUILD
 # forwarding) that is otherwise only reached through Python.  Built only in
 # the standalone CMake configure, not the wheel build.
 # Each new test MUST be added to one of the lists below.
-if(DEFINED SKBUILD)
+if(SKBUILD)
   set(_zvode_tests_default OFF)
 else()
   set(_zvode_tests_default ON)
@@ -202,6 +203,7 @@ if(ZVODE_BUILD_TESTS)
       test_zvode_coupled)
     add_executable(${_test} test/${_test}.c)
     target_link_libraries(${_test} PRIVATE zvode)
+    target_compile_features(${_test} PRIVATE c_std_11)
     add_test(NAME ${_test} COMMAND ${_test})
   endforeach()
 endif()

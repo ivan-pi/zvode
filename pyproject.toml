@@ -63,6 +63,7 @@ sdist.include = [
     "CMakeLists.txt",
     "extern/**",
     "src/_zvode.c",
+    "test/**",
 ]
 sdist.exclude = [
     ".claude/**",
@@ -71,6 +72,4 @@ sdist.exclude = [
     "docs/release-plan.md",
     "TODO.txt",
     "notes.txt",
-    "test/*.f",
-    "test/*.F90",
 ]
