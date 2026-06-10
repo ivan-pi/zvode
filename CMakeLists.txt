@@ -43,10 +43,10 @@ endif()
 # `_zvode` Python extension and the native test programs, so the sources,
 # backend selection, and link dependencies live in a single place.
 #
-# POSITION_INDEPENDENT_CODE is required because the LAPACK/LINPACK choice and
-# the generated .mod files are PUBLIC: linking this static archive into the
-# `_zvode` shared module needs PIC objects, and consumers find zvode_mod.mod
-# via the module directory exported as a PUBLIC include directory.
+# STATIC (an OBJECT library would be equivalent) keeps the core baked into the
+# consumers: `_zvode` ends up self-contained, so the wheel ships no extra
+# shared library to locate at runtime.  POSITION_INDEPENDENT_CODE is then
+# required so this archive can be linked into the `_zvode` shared module.
 add_library(zvode STATIC
   extern/zvode.F
   extern/zvode_linalg.f90
@@ -71,7 +71,11 @@ target_include_directories(zvode PUBLIC
   ${_zvode_moddir})
 
 if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
-  target_link_libraries(zvode PUBLIC LAPACK::LAPACK)
+  # PRIVATE: LAPACK is called only inside this library's own objects, never by
+  # consumers.  As a static archive, `zvode` still propagates this onto the
+  # final link line (CMake wraps it in $<LINK_ONLY:>), so symbols resolve in
+  # the module and the tests without leaking LAPACK's usage requirements.
+  target_link_libraries(zvode PRIVATE LAPACK::LAPACK)
 else()
   target_sources(zvode PRIVATE
     extern/linpack/zgbfa.f
@@ -79,7 +83,7 @@ else()
     extern/linpack/zgefa.f
     extern/linpack/zgesl.f)
   target_compile_definitions(zvode PRIVATE ZVODE_USE_LINPACK)
-  target_link_libraries(zvode PUBLIC BLAS::BLAS)
+  target_link_libraries(zvode PRIVATE BLAS::BLAS)
   # In the LINPACK ZGBFA routine, abd(m+1,k) is passed to zscal with lm=0
   # (BLAS no-op), but m+1 > lda trips gfortran's bounds checker even though
   # the call is harmless (lm=0 means zscal does nothing).
