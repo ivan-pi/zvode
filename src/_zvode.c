@@ -451,7 +451,9 @@ PyDoc_STRVAR(zvode_doc,
 "`fun` is called as ``fun(t, y) -> array`` of shape ``(neq,)``; `jac` (or None)\n"
 "is called as ``jac(t, y) -> array`` of shape ``(neq, neq)`` (dense) or\n"
 "``(ml + mu + 1, neq)`` (banded).  Compiled cfunc callbacks instead use the\n"
-"in-place C ABI.  Returns the advanced time and the ZVODE istate.\n");
+"in-place C ABI.  The `y` passed to a Python callback is a read-only view onto\n"
+"solver-owned memory, valid only for that call; copy it to retain the state.\n"
+"Returns the advanced time and the ZVODE istate.\n");
 
 static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 

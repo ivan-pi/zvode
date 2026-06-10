@@ -97,6 +97,11 @@ class ZVODE(OdeSolver):
     fun : callable
         Right-hand side of the system, ``f(t, y)``.  The output must be
         array-like with the same shape as `y`.
+
+        ``y`` is a read-only view onto the solver's internal workspace, valid
+        only for the duration of the call; its contents are overwritten as the
+        integration advances.  Copy it with ``y.copy()`` if you need to retain
+        the state (e.g. to log a trajectory).
     t0 : float
         Initial value of the independent variable.
     y0 : array_like, shape (n,)

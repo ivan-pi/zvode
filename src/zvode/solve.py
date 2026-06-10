@@ -479,6 +479,14 @@ def solve_complex_ivp(
         * **Python callable**: ``fun(t, y) -> array_like``, where ``t`` is a
           scalar and ``y`` is an ndarray of shape ``(n,)``; must return an
           array of the same shape.
+
+          .. warning::
+             ``y`` is a read-only view onto the solver's internal workspace
+             and is valid only for the duration of the call.  Its contents are
+             overwritten as the integration advances, and the underlying buffer
+             is released when the solver returns.  Do not store a reference to
+             ``y`` (or a slice/view of it); copy it with ``y.copy()`` if you
+             need to retain the state.  This matches ``scipy.integrate.ode``.
         * **Compiled callback** (``ctypes.CFUNCTYPE`` instance or
           ``numba_cfunc.ctypes``): called directly as a C function pointer,
           bypassing the Python interpreter on every RHS evaluation.  The
@@ -526,6 +534,9 @@ def solve_complex_ivp(
         * **Python callable**, banded (`lband`/`uband` set):
           ``jac(t, y) -> (lband + uband + 1, n)`` array where element
           ``J[i - j + uband, j]`` holds ``df(i)/dy(j)``.
+
+          As for ``fun``, ``y`` is a transient read-only view; copy it with
+          ``y.copy()`` if you need to retain it beyond the call.
         * **Compiled callback**: C-level signature::
 
               void jac(int neq, double t,
