@@ -387,7 +387,20 @@ static void jac_adaptor(
     }
 
     /* Coerce to F-contiguous complex128 so each column is laid out
-     * contiguously, ready to copy into PD's column-major buffer. */
+     * contiguously, reducing the copy into PD's column-major buffer to one
+     * memcpy per column (below).
+     *
+     * PD is a Fortran (column-major) array handed to ZGETRF/ZGBTRF, so a
+     * conventional row-major Jacobian must be transposed into it regardless of
+     * what we do here; that strided pass over neq*neq elements is fundamental.
+     * Requesting F-contiguity folds the transpose into FROM_OTF: an F-ordered
+     * or transposed return is taken as a zero-copy view, while the common
+     * C-contiguous return costs one extra buffer + pass. We could instead drop
+     * the flag and transpose stride-aware directly into PD in a single pass,
+     * but `jac` is a cold path -- ZVODE factors the Jacobian once and reuses it
+     * across many steps, so it runs far less often than `fun` and is dominated
+     * by the ZGETRF/ZGBTRF factorization that follows -- so the simpler,
+     * obviously-correct form here is preferred over shaving that copy. */
     PyArrayObject *arr = (PyArrayObject *) PyArray_FROM_OTF(
         result, NPY_COMPLEX128, NPY_ARRAY_F_CONTIGUOUS | NPY_ARRAY_FORCECAST);
     if (arr == NULL) {
