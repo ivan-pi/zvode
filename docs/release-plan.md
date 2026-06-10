@@ -227,10 +227,15 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > `solve_complex_ivp` now raises `ZVODEError` (a `RuntimeError` subclass)
   > whose `result` attribute holds the truncated `t` / `y` trajectory plus all
   > counters; verified in `test/test_result_object.py`.
-- [ ] Benchmarks: add a small benchmark suite to quantify the overhead reduction
-  relative to 0.2.0 and to the OdeSolver interface; publish work-precision
-  diagrams (accuracy vs. cost on a few standard stiff complex problems, e.g.
-  the QME demo) as a documentation page
+- [x] Benchmarks: add a small benchmark suite to quantify the interface
+  overhead; publish a work-precision diagram (accuracy vs. cost) as a
+  documentation page.
+  > Done in `docs/benchmarks.rst` + `docs/bench_work_precision.py`.  A small
+  > stiff, holomorphic, 3-component complex kinetics system is solved by four
+  > paths — `solve_complex_ivp`, `ZVODE_BDF` via `solve_ivp`, SciPy's
+  > pure-Python `BDF`, and the classic `scipy.integrate.ode("zvode")` (with
+  > `with_jacobian=True` for a fair stiff baseline).  The script stamps the
+  > figure with the zvode commit and the SciPy/NumPy/Python versions used.
 - [ ] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
   problems through both wrappers and assert the trajectories agree to tolerance.
   Both wrap the same Fortran core, so this is a near-free regression guard for
