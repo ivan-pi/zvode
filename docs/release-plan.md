@@ -255,8 +255,10 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > `test_zvode_complex_oscillator.f90`) that extend the abstract `zvode_fun` /
   > `zvode_jac` types and assert with `if (predicate) error stop <n>`.  A
   > standalone CMake configure (`-DZVODE_BUILD_TESTS=ON`, default ON outside the
-  > scikit-build wheel build) builds them against a static `zvode_fortran`
-  > library and registers each with `add_test`; the `Fortran tests` workflow
+  > scikit-build wheel build) builds them against the shared `zvode` Fortran
+  > core library (`libzvode`, also linked by the `_zvode` Python extension so
+  > the sources and linalg-backend deps are defined once) and registers each
+  > with `add_test`; the `Fortran tests` workflow
   > runs `ctest` under gfortran for both the LAPACK and LINPACK backends.  This
   > unblocks the multi-compiler conformance item below.
 - [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build

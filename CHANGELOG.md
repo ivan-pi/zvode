@@ -31,7 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   through its functor-based public API (`zvode_mod`), independent of the Python
   bindings, using `if (predicate) error stop <n>` assertions.  A standalone
   CMake configure (`-DZVODE_BUILD_TESTS=ON`, default ON when not building the
-  wheel) builds them against a static `zvode_fortran` library and registers
+  wheel) builds them against the shared `zvode` Fortran core library
+  (`libzvode`, also linked by the `_zvode` Python extension) and registers
   each with `add_test`; the new `Fortran tests` workflow
   (`.github/workflows/fortran-tests.yml`) runs `ctest` under gfortran for both
   the LAPACK and LINPACK linalg backends.  This is a prerequisite for the
