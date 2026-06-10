@@ -1,20 +1,20 @@
 cmake_minimum_required(VERSION 3.17)
 
-project(
-  ${SKBUILD_PROJECT_NAME}
-  VERSION ${SKBUILD_PROJECT_VERSION}
-  LANGUAGES C Fortran)
-
-# Only request the module-building components. Do NOT request the full
-# `Development` package: that pulls in Development.Embed, which needs the
-# Python library for linking and is wrong for extension modules.
-find_package(Python REQUIRED
-  COMPONENTS
-    Interpreter
-    Development.Module
-    "${SKBUILD_SABI_COMPONENT}"
-    NumPy
-)
+# Two configuration paths share this file:
+#   * the scikit-build-core wheel build (SKBUILD_* variables defined), which
+#     builds the `_zvode` Python extension module, and
+#   * a plain `cmake -S . -B build` standalone configure used in CI to build
+#     and run the Fortran-native test programs via CTest.
+# Guard the Python-extension pieces with SKBUILD so the standalone path does
+# not require scikit-build's injected variables.
+if(DEFINED SKBUILD_PROJECT_NAME)
+  project(
+    ${SKBUILD_PROJECT_NAME}
+    VERSION ${SKBUILD_PROJECT_VERSION}
+    LANGUAGES C Fortran)
+else()
+  project(zvode LANGUAGES C Fortran)
+endif()
 
 set(ZVODE_LINALG_BACKEND "LAPACK" CACHE STRING
   "Linear algebra backend for LU factorization and triangular solves")
@@ -31,6 +31,19 @@ else()
     "Unknown ZVODE_LINALG_BACKEND \"${ZVODE_LINALG_BACKEND}\". "
     "Valid choices are LAPACK or LINPACK.")
 endif()
+
+if(SKBUILD)
+
+# Only request the module-building components. Do NOT request the full
+# `Development` package: that pulls in Development.Embed, which needs the
+# Python library for linking and is wrong for extension modules.
+find_package(Python REQUIRED
+  COMPONENTS
+    Interpreter
+    Development.Module
+    "${SKBUILD_SABI_COMPONENT}"
+    NumPy
+)
 
 # Build the C extension. Compiling the Fortran straight into the module
 # target lets CMake pull in the Fortran runtime (libgfortran) automatically
@@ -111,3 +124,62 @@ target_link_libraries(
 # Install the compiled module INTO the package directory, so it imports
 # as `zvode._zvode`.
 install(TARGETS _zvode DESTINATION ${SKBUILD_PROJECT_NAME})
+
+endif() # SKBUILD
+
+# ---------------------------------------------------------------------------
+# Fortran-native test programs (CTest)
+# ---------------------------------------------------------------------------
+# These exercise the ZVODE Fortran core directly through its functor-based
+# public API (zvode_mod), independent of the Python bindings.  They are built
+# only in the standalone CMake configure (not in the wheel build) and are run
+# in CI via `ctest`.  Each new Fortran test MUST be added to the list below.
+if(DEFINED SKBUILD)
+  set(_zvode_tests_default OFF)
+else()
+  set(_zvode_tests_default ON)
+endif()
+option(ZVODE_BUILD_TESTS
+  "Build and register the Fortran-native ZVODE test programs"
+  ${_zvode_tests_default})
+
+if(ZVODE_BUILD_TESTS)
+  enable_testing()
+
+  # Static library holding the ZVODE Fortran core.  The test executables link
+  # against it and pick up the generated `.mod` files via its module directory.
+  add_library(zvode_fortran STATIC
+    extern/zvode.F
+    extern/zvode_linalg.f90)
+
+  set(_zvode_fortran_moddir ${CMAKE_CURRENT_BINARY_DIR}/zvode_fortran_modules)
+  set_target_properties(zvode_fortran PROPERTIES
+    Fortran_MODULE_DIRECTORY ${_zvode_fortran_moddir})
+  target_include_directories(zvode_fortran PUBLIC ${_zvode_fortran_moddir})
+
+  if(ZVODE_LINALG_BACKEND STREQUAL "LAPACK")
+    target_link_libraries(zvode_fortran PUBLIC LAPACK::LAPACK)
+  else()
+    target_sources(zvode_fortran PRIVATE
+      extern/linpack/zgbfa.f
+      extern/linpack/zgbsl.f
+      extern/linpack/zgefa.f
+      extern/linpack/zgesl.f)
+    target_compile_definitions(zvode_fortran PRIVATE ZVODE_USE_LINPACK)
+    target_link_libraries(zvode_fortran PUBLIC BLAS::BLAS)
+    # Same harmless zscal(lm=0) out-of-bounds shim as the Python module build.
+    set_source_files_properties(
+      extern/linpack/zgbfa.f
+      PROPERTIES
+        COMPILE_OPTIONS "$<$<Fortran_COMPILER_ID:GNU>:-fcheck=no-bounds>")
+  endif()
+
+  foreach(_test IN ITEMS
+      test_zvode_constant
+      test_zvode_decay
+      test_zvode_complex_oscillator)
+    add_executable(${_test} test/${_test}.f90)
+    target_link_libraries(${_test} PRIVATE zvode_fortran)
+    add_test(NAME ${_test} COMMAND ${_test})
+  endforeach()
+endif()
