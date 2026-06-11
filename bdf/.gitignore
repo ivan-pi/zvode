@@ -1,0 +1,4 @@
+# In-source Fortran build products (out-of-source cmake builds go in build/).
+*.mod
+*.o
+*.smod

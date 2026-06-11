@@ -1,0 +1,29 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "numpy>=1.23"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pybdf"
+version = "0.1.0"
+description = "A small variable-order BDF integrator for stiff ODEs (Fortran core, NumPy interface)"
+authors = [{name = "Ivan Pribec", email = "ivan.pribec@gmail.com"}]
+requires-python = ">=3.9"
+readme = "README.md"
+keywords = ["ODE", "solver", "BDF", "stiff", "scientific computing"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Fortran",
+    "Programming Language :: C",
+]
+dependencies = ["numpy>=1.23"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "scipy>=1.9"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["src/pybdf"]
+sdist.include = ["CMakeLists.txt", "src/**", "test/**"]
