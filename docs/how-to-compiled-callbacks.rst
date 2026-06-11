@@ -1,7 +1,7 @@
 .. _how-to-compiled-callbacks:
 
-Compiled callbacks (ctypes and numba)
-======================================
+Compiled callbacks
+==================
 
 Python callbacks incur interpreter overhead on every right-hand side and
 Jacobian evaluation.  For problems where the RHS is called millions of times,
@@ -13,13 +13,14 @@ them directly through the C integration loop, bypassing the Python interpreter
 on each evaluation.  Mixed mode is supported: one callback can be a Python
 callable while the other is compiled.
 
-Two approaches are covered here:
+Three approaches are covered here:
 
 1. :ref:`numba-cfunc` — JIT-compile a Python function with Numba.
 2. :ref:`dll-callback` — load a pre-compiled shared library (``*.so``).
+3. :ref:`gfort2py-callback` — write the callback in Fortran and compile it on the fly with gfort2py.
 
-The optional ``ctx`` pointer lets both approaches pass parameters without
-global variables; see :ref:`ctx-parameter`.
+The optional ``ctx`` pointer lets all three approaches pass parameters
+without global variables; see :ref:`ctx-parameter`.
 
 .. note::
 
@@ -196,6 +197,122 @@ Similarly for the Jacobian:
 
    jac = ctypes.cast(lib.my_jac, ZVODE_JAC_CTYPE)
    sol = solve_complex_ivp(rhs, tspan=(0.0, 10.0), y0=[1.0 + 0j], jac=jac)
+
+----
+
+.. _gfort2py-callback:
+
+Fortran callback with gfort2py
+-------------------------------
+
+`gfort2py <https://github.com/rjfarmer/gfort2py>`_ lets you write the
+RHS (or Jacobian) directly in Fortran and compile it from a Python
+string using gfortran.  Because the subroutine is declared ``bind(c)``
+and uses C-interoperable types, its calling convention exactly matches
+the C interface expected by :func:`~zvode.solve_complex_ivp`.  (The
+``iso_c_binding`` module merely supplies the interoperable kind
+parameters such as ``c_double``; it is not a type itself.)
+
+Install with ``pip install gfort2py``; consult the gfort2py
+documentation for the supported platforms and gfortran versions.
+
+The example below is a complex-valued take on the Robertson rate
+equations, chosen simply as a compact, stiff three-component RHS for
+demonstration.  Write the RHS as a ``bind(c)`` subroutine, embedding
+the rate constants as ``parameter`` literals:
+
+.. code-block:: python
+
+   import numpy as np
+   import gfort2py as gf
+   from zvode import solve_complex_ivp
+
+   t0, tf = 0.0, 3.0
+   y0 = np.array([1.0 + 0.0j, 0.0 + 0.2j, 0.0 + 0.0j], dtype=np.complex128)
+
+   src = """
+   subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
+       use, intrinsic :: iso_c_binding
+       implicit none
+       integer(c_int), value    :: neq
+       real(c_double), value    :: t
+       complex(c_double_complex), intent(in)  :: y(neq)
+       complex(c_double_complex), intent(out) :: dy(neq)
+       type(c_ptr), value :: par   ! unused here; t is also unused (autonomous system)
+
+       complex(c_double_complex), parameter :: a = (1000.0d0, 200.0d0)
+       complex(c_double_complex), parameter :: b = (1000.0d0,   0.0d0)
+       complex(c_double_complex), parameter :: c = (   1.0d0,  50.0d0)
+
+       dy(1) = -a*y(1) + b*y(2)*y(3)
+       dy(2) =  a*y(1) - b*y(2)*y(3) - c*y(2)
+       dy(3) =  c*y(2)
+   end subroutine reaction_rhs
+   """
+
+   kinetics = gf.compile(string=src)
+
+   sol = solve_complex_ivp(kinetics.reaction_rhs.ctype, (t0, tf), y0,
+                           method="BDF", rtol=1e-8, atol=1e-8)
+
+``gf.compile`` returns an object whose attributes are the compiled
+Fortran procedures.  ``kinetics.reaction_rhs.ctype`` is the raw
+``ctypes`` function pointer, which :func:`~zvode.solve_complex_ivp`
+recognises as a compiled callback and invokes directly without Python
+overhead.
+
+.. warning::
+
+   ``gf.compile`` launches gfortran in a subprocess and is therefore
+   expensive.  Compile once and reuse the returned callback — never put
+   it inside an integration loop or any other hot path.
+
+Varying parameters at runtime
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Baking the constants in as ``parameter`` literals means changing a rate
+requires recompiling.  To vary them at runtime instead, pass the
+parameters through the ``ctx`` pointer and recover them in Fortran with
+``c_f_pointer``:
+
+.. code-block:: python
+
+   import ctypes
+
+   params = np.array([1000.0 + 200.0j, 1000.0 + 0.0j, 1.0 + 50.0j],
+                     dtype=np.complex128)
+
+   src = """
+   subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
+       use, intrinsic :: iso_c_binding
+       implicit none
+       integer(c_int), value    :: neq
+       real(c_double), value    :: t
+       complex(c_double_complex), intent(in)  :: y(neq)
+       complex(c_double_complex), intent(out) :: dy(neq)
+       type(c_ptr), value :: par
+
+       complex(c_double_complex), pointer :: p(:) => null()
+
+       call c_f_pointer(par, p, [3])
+       associate (a => p(1), b => p(2), c => p(3))
+           dy(1) = -a*y(1) + b*y(2)*y(3)
+           dy(2) =  a*y(1) - b*y(2)*y(3) - c*y(2)
+           dy(3) =  c*y(2)
+       end associate
+   end subroutine reaction_rhs
+   """
+
+   kinetics = gf.compile(string=src)
+
+   sol = solve_complex_ivp(kinetics.reaction_rhs.ctype, (t0, tf), y0,
+                           method="BDF", rtol=1e-8, atol=1e-8,
+                           ctx=ctypes.c_void_p(params.ctypes.data))
+
+Keep ``params`` alive for the whole integration so it is not
+garbage-collected while the solver is running.  See :ref:`ctx-parameter`
+for the general ``ctx`` conventions shared with the numba and
+shared-library approaches.
 
 ----
 
