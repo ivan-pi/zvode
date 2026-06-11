@@ -238,7 +238,7 @@ literals:
        real(c_double), value    :: t
        complex(c_double_complex), intent(in)  :: y(neq)
        complex(c_double_complex), intent(out) :: dy(neq)
-       type(c_ptr), value :: par
+       type(c_ptr), value :: par   ! unused here; t is also unused (autonomous system)
 
        complex(c_double_complex), parameter :: a = (1000.0d0, 200.0d0)
        complex(c_double_complex), parameter :: b = (1000.0d0,   0.0d0)
