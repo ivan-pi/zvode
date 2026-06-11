@@ -281,7 +281,6 @@ parameters through the ``ctx`` pointer and recover them in Fortran with
 
    params = np.array([1000.0 + 200.0j, 1000.0 + 0.0j, 1.0 + 50.0j],
                      dtype=np.complex128)
-   ctx = ctypes.cast(params.ctypes.data, ctypes.c_void_p)
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
@@ -307,7 +306,8 @@ parameters through the ``ctx`` pointer and recover them in Fortran with
    kinetics = gf.compile(string=src)
 
    sol = solve_complex_ivp(kinetics.reaction_rhs.ctype, (t0, tf), y0,
-                           method="BDF", rtol=1e-8, atol=1e-8, ctx=ctx)
+                           method="BDF", rtol=1e-8, atol=1e-8,
+                           ctx=ctypes.c_void_p(params.ctypes.data))
 
 Keep ``params`` alive for the whole integration so it is not
 garbage-collected while the solver is running.  See :ref:`ctx-parameter`
