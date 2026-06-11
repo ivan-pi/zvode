@@ -216,11 +216,10 @@ parameters such as ``c_double``; it is not a type itself.)
 Install with ``pip install gfort2py``; consult the gfort2py
 documentation for the supported platforms and gfortran versions.
 
-The example below is a complex-valued variant of the Robertson rate
-equations — a contrived problem with no particular physical meaning,
-used here only to exercise a stiff three-component RHS.  Write the RHS
-as a ``bind(c)`` subroutine, embedding the rate constants as
-``parameter`` literals:
+The example below is a complex-valued take on the Robertson rate
+equations, chosen simply as a compact, stiff three-component RHS for
+demonstration.  Write the RHS as a ``bind(c)`` subroutine, embedding
+the rate constants as ``parameter`` literals:
 
 .. code-block:: python
 
