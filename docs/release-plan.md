@@ -306,6 +306,17 @@ round-trips.
   - [ ] Non-linear examples: the existing examples are mostly linear; add some
     non-linear ones that are more attractive and more taxing on the solver
     (e.g. complex Ginzburg–Landau, a Kerr / nonlinear Schrödinger oscillator)
+  - [ ] Test the documented code snippets: extract the inline ``code-block``
+    examples in the how-to pages (notably `how-to-compiled-callbacks.rst`) into
+    standalone scripts pulled in with `literalinclude` — the pattern already used
+    by `docs/demo_*.py` and `docs/bench_work_precision.py` — then exercise those
+    scripts under pytest so the rendered docs cannot drift from code that actually
+    runs.  Guard the optional-dependency examples with `pytest.importorskip` (as
+    `test/test_numba_callbacks.py` already does) so numba and gfort2py stay
+    skip-on-absent rather than becoming hard test dependencies or complicating the
+    CI matrix.  Caveat: gfort2py is gfortran-specific and not installed in CI, so
+    it would get local coverage only unless one CI cell opts in; numba already
+    runs in the `test,numba` cell of `test.yml`.
 - [ ] Fortran standard conformance: build and run the test suite with multiple
   compilers — gfortran (current CI default), ifx, flang, nagfor, lfortran.
   nagfor's strict checking mode is particularly valuable for conformance;
