@@ -232,17 +232,18 @@ the rate constants as ``parameter`` literals:
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
-       use, intrinsic :: iso_c_binding, only: c_int, dp => c_double, cdp => c_double_complex, c_ptr
+       use, intrinsic :: iso_c_binding, &
+           only: c_int, dp => c_double, cdp => c_double_complex, c_ptr
        implicit none
-       integer(c_int), value   :: neq
-       real(dp), value         :: t    ! unused (autonomous system)
-       complex(cdp), intent(in)  :: y(neq)
+       integer(c_int), value :: neq
+       real(dp), value :: t    ! unused (autonomous system)
+       complex(cdp), intent(in) :: y(neq)
        complex(cdp), intent(out) :: dy(neq)
-       type(c_ptr), value :: par       ! unused (no runtime parameters)
+       type(c_ptr), value :: par   ! unused (no runtime parameters)
 
        complex(cdp), parameter :: a = (1000.0d0, 200.0d0)
-       complex(cdp), parameter :: b = (1000.0d0,   0.0d0)
-       complex(cdp), parameter :: c = (   1.0d0,  50.0d0)
+       complex(cdp), parameter :: b = (1000.0d0, 0.0d0)
+       complex(cdp), parameter :: c = (1.0d0, 50.0d0)
 
        dy(1) = -a*y(1) + b*y(2)*y(3)
        dy(2) =  a*y(1) - b*y(2)*y(3) - c*y(2)
