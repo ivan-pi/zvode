@@ -232,17 +232,18 @@ the rate constants as ``parameter`` literals:
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
-       use, intrinsic :: iso_c_binding
+       use, intrinsic :: iso_c_binding, only: &
+           c_int, dp => c_double, cdp => c_double_complex, c_ptr
        implicit none
-       integer(c_int), value    :: neq
-       real(c_double), value    :: t
-       complex(c_double_complex), intent(in)  :: y(neq)
-       complex(c_double_complex), intent(out) :: dy(neq)
-       type(c_ptr), value :: par   ! unused here; t is also unused (autonomous system)
+       integer(c_int), value :: neq
+       real(dp), value :: t    ! unused (autonomous system)
+       complex(cdp), intent(in) :: y(neq)
+       complex(cdp), intent(out) :: dy(neq)
+       type(c_ptr), value :: par   ! unused (no runtime parameters)
 
-       complex(c_double_complex), parameter :: a = (1000.0d0, 200.0d0)
-       complex(c_double_complex), parameter :: b = (1000.0d0,   0.0d0)
-       complex(c_double_complex), parameter :: c = (   1.0d0,  50.0d0)
+       complex(cdp), parameter :: a = (1000.0d0, 200.0d0)
+       complex(cdp), parameter :: b = (1000.0d0, 0.0d0)
+       complex(cdp), parameter :: c = (1.0d0, 50.0d0)
 
        dy(1) = -a*y(1) + b*y(2)*y(3)
        dy(2) =  a*y(1) - b*y(2)*y(3) - c*y(2)
@@ -267,6 +268,15 @@ overhead.
    expensive.  Compile once and reuse the returned callback — never put
    it inside an integration loop or any other hot path.
 
+.. note::
+
+   Unlike Python and NumPy, Fortran arrays are **1-based** by default —
+   hence ``y(1)`` through ``y(3)`` above.  If you prefer 0-based
+   indexing to match NumPy's layout, declare the array with an explicit
+   lower bound::
+
+      complex(cdp), intent(in) :: y(0:neq-1)
+
 Varying parameters at runtime
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -284,15 +294,16 @@ parameters through the ``ctx`` pointer and recover them in Fortran with
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
-       use, intrinsic :: iso_c_binding
+       use, intrinsic :: iso_c_binding, only: &
+           c_int, dp => c_double, cdp => c_double_complex, c_ptr, c_f_pointer
        implicit none
-       integer(c_int), value    :: neq
-       real(c_double), value    :: t
-       complex(c_double_complex), intent(in)  :: y(neq)
-       complex(c_double_complex), intent(out) :: dy(neq)
+       integer(c_int), value   :: neq
+       real(dp), value         :: t    ! unused (autonomous system)
+       complex(cdp), intent(in)  :: y(neq)
+       complex(cdp), intent(out) :: dy(neq)
        type(c_ptr), value :: par
 
-       complex(c_double_complex), pointer :: p(:) => null()
+       complex(cdp), pointer :: p(:) => null()
 
        call c_f_pointer(par, p, [3])
        associate (a => p(1), b => p(2), c => p(3))
