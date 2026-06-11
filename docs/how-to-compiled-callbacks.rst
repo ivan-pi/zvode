@@ -1,7 +1,7 @@
 .. _how-to-compiled-callbacks:
 
-Compiled callbacks (ctypes and numba)
-======================================
+Compiled callbacks (ctypes, numba, and gfort2py)
+=================================================
 
 Python callbacks incur interpreter overhead on every right-hand side and
 Jacobian evaluation.  For problems where the RHS is called millions of times,
@@ -13,13 +13,14 @@ them directly through the C integration loop, bypassing the Python interpreter
 on each evaluation.  Mixed mode is supported: one callback can be a Python
 callable while the other is compiled.
 
-Two approaches are covered here:
+Three approaches are covered here:
 
 1. :ref:`numba-cfunc` — JIT-compile a Python function with Numba.
 2. :ref:`dll-callback` — load a pre-compiled shared library (``*.so``).
+3. :ref:`gfort2py-callback` — write the callback in Fortran and compile it on the fly with gfort2py.
 
-The optional ``ctx`` pointer lets both approaches pass parameters without
-global variables; see :ref:`ctx-parameter`.
+The optional ``ctx`` pointer lets all three approaches pass parameters
+without global variables; see :ref:`ctx-parameter`.
 
 .. note::
 
@@ -196,6 +197,96 @@ Similarly for the Jacobian:
 
    jac = ctypes.cast(lib.my_jac, ZVODE_JAC_CTYPE)
    sol = solve_complex_ivp(rhs, tspan=(0.0, 10.0), y0=[1.0 + 0j], jac=jac)
+
+----
+
+.. _gfort2py-callback:
+
+Fortran callback with gfort2py
+-------------------------------
+
+`gfort2py <https://github.com/rjfarmer/gfort2py>`_ lets you write the
+RHS (or Jacobian) directly in Fortran and JIT-compile it from a Python
+string using gfortran.  Because the subroutine is declared with
+``bind(c)`` and uses ``iso_c_binding`` types, its calling convention
+exactly matches the C interface expected by :func:`~zvode.solve_complex_ivp`.
+
+.. note::
+
+   gfort2py is a gfortran-specific solution.  Supported platforms:
+
+   * x86_64 / Linux / CPython
+   * arm64 / Linux / CPython
+   * x86_64 / macOS / CPython
+   * arm / macOS / CPython (M-chips, gfortran ≥ 9)
+   * x64 / Windows / CPython (via Chocolatey)
+
+Install with ``pip install gfort2py``.
+
+Define the problem constants and write the Fortran source as a string.
+The ``to_f`` helper converts a Python scalar to a Fortran
+double-precision literal so the constants can be embedded directly in
+the source:
+
+.. code-block:: python
+
+   import numpy as np
+   import gfort2py as gf
+   from zvode import solve_complex_ivp
+
+   a = 1000.0 + 200.0j   # fast (stiff) forward rate, with oscillation
+   b = 1000.0             # non-linear back-reaction rate
+   c = 1.0 + 50.0j        # slow decay, with oscillation
+
+   t0, tf = 0.0, 3.0
+   y0 = np.array([1.0 + 0.0j, 0.0 + 0.2j, 0.0 + 0.0j], dtype=np.complex128)
+
+   def to_f(val, precision=15):
+       if isinstance(val, complex):
+           r = f"{val.real:.{precision}e}".replace('e', 'd')
+           i = f"{val.imag:.{precision}e}".replace('e', 'd')
+           return f"({r}, {i})"
+       return f"{float(val):.{precision}e}".replace('e', 'd')
+
+   fstr = f"""
+   subroutine frhs(neq, t, y, dy, par) bind(c)
+       use, intrinsic :: iso_c_binding
+       implicit none
+       integer(c_int), value    :: neq
+       real(c_double), value    :: t
+       complex(c_double_complex), intent(in)  :: y(neq)
+       complex(c_double_complex), intent(out) :: dy(neq)
+       type(c_ptr), value :: par
+
+       complex(c_double_complex), parameter :: a = {to_f(a)}
+       complex(c_double_complex), parameter :: b = {to_f(b)}
+       complex(c_double_complex), parameter :: c = {to_f(c)}
+
+       dy(1) = -a*y(1) + b*y(2)*y(3)
+       dy(2) =  a*y(1) - b*y(2)*y(3) - c*y(2)
+       dy(3) =  c*y(2)
+   end subroutine frhs
+   """
+
+Then compile and solve:
+
+.. code-block:: python
+
+   x = gf.compile(string=fstr)
+
+   sol = solve_complex_ivp(x.frhs.ctype, (t0, tf), y0,
+                           method="BDF", rtol=1e-8, atol=1e-8)
+
+``gf.compile`` invokes gfortran on the source string and returns an
+object whose attributes are the compiled Fortran procedures.
+``x.frhs.ctype`` is the raw ``ctypes`` function pointer, which
+:func:`~zvode.solve_complex_ivp` recognises as a compiled callback and
+invokes directly without Python overhead.
+
+Embedding constants as Fortran ``parameter`` declarations (``a``,
+``b``, ``c`` above) bakes them into the compiled code, so no ``ctx``
+pointer is needed.  The :ref:`ctx-parameter` patterns remain available
+if you need to vary parameters at runtime without recompilation.
 
 ----
 
