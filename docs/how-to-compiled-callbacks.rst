@@ -232,8 +232,8 @@ the rate constants as ``parameter`` literals:
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
-       use, intrinsic :: iso_c_binding, &
-           only: c_int, dp => c_double, cdp => c_double_complex, c_ptr
+       use, intrinsic :: iso_c_binding, only: &
+           c_int, dp => c_double, cdp => c_double_complex, c_ptr
        implicit none
        integer(c_int), value :: neq
        real(dp), value :: t    ! unused (autonomous system)
@@ -294,8 +294,8 @@ parameters through the ``ctx`` pointer and recover them in Fortran with
 
    src = """
    subroutine reaction_rhs(neq, t, y, dy, par) bind(c)
-       use, intrinsic :: iso_c_binding, &
-           only: c_int, dp => c_double, cdp => c_double_complex, c_ptr, c_f_pointer
+       use, intrinsic :: iso_c_binding, only: &
+           c_int, dp => c_double, cdp => c_double_complex, c_ptr, c_f_pointer
        implicit none
        integer(c_int), value   :: neq
        real(dp), value         :: t    ! unused (autonomous system)
