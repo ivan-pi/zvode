@@ -216,10 +216,11 @@ parameters such as ``c_double``; it is not a type itself.)
 Install with ``pip install gfort2py``; consult the gfort2py
 documentation for the supported platforms and gfortran versions.
 
-The example below is a three-species reaction with a fast forward
-rate, a non-linear back-reaction, and a slow decay.  Write the RHS as
-a ``bind(c)`` subroutine, embedding the rate constants as ``parameter``
-literals:
+The example below is a complex-valued variant of the Robertson rate
+equations — a contrived problem with no particular physical meaning,
+used here only to exercise a stiff three-component RHS.  Write the RHS
+as a ``bind(c)`` subroutine, embedding the rate constants as
+``parameter`` literals:
 
 .. code-block:: python
 
