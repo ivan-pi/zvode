@@ -289,10 +289,21 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > defined once) and registers each with `add_test`; the `Fortran tests`
   > workflow runs `ctest` under gfortran/gcc for both the LAPACK and LINPACK
   > backends.  This unblocks the multi-compiler conformance item below.
-- [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
+- [~] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
   side still needs work in general — e.g. clean compiles under strict warning
   flags for the C extension and the Fortran layer, and a review of the CMake
   setup against current best practice
+  > Progress: `cmake_minimum_required` raised from 3.17 to 3.18 — the genuine
+  > floor, since the FindPython `Development.Module` component used by the wheel
+  > build was introduced in 3.18 (3.17 failed the configure outright; only
+  > masked because CI ships newer CMake).  The sdist was verified self-contained
+  > (`pyproject.toml` `sdist.include`/`exclude` ship every build input —
+  > `CMakeLists.txt`, `extern/**`, `src/**`, `test/**` — and drop only
+  > `release-plan.md` and CI/dev files), and the sdist verify job now installs
+  > the wheel's `[test]` extra so its tests have SciPy.  Strict-warnings and
+  > ASan/UBSan jobs for the C layer already exist (`memory-safety.yml`).
+  > Remaining: a Fortran-layer warning sweep and a broader CMake best-practice
+  > review.
 
 
 ---
@@ -330,11 +341,16 @@ round-trips.
     CI matrix.  Caveat: gfort2py is gfortran-specific and not installed in CI, so
     it would get local coverage only unless one CI cell opts in; numba already
     runs in the `test,numba` cell of `test.yml`.
-- [ ] Fortran standard conformance: build and run the test suite with multiple
+- [~] Fortran standard conformance: build and run the test suite with multiple
   compilers — gfortran (current CI default), ifx, flang, nagfor, lfortran.
   nagfor's strict checking mode is particularly valuable for conformance;
   lfortran support may be limited by the Fortran 2003 abstract-class callbacks
   in the modified `zvode.F`.
+  > Started: the `Fortran tests` workflow now adds a macOS job that builds and
+  > runs the native CTest programs with the LLVM toolchain (flang for Fortran,
+  > clang for C) for both linalg backends, alongside the existing
+  > ubuntu/gfortran job — so the vendored Fortran and the C binding layer are
+  > exercised under two compiler families.  ifx, nagfor, and lfortran remain.
 - [~] Binary wheel distribution via cibuildwheel:
   - [x] `wheels.yml` builds Linux x86-64 (manylinux) and macOS arm64 wheels
   - [~] PyPI publish job with trusted publishing exists but needs hardening before
