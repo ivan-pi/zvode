@@ -939,15 +939,15 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
 /*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
 /*   stepbuf_shrink_to_fit(&buf)         -- drop growth slack        */
-/*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
+/*   stepbuf_copy_out(&buf, ts, ys)      -- copy into caller buffers */
 /*   stepbuf_free(&buf)                  -- release backing arrays   */
 /*                                                                    */
 /* The backing store is plain malloc/realloc memory, NOT NumPy        */
-/* arrays.  This keeps init/append/grow/free free of any Python C    */
-/* API call, so they may run with the GIL released — a prerequisite  */
-/* for releasing the GIL around the whole adaptive loop.  Only        */
-/* stepbuf_finalize touches the Python/NumPy C API, and it is called  */
-/* exactly once after the loop exits (with the GIL held).             */
+/* arrays, and NO StepBuf routine touches the Python/NumPy C API, so  */
+/* the entire lifecycle may run with the GIL released — a prerequisite */
+/* for releasing the GIL around the whole adaptive loop.  The caller   */
+/* allocates the output arrays and stepbuf_copy_out fills them with a  */
+/* plain memcpy.                                                       */
 /*                                                                    */
 /* On allocation failure init/append/grow return -1 without setting   */
 /* a Python exception; the caller raises one once the GIL is held.    */
@@ -1085,41 +1085,26 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
     return 0;
 }
 
-/* Build the output arrays from the filled portion of the raw buffer.
- *   *ts_out : shape (size,)       float64
- *   *ys_out : shape (neq, size)   complex128, F-contiguous
- * Returns 0 on success, -1 on failure (exception set).
+/* Copy the filled portion of the buffer into caller-provided contiguous
+ * destinations:
+ *   ts_dst : size doubles               -- the t values
+ *   ys_dst : size * neq double complex  -- column-major, column k at
+ *            offset k*neq (matches an F-contiguous (neq, size) array)
  *
- * Allocates fresh NumPy arrays and copies the buffered data into them.
- * Uses the Python/NumPy C API, so it must be called with the GIL held;
- * buf is left unchanged (still owned by the caller) in all cases. */
-static int
-stepbuf_finalize(StepBuf *buf,
-                 PyArrayObject **ts_out,
-                 PyArrayObject **ys_out)
+ * Pure C (plain memcpy) -- no Python/NumPy C API, so it may run with the
+ * GIL released.  The caller owns and sizes both destinations; buf is left
+ * unchanged. */
+static void
+stepbuf_copy_out(const StepBuf *buf, double *ts_dst, double complex *ys_dst)
 {
     assert(buf->ts != NULL && buf->ys != NULL);
     assert(buf->size > 0);           /* nothing to export from an empty buffer */
     assert(buf->size <= buf->capacity);
+    assert(ts_dst != NULL && ys_dst != NULL);
 
-    npy_intp ts_shape[1] = { buf->size };
-    PyArrayObject *ts = (PyArrayObject *)
-        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
-    if (!ts) return -1;
-    memcpy(PyArray_DATA(ts), buf->ts, (size_t)buf->size * sizeof(double));
-
-    /* F-contiguous (neq, size): column k at offset k*neq matches the
-     * column-major layout in the raw buffer, so a flat memcpy suffices. */
-    npy_intp ys_shape[2] = { buf->neq, buf->size };
-    PyArrayObject *ys = (PyArrayObject *)
-        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
-    if (!ys) { Py_DECREF(ts); return -1; }
-    memcpy(PyArray_DATA(ys), buf->ys,
+    memcpy(ts_dst, buf->ts, (size_t)buf->size * sizeof(double));
+    memcpy(ys_dst, buf->ys,
            (size_t)buf->size * buf->neq * sizeof(double complex));
-
-    *ts_out = ts;
-    *ys_out = ys;
-    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1334,10 +1319,23 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
      * at the same time (lowers peak memory for large neq). */
     stepbuf_shrink_to_fit(&buf);
 
-    /* Build the final output arrays from the filled portion of the buffer. */
-    PyArrayObject *ts_out = NULL, *ys_out = NULL;
-    if (stepbuf_finalize(&buf, &ts_out, &ys_out) < 0)
+    /* Allocate the output arrays here (StepBuf is Python-free), then let
+     * stepbuf_copy_out fill them with a plain memcpy.
+     *   ts_out : shape (size,)       float64
+     *   ys_out : shape (neq, size)   complex128, F-contiguous so column k
+     *            at offset k*neq matches the buffer's column-major layout. */
+    npy_intp ts_shape[1] = { buf.size };
+    PyArrayObject *ts_out = (PyArrayObject *)
+        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
+    if (!ts_out)
         goto cleanup;
+
+    npy_intp ys_shape[2] = { buf.neq, buf.size };
+    PyArrayObject *ys_out = (PyArrayObject *)
+        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
+    if (!ys_out) { Py_DECREF(ts_out); goto cleanup; }
+
+    stepbuf_copy_out(&buf, PyArray_DATA(ts_out), PyArray_DATA(ys_out));
 
     PyMem_Free(dky);
     stepbuf_free(&buf);
