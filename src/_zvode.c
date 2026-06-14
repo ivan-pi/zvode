@@ -1034,7 +1034,7 @@ stepbuf_grow(StepBuf *buf)
 
 /* Shrink the backing buffers so capacity == size, releasing growth slack.
  * Best-effort: if a shrinking realloc declines, the old (larger) buffer is
- * kept.  GIL-independent. */
+ * kept. */
 static void
 stepbuf_shrink_to_fit(StepBuf *buf)
 {
@@ -1089,9 +1089,7 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
  *   ys_dst : size * neq double complex  -- column-major, column k at
  *            offset k*neq (matches an F-contiguous (neq, size) array)
  *
- * Pure C (plain memcpy) -- no Python/NumPy C API, so it may run with the
- * GIL released.  The caller owns and sizes both destinations; buf is left
- * unchanged. */
+ * The caller owns and sizes both destinations; buf is left unchanged. */
 static void
 stepbuf_copy_out(const StepBuf *buf, double *ts_dst, double complex *ys_dst)
 {
