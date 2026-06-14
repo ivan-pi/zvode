@@ -73,6 +73,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `key: value` layout: a `message` / `success` / `status` verdict block, then
   `t` / `y`, then the solver counters; arrays render as `[shape dtype]`
   placeholders (the printout is not API and may change in any release)
+- `drive_adaptive`'s `StepBuf` now grows by 1.5x (was 2x) and is shrunk to
+  exactly the number of stored steps before the NumPy output arrays are
+  allocated.  Together these bound the buffer's capacity slack and stop it from
+  carrying the geometric-growth overshoot while the output array is also live,
+  lowering peak memory for large state vectors.  No behavioural change
 
 ## [0.3.0] - 2026-06-09
 

@@ -938,6 +938,7 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* Lifecycle:                                                         */
 /*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
 /*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
+/*   stepbuf_shrink_to_fit(&buf)         -- drop growth slack        */
 /*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
 /*   stepbuf_free(&buf)                  -- release backing arrays   */
 /*                                                                    */
@@ -956,8 +957,17 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* ys[k*neq .. (k+1)*neq-1].                                          */
 /* ------------------------------------------------------------------ */
 
-/* Initial column capacity.  Doubled on each overflow. */
+/* Initial column capacity.  Grown by STEPBUF_GROWTH on each overflow. */
 #define STEPBUF_INIT_CAP 10
+
+/* Geometric growth factor applied on overflow, as a num/den fraction.
+ * 3/2 (1.5x) rather than 2x: it bounds the capacity slack (and thus the
+ * peak buffer size at finalize) to 1.5x the live data instead of 2x, and
+ * a factor below the golden ratio (~1.618) lets the allocator eventually
+ * reuse previously-freed blocks.  Large buffers are mmap-backed, so the
+ * grow itself is an mremap (no physical copy) on Linux/glibc regardless. */
+#define STEPBUF_GROWTH_NUM 3
+#define STEPBUF_GROWTH_DEN 2
 
 typedef struct {
     double         *ts;  /* float64, length = capacity                  */
@@ -996,8 +1006,8 @@ stepbuf_free(StepBuf *buf)
     free(buf->ys); buf->ys = NULL;
 }
 
-/* Double capacity via realloc, preserving existing data.
- * Returns 0 on success, -1 on failure (buf left valid and unchanged). */
+/* Grow capacity by STEPBUF_GROWTH (1.5x) via realloc, preserving existing
+ * data.  Returns 0 on success, -1 on failure (buf left valid and unchanged). */
 static int
 stepbuf_grow(StepBuf *buf)
 {
@@ -1005,7 +1015,12 @@ stepbuf_grow(StepBuf *buf)
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
 
-    int new_cap = buf->capacity * 2;
+    /* Grow by the 1.5x factor; +1 guards against a no-op for tiny capacities
+     * (the integer multiply must always yield at least one extra column). */
+    int new_cap =
+        (int)((size_t)buf->capacity * STEPBUF_GROWTH_NUM / STEPBUF_GROWTH_DEN);
+    if (new_cap <= buf->capacity)
+        new_cap = buf->capacity + 1;
 
     double *new_ts = (double *)
         realloc(buf->ts, (size_t)new_cap * sizeof(double));
@@ -1019,8 +1034,34 @@ stepbuf_grow(StepBuf *buf)
 
     buf->capacity = new_cap;
 
-    assert(buf->capacity == buf->size * 2);
+    assert(buf->capacity > buf->size);
     return 0;
+}
+
+/* Shrink the backing buffers so capacity == size, releasing any unused
+ * slack left over from geometric growth.  Best-effort: a no-op when the
+ * buffer is exactly full, and on the (practically impossible) event that a
+ * shrinking realloc fails the buffer is left untouched at its larger size.
+ * Either way the data in [0, size) is preserved.  GIL-independent. */
+static void
+stepbuf_shrink_to_fit(StepBuf *buf)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);
+    assert(buf->size <= buf->capacity);
+
+    if (buf->size == buf->capacity)
+        return;                      /* already tight — nothing to release */
+
+    double *new_ts = (double *)
+        realloc(buf->ts, (size_t)buf->size * sizeof(double));
+    if (new_ts) buf->ts = new_ts;    /* keep old pointer if shrink declined */
+
+    double complex *new_ys = (double complex *)
+        realloc(buf->ys, (size_t)buf->size * buf->neq * sizeof(double complex));
+    if (new_ys) buf->ys = new_ys;
+
+    buf->capacity = buf->size;
 }
 
 /* Append one (t, y[neq]) pair, growing if needed.
@@ -1293,6 +1334,11 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
             zvindy_iflag, zvindy_t);
         goto cleanup;
     }
+
+    /* Release the geometric-growth slack before allocating the output
+     * arrays, so the buffer and the output do not both carry the overshoot
+     * at the same time (lowers peak memory for large neq). */
+    stepbuf_shrink_to_fit(&buf);
 
     /* Build the final output arrays from the filled portion of the buffer. */
     PyArrayObject *ts_out = NULL, *ys_out = NULL;
