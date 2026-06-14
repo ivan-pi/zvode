@@ -960,14 +960,11 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* Initial column capacity.  Grown by STEPBUF_GROWTH on each overflow. */
 #define STEPBUF_INIT_CAP 10
 
-/* Geometric growth factor applied on overflow, as a num/den fraction.
- * 3/2 (1.5x) rather than 2x: it bounds the capacity slack (and thus the
- * peak buffer size at finalize) to 1.5x the live data instead of 2x, and
- * a factor below the golden ratio (~1.618) lets the allocator eventually
- * reuse previously-freed blocks.  Large buffers are mmap-backed, so the
- * grow itself is an mremap (no physical copy) on Linux/glibc regardless. */
-#define STEPBUF_GROWTH_NUM 3
-#define STEPBUF_GROWTH_DEN 2
+/* Geometric growth factor applied on overflow.  1.5x rather than 2x bounds
+ * the capacity slack (and thus the peak buffer size at finalize) to 1.5x the
+ * live data, and a factor below the golden ratio (~1.618) lets the allocator
+ * eventually reuse previously-freed blocks. */
+#define STEPBUF_GROWTH 1.5
 
 typedef struct {
     double         *ts;  /* float64, length = capacity                  */
@@ -1015,10 +1012,9 @@ stepbuf_grow(StepBuf *buf)
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
 
-    /* Grow by the 1.5x factor; +1 guards against a no-op for tiny capacities
-     * (the integer multiply must always yield at least one extra column). */
-    int new_cap =
-        (int)((size_t)buf->capacity * STEPBUF_GROWTH_NUM / STEPBUF_GROWTH_DEN);
+    /* +1 guards against a no-op for tiny capacities (the truncated product
+     * must always yield at least one extra column). */
+    int new_cap = (int)(buf->capacity * STEPBUF_GROWTH);
     if (new_cap <= buf->capacity)
         new_cap = buf->capacity + 1;
 
@@ -1038,11 +1034,9 @@ stepbuf_grow(StepBuf *buf)
     return 0;
 }
 
-/* Shrink the backing buffers so capacity == size, releasing any unused
- * slack left over from geometric growth.  Best-effort: a no-op when the
- * buffer is exactly full, and on the (practically impossible) event that a
- * shrinking realloc fails the buffer is left untouched at its larger size.
- * Either way the data in [0, size) is preserved.  GIL-independent. */
+/* Shrink the backing buffers so capacity == size, releasing growth slack.
+ * Best-effort: if a shrinking realloc declines, the old (larger) buffer is
+ * kept.  GIL-independent. */
 static void
 stepbuf_shrink_to_fit(StepBuf *buf)
 {
