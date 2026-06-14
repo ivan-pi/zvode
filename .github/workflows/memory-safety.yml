@@ -7,10 +7,11 @@ on:
 
 # The hand-written C binding layer (src/_zvode.c) — the integration loops,
 # the growable StepBuf, and the raw function-pointer callbacks — is the main
-# memory-safety risk surface.  These jobs build that layer with the sanitizers
-# and with strict warning flags.  Both are scoped to the C source; the vendored
-# upstream Fortran is left untouched (see the ZVODE_SANITIZE / ZVODE_STRICT_WARNINGS
-# options in CMakeLists.txt).
+# memory-safety risk surface.  The sanitizers job builds it with ASan/UBSan and
+# additionally passes gfortran -fcheck=all (via CMAKE_Fortran_FLAGS) so the
+# vendored Fortran core gets runtime checking too; the strict-warnings job
+# compiles the C source with strict warning flags.  See the ZVODE_SANITIZE /
+# ZVODE_STRICT_WARNINGS options in CMakeLists.txt.
 
 jobs:
   sanitizers:
@@ -34,7 +35,8 @@ jobs:
         run: |
           pip install -v ".[test]" \
             --config-settings="cmake.build-type=Debug" \
-            --config-settings="cmake.define.ZVODE_SANITIZE=ON"
+            --config-settings="cmake.define.ZVODE_SANITIZE=ON" \
+            --config-settings="cmake.define.CMAKE_Fortran_FLAGS=-fcheck=all"
 
       - name: Run tests under the sanitizers
         run: |

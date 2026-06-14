@@ -190,12 +190,19 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   body contains no Python API calls other than inside the `cb.error` branch, which
   is never taken for compiled callbacks; `drive_adaptive` is blocked on the
   `StepBuf` refactor below.
-- [ ] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
+- [x] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
   its backing store, so the adaptive loop in `drive_adaptive_py` contains no Python
   C API calls when compiled callbacks are in use.  The final output arrays are
   constructed from the raw buffer only after the loop exits (and the GIL is
   reacquired).  This is a prerequisite for releasing the GIL around the entire
   `drive_adaptive` loop.
+  > Done.  `StepBuf` (`src/_zvode.c`) is backed by plain `malloc`/`realloc` and
+  > touches no Python/NumPy C API across its whole lifecycle (`stepbuf_init` /
+  > `_grow` / `_shrink_to_fit` / `_append` / `_copy_out`); errors are deferred and
+  > raised by the caller once the GIL is held.  `drive_adaptive` allocates the
+  > NumPy output arrays only after the loop exits and fills them with a single
+  > `memcpy` via `stepbuf_copy_out`.  The GIL is not yet released around the loop —
+  > that remains the open item above.
 - [x] API hardening: review and stabilise the procedural interface signatures,
   return types, and error reporting ahead of the 1.0.0 API freeze.
   > Type annotations on `solve_complex_ivp` are done (landed in 0.3.0).
@@ -236,10 +243,16 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > pure-Python `BDF`, and the classic `scipy.integrate.ode("zvode")` (with
   > `with_jacobian=True` for a fair stiff baseline).  The script stamps the
   > figure with the zvode commit and the SciPy/NumPy/Python versions used.
-- [ ] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
+- [x] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
   problems through both wrappers and assert the trajectories agree to tolerance.
   Both wrap the same Fortran core, so this is a near-free regression guard for
   the C-layer loops and option mapping.
+  > Done in `test/test_scipy_cross_validation.py`.  Parametrised over three
+  > problems (coupled-linear, tridiagonal, nonlinear) x {Adams, BDF} x {no-jac,
+  > dense, banded}, plus a curated set of backward (decreasing-knot) cases, with
+  > each wrapper pinned to the same ZVODE `MF` flag; closed-form references guard
+  > against a shared solver bug.  `scipy.integrate.ode` is pulled in via
+  > `pytest.importorskip`, so the suite self-skips when SciPy is absent.
 - [x] Memory-safety CI job: build the C extension with ASan/UBSan (or run the
   test suite under valgrind) in a dedicated workflow.  The hand-written C loops,
   the growable `StepBuf`, and the raw function-pointer callbacks are the risk
@@ -276,10 +289,24 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > defined once) and registers each with `add_test`; the `Fortran tests`
   > workflow runs `ctest` under gfortran/gcc for both the LAPACK and LINPACK
   > backends.  This unblocks the multi-compiler conformance item below.
-- [ ] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
+- [~] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
   side still needs work in general — e.g. clean compiles under strict warning
   flags for the C extension and the Fortran layer, and a review of the CMake
   setup against current best practice
+  > Progress: `cmake_minimum_required` raised from 3.17 to 3.18 — the genuine
+  > floor, since the FindPython `Development.Module` component used by the wheel
+  > build was introduced in 3.18 (3.17 failed the configure outright; only
+  > masked because CI ships newer CMake).  The sdist was verified self-contained
+  > (`pyproject.toml` `sdist.include`/`exclude` ship every build input —
+  > `CMakeLists.txt`, `extern/**`, `src/**`, `test/**` — and drop only
+  > `release-plan.md` and CI/dev files), and the sdist verify job now installs
+  > the wheel's `[test]` extra so its tests have SciPy.  Strict-warnings and
+  > ASan/UBSan jobs for the C layer already exist (`memory-safety.yml`); the
+  > sanitizers job now also passes gfortran `-fcheck=all`
+  > (`-DCMAKE_Fortran_FLAGS`) so the vendored Fortran core gets runtime checking
+  > (bounds, array temporaries, pointers) under the same test run.  Remaining: a
+  > Fortran-layer compile-warning sweep and a broader CMake best-practice
+  > review.
 
 
 ---
@@ -317,11 +344,16 @@ round-trips.
     CI matrix.  Caveat: gfort2py is gfortran-specific and not installed in CI, so
     it would get local coverage only unless one CI cell opts in; numba already
     runs in the `test,numba` cell of `test.yml`.
-- [ ] Fortran standard conformance: build and run the test suite with multiple
+- [~] Fortran standard conformance: build and run the test suite with multiple
   compilers — gfortran (current CI default), ifx, flang, nagfor, lfortran.
   nagfor's strict checking mode is particularly valuable for conformance;
   lfortran support may be limited by the Fortran 2003 abstract-class callbacks
   in the modified `zvode.F`.
+  > Started: the `Fortran tests` workflow now adds a macOS job that builds and
+  > runs the native CTest programs with the LLVM toolchain (flang for Fortran,
+  > clang for C) for both linalg backends, alongside the existing
+  > ubuntu/gfortran job — so the vendored Fortran and the C binding layer are
+  > exercised under two compiler families.  ifx, nagfor, and lfortran remain.
 - [~] Binary wheel distribution via cibuildwheel:
   - [x] `wheels.yml` builds Linux x86-64 (manylinux) and macOS arm64 wheels
   - [~] PyPI publish job with trusted publishing exists but needs hardening before

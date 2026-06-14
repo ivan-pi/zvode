@@ -54,8 +54,8 @@ jobs:
             -w wheelhouse/ \
             -v
 
-      - name: Install wheel and pytest
-        run: pip install wheelhouse/*.whl pytest
+      - name: Install wheel and test dependencies
+        run: pip install "$(ls wheelhouse/*.whl)[test]"
 
       # Run tests from the sdist tree so we're sure the test files are present.
       - name: Run tests

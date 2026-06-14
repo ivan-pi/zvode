@@ -40,3 +40,39 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-fortran --output-on-failure
+
+  # Multi-compiler conformance: native CTest programs built with the LLVM
+  # toolchain (flang + clang) on macOS, using Accelerate for BLAS/LAPACK.
+  ctest-macos-flang:
+    name: CTest / macos-latest / flang+clang / ${{ matrix.backend }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [LAPACK, LINPACK]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flang, CMake and Ninja
+        run: brew install flang cmake ninja
+
+      - name: Locate the flang binary
+        run: |
+          FC=$(command -v flang-new || command -v flang)
+          echo "Using Fortran compiler: $FC"
+          echo "FC=$FC" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-fortran -G Ninja
+          -DZVODE_BUILD_TESTS=ON
+          -DZVODE_LINALG_BACKEND=${{ matrix.backend }}
+          -DCMAKE_Fortran_COMPILER=${{ env.FC }}
+          -DCMAKE_C_COMPILER=clang
+
+      - name: Build
+        run: cmake --build build-fortran
+
+      - name: Test
+        run: ctest --test-dir build-fortran --output-on-failure

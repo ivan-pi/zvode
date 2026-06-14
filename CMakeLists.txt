@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.18)
 
 # Two configuration paths share this file:
 #   * the scikit-build-core wheel build (SKBUILD_* variables defined), which
