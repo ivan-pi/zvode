@@ -54,8 +54,13 @@ jobs:
             -w wheelhouse/ \
             -v
 
-      - name: Install wheel and pytest
-        run: pip install wheelhouse/*.whl pytest
+      # Install the wheel together with its `test` extra so the runtime test
+      # dependencies (pytest, scipy) are present.  Several tests import SciPy at
+      # collection time (e.g. test_extra.py, test_zvode_ivp.py), so a bare
+      # `pip install <wheel> pytest` errors out during collection.  Sourcing the
+      # extra from the wheel keeps these deps in sync with pyproject.toml.
+      - name: Install wheel and test dependencies
+        run: pip install "$(ls wheelhouse/*.whl)[test]"
 
       # Run tests from the sdist tree so we're sure the test files are present.
       - name: Run tests

@@ -190,12 +190,19 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   body contains no Python API calls other than inside the `cb.error` branch, which
   is never taken for compiled callbacks; `drive_adaptive` is blocked on the
   `StepBuf` refactor below.
-- [ ] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
+- [x] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
   its backing store, so the adaptive loop in `drive_adaptive_py` contains no Python
   C API calls when compiled callbacks are in use.  The final output arrays are
   constructed from the raw buffer only after the loop exits (and the GIL is
   reacquired).  This is a prerequisite for releasing the GIL around the entire
   `drive_adaptive` loop.
+  > Done.  `StepBuf` (`src/_zvode.c`) is backed by plain `malloc`/`realloc` and
+  > touches no Python/NumPy C API across its whole lifecycle (`stepbuf_init` /
+  > `_grow` / `_shrink_to_fit` / `_append` / `_copy_out`); errors are deferred and
+  > raised by the caller once the GIL is held.  `drive_adaptive` allocates the
+  > NumPy output arrays only after the loop exits and fills them with a single
+  > `memcpy` via `stepbuf_copy_out`.  The GIL is not yet released around the loop —
+  > that remains the open item above.
 - [x] API hardening: review and stabilise the procedural interface signatures,
   return types, and error reporting ahead of the 1.0.0 API freeze.
   > Type annotations on `solve_complex_ivp` are done (landed in 0.3.0).
@@ -236,10 +243,16 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > pure-Python `BDF`, and the classic `scipy.integrate.ode("zvode")` (with
   > `with_jacobian=True` for a fair stiff baseline).  The script stamps the
   > figure with the zvode commit and the SciPy/NumPy/Python versions used.
-- [ ] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
+- [x] Cross-validation suite against `scipy.integrate.ode('zvode')`: run identical
   problems through both wrappers and assert the trajectories agree to tolerance.
   Both wrap the same Fortran core, so this is a near-free regression guard for
   the C-layer loops and option mapping.
+  > Done in `test/test_scipy_cross_validation.py`.  Parametrised over three
+  > problems (coupled-linear, tridiagonal, nonlinear) x {Adams, BDF} x {no-jac,
+  > dense, banded}, plus a curated set of backward (decreasing-knot) cases, with
+  > each wrapper pinned to the same ZVODE `MF` flag; closed-form references guard
+  > against a shared solver bug.  `scipy.integrate.ode` is pulled in via
+  > `pytest.importorskip`, so the suite self-skips when SciPy is absent.
 - [x] Memory-safety CI job: build the C extension with ASan/UBSan (or run the
   test suite under valgrind) in a dedicated workflow.  The hand-written C loops,
   the growable `StepBuf`, and the raw function-pointer callbacks are the risk
