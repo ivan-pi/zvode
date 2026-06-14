@@ -938,15 +938,16 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* Lifecycle:                                                         */
 /*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
 /*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
-/*   stepbuf_finalize(&buf, &ts, &ys)    -- produce output arrays    */
+/*   stepbuf_shrink_to_fit(&buf)         -- drop growth slack        */
+/*   stepbuf_copy_out(&buf, ts, ys)      -- copy into caller buffers */
 /*   stepbuf_free(&buf)                  -- release backing arrays   */
 /*                                                                    */
 /* The backing store is plain malloc/realloc memory, NOT NumPy        */
-/* arrays.  This keeps init/append/grow/free free of any Python C    */
-/* API call, so they may run with the GIL released — a prerequisite  */
-/* for releasing the GIL around the whole adaptive loop.  Only        */
-/* stepbuf_finalize touches the Python/NumPy C API, and it is called  */
-/* exactly once after the loop exits (with the GIL held).             */
+/* arrays, and NO StepBuf routine touches the Python/NumPy C API, so  */
+/* the entire lifecycle may run with the GIL released — a prerequisite */
+/* for releasing the GIL around the whole adaptive loop.  The caller   */
+/* allocates the output arrays and stepbuf_copy_out fills them with a  */
+/* plain memcpy.                                                       */
 /*                                                                    */
 /* On allocation failure init/append/grow return -1 without setting   */
 /* a Python exception; the caller raises one once the GIL is held.    */
@@ -956,8 +957,14 @@ static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
 /* ys[k*neq .. (k+1)*neq-1].                                          */
 /* ------------------------------------------------------------------ */
 
-/* Initial column capacity.  Doubled on each overflow. */
+/* Initial column capacity.  Grown by STEPBUF_GROWTH on each overflow. */
 #define STEPBUF_INIT_CAP 10
+
+/* Geometric growth factor applied on overflow.  1.5x rather than 2x bounds
+ * the capacity slack (and thus the peak buffer size at finalize) to 1.5x the
+ * live data, and a factor below the golden ratio (~1.618) lets the allocator
+ * eventually reuse previously-freed blocks. */
+#define STEPBUF_GROWTH 1.5
 
 typedef struct {
     double         *ts;  /* float64, length = capacity                  */
@@ -996,8 +1003,8 @@ stepbuf_free(StepBuf *buf)
     free(buf->ys); buf->ys = NULL;
 }
 
-/* Double capacity via realloc, preserving existing data.
- * Returns 0 on success, -1 on failure (buf left valid and unchanged). */
+/* Grow capacity by STEPBUF_GROWTH (1.5x) via realloc, preserving existing
+ * data.  Returns 0 on success, -1 on failure (buf left valid and unchanged). */
 static int
 stepbuf_grow(StepBuf *buf)
 {
@@ -1005,7 +1012,9 @@ stepbuf_grow(StepBuf *buf)
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
 
-    int new_cap = buf->capacity * 2;
+    /* +1 guarantees forward progress even if the truncated product would
+     * otherwise stall (only possible at capacity == 1). */
+    int new_cap = (int)(buf->capacity * STEPBUF_GROWTH) + 1;
 
     double *new_ts = (double *)
         realloc(buf->ts, (size_t)new_cap * sizeof(double));
@@ -1019,8 +1028,32 @@ stepbuf_grow(StepBuf *buf)
 
     buf->capacity = new_cap;
 
-    assert(buf->capacity == buf->size * 2);
+    assert(buf->capacity > buf->size);
     return 0;
+}
+
+/* Shrink the backing buffers so capacity == size, releasing growth slack.
+ * Best-effort: if a shrinking realloc declines, the old (larger) buffer is
+ * kept. */
+static void
+stepbuf_shrink_to_fit(StepBuf *buf)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);
+    assert(buf->size <= buf->capacity);
+
+    if (buf->size == buf->capacity)
+        return;                      /* already tight — nothing to release */
+
+    double *new_ts = (double *)
+        realloc(buf->ts, (size_t)buf->size * sizeof(double));
+    if (new_ts) buf->ts = new_ts;    /* keep old pointer if shrink declined */
+
+    double complex *new_ys = (double complex *)
+        realloc(buf->ys, (size_t)buf->size * buf->neq * sizeof(double complex));
+    if (new_ys) buf->ys = new_ys;
+
+    buf->capacity = buf->size;
 }
 
 /* Append one (t, y[neq]) pair, growing if needed.
@@ -1050,41 +1083,24 @@ stepbuf_append(StepBuf *buf, double t, const double complex *y)
     return 0;
 }
 
-/* Build the output arrays from the filled portion of the raw buffer.
- *   *ts_out : shape (size,)       float64
- *   *ys_out : shape (neq, size)   complex128, F-contiguous
- * Returns 0 on success, -1 on failure (exception set).
+/* Copy the filled portion of the buffer into caller-provided contiguous
+ * destinations:
+ *   ts_dst : size doubles               -- the t values
+ *   ys_dst : size * neq double complex  -- column-major, column k at
+ *            offset k*neq (matches an F-contiguous (neq, size) array)
  *
- * Allocates fresh NumPy arrays and copies the buffered data into them.
- * Uses the Python/NumPy C API, so it must be called with the GIL held;
- * buf is left unchanged (still owned by the caller) in all cases. */
-static int
-stepbuf_finalize(StepBuf *buf,
-                 PyArrayObject **ts_out,
-                 PyArrayObject **ys_out)
+ * The caller owns and sizes both destinations; buf is left unchanged. */
+static void
+stepbuf_copy_out(const StepBuf *buf, double *ts_dst, double complex *ys_dst)
 {
     assert(buf->ts != NULL && buf->ys != NULL);
     assert(buf->size > 0);           /* nothing to export from an empty buffer */
     assert(buf->size <= buf->capacity);
+    assert(ts_dst != NULL && ys_dst != NULL);
 
-    npy_intp ts_shape[1] = { buf->size };
-    PyArrayObject *ts = (PyArrayObject *)
-        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
-    if (!ts) return -1;
-    memcpy(PyArray_DATA(ts), buf->ts, (size_t)buf->size * sizeof(double));
-
-    /* F-contiguous (neq, size): column k at offset k*neq matches the
-     * column-major layout in the raw buffer, so a flat memcpy suffices. */
-    npy_intp ys_shape[2] = { buf->neq, buf->size };
-    PyArrayObject *ys = (PyArrayObject *)
-        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
-    if (!ys) { Py_DECREF(ts); return -1; }
-    memcpy(PyArray_DATA(ys), buf->ys,
+    memcpy(ts_dst, buf->ts, (size_t)buf->size * sizeof(double));
+    memcpy(ys_dst, buf->ys,
            (size_t)buf->size * buf->neq * sizeof(double complex));
-
-    *ts_out = ts;
-    *ys_out = ys;
-    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1294,10 +1310,27 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
         goto cleanup;
     }
 
-    /* Build the final output arrays from the filled portion of the buffer. */
-    PyArrayObject *ts_out = NULL, *ys_out = NULL;
-    if (stepbuf_finalize(&buf, &ts_out, &ys_out) < 0)
+    /* Drop the growth slack before allocating the output, so the buffer and
+     * output are not both oversized at once (lowers peak memory for large neq). */
+    stepbuf_shrink_to_fit(&buf);
+
+    /* Allocate the output arrays here (StepBuf is Python-free), then let
+     * stepbuf_copy_out fill them with a plain memcpy.
+     *   ts_out : shape (size,)       float64
+     *   ys_out : shape (neq, size)   complex128, F-contiguous so column k
+     *            at offset k*neq matches the buffer's column-major layout. */
+    npy_intp ts_shape[1] = { buf.size };
+    PyArrayObject *ts_out = (PyArrayObject *)
+        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
+    if (!ts_out)
         goto cleanup;
+
+    npy_intp ys_shape[2] = { buf.neq, buf.size };
+    PyArrayObject *ys_out = (PyArrayObject *)
+        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
+    if (!ys_out) { Py_DECREF(ts_out); goto cleanup; }
+
+    stepbuf_copy_out(&buf, PyArray_DATA(ts_out), PyArray_DATA(ys_out));
 
     PyMem_Free(dky);
     stepbuf_free(&buf);

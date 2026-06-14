@@ -284,7 +284,7 @@ def test_adaptive_buffer_no_refine():
 
     assert sol.success, sol.message
 
-    # Output structure produced by stepbuf_finalize.
+    # Output structure produced by stepbuf_copy_out.
     assert sol.t.dtype == np.float64
     assert sol.y.dtype == np.complex128
     assert sol.y.flags["F_CONTIGUOUS"]

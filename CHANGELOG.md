@@ -73,6 +73,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `key: value` layout: a `message` / `success` / `status` verdict block, then
   `t` / `y`, then the solver counters; arrays render as `[shape dtype]`
   placeholders (the printout is not API and may change in any release)
+- `drive_adaptive`'s `StepBuf` now grows by 1.5x (was 2x) and is shrunk to
+  exactly the number of stored steps before the NumPy output arrays are
+  allocated.  Together these bound the buffer's capacity slack and stop it from
+  carrying the geometric-growth overshoot while the output array is also live,
+  lowering peak memory for large state vectors.  No behavioural change
+- `StepBuf` is now entirely free of the Python/NumPy C API: `drive_adaptive`
+  allocates the output arrays and the renamed `stepbuf_copy_out` (was
+  `stepbuf_finalize`) fills them with a plain `memcpy`.  The whole `StepBuf`
+  lifecycle is now GIL-independent and unit-testable as pure C, and the
+  (potentially large) final copy no longer needs the GIL held.  No behavioural
+  change
 
 ## [0.3.0] - 2026-06-09
 
