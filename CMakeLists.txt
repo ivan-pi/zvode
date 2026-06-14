@@ -1,8 +1,3 @@
-# 3.18 is the genuine floor for the wheel build: the FindPython
-# `Development.Module` component used below was introduced in CMake 3.18.
-# (CI environments ship far newer CMake; e.g. LLVMFlang detection, used by the
-# macOS flang/clang conformance job, needs 3.25+, but that is a runner
-# concern, not a hard floor for the standalone Fortran build.)
 cmake_minimum_required(VERSION 3.18)
 
 # Two configuration paths share this file:

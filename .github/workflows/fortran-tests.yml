@@ -41,12 +41,8 @@ jobs:
       - name: Test
         run: ctest --test-dir build-fortran --output-on-failure
 
-  # Multi-compiler conformance: build the same native test programs on macOS
-  # with the LLVM toolchain (flang for Fortran, clang for C) instead of the
-  # GNU toolchain above.  This shakes out gfortran-isms in the vendored Fortran
-  # and the C binding layer ahead of the 1.0.0 multi-compiler conformance goal.
-  # LAPACK/BLAS are provided by the system Accelerate framework, so no OpenBLAS
-  # install is needed for either backend.
+  # Multi-compiler conformance: native CTest programs built with the LLVM
+  # toolchain (flang + clang) on macOS, using Accelerate for BLAS/LAPACK.
   ctest-macos-flang:
     name: CTest / macos-latest / flang+clang / ${{ matrix.backend }}
     runs-on: macos-latest
@@ -62,10 +58,6 @@ jobs:
         run: brew install flang cmake ninja
 
       - name: Locate the flang binary
-        # Homebrew's flang has been published as both `flang-new` (older LLVM)
-        # and `flang` (LLVM 20+); pick whichever exists.  CMake needs >= 3.25 to
-        # recognise the LLVMFlang compiler id, which the runner's Homebrew CMake
-        # satisfies.
         run: |
           FC=$(command -v flang-new || command -v flang)
           echo "Using Fortran compiler: $FC"
