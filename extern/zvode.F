@@ -12,6 +12,7 @@ C       to use functors instead of external procedures
         PUBLIC :: XSETF, XSETUN, ZVSRCO
         PUBLIC :: XERRWD
         PUBLIC :: use_linpack
+        PUBLIC :: DP
 
         INTEGER, PARAMETER :: DP = KIND(1.0D0)
 #ifdef ZVODE_USE_LINPACK
