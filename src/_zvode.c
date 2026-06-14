@@ -1012,12 +1012,9 @@ stepbuf_grow(StepBuf *buf)
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
 
-    /* Ensure forward progress: only capacity == 1 truncates back to the
-     * current capacity (1.5x rounds up for any capacity >= 2).  Unreachable
-     * with STEPBUF_INIT_CAP == 10, but cheap insurance if it ever changes. */
-    int new_cap = (int)(buf->capacity * STEPBUF_GROWTH);
-    if (new_cap <= buf->capacity)
-        new_cap = buf->capacity + 1;
+    /* +1 guarantees forward progress even if the truncated product would
+     * otherwise stall (only possible at capacity == 1). */
+    int new_cap = (int)(buf->capacity * STEPBUF_GROWTH) + 1;
 
     double *new_ts = (double *)
         realloc(buf->ts, (size_t)new_cap * sizeof(double));
@@ -1315,9 +1312,8 @@ drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
         goto cleanup;
     }
 
-    /* Release the geometric-growth slack before allocating the output
-     * arrays, so the buffer and the output do not both carry the overshoot
-     * at the same time (lowers peak memory for large neq). */
+    /* Drop the growth slack before allocating the output, so the buffer and
+     * output are not both oversized at once (lowers peak memory for large neq). */
     stepbuf_shrink_to_fit(&buf);
 
     /* Allocate the output arrays here (StepBuf is Python-free), then let
