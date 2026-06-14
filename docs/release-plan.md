@@ -301,8 +301,11 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > `CMakeLists.txt`, `extern/**`, `src/**`, `test/**` — and drop only
   > `release-plan.md` and CI/dev files), and the sdist verify job now installs
   > the wheel's `[test]` extra so its tests have SciPy.  Strict-warnings and
-  > ASan/UBSan jobs for the C layer already exist (`memory-safety.yml`).
-  > Remaining: a Fortran-layer warning sweep and a broader CMake best-practice
+  > ASan/UBSan jobs for the C layer already exist (`memory-safety.yml`); the
+  > sanitizers job now also passes gfortran `-fcheck=all`
+  > (`-DCMAKE_Fortran_FLAGS`) so the vendored Fortran core gets runtime checking
+  > (bounds, array temporaries, pointers) under the same test run.  Remaining: a
+  > Fortran-layer compile-warning sweep and a broader CMake best-practice
   > review.
 
 
