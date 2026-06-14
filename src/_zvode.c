@@ -1012,8 +1012,9 @@ stepbuf_grow(StepBuf *buf)
     assert(buf->capacity > 0);
     assert(buf->size == buf->capacity);  /* grow is only called when full */
 
-    /* +1 guards against a no-op for tiny capacities (the truncated product
-     * must always yield at least one extra column). */
+    /* Ensure forward progress: only capacity == 1 truncates back to the
+     * current capacity (1.5x rounds up for any capacity >= 2).  Unreachable
+     * with STEPBUF_INIT_CAP == 10, but cheap insurance if it ever changes. */
     int new_cap = (int)(buf->capacity * STEPBUF_GROWTH);
     if (new_cap <= buf->capacity)
         new_cap = buf->capacity + 1;
