@@ -15,8 +15,8 @@ sphinx-build -b html docs docs/_build/html
 - **[`tutorial-complex-ode.rst`](tutorial-complex-ode.rst)** — a gentle,
   step-by-step walk-through that solves the driven scalar ODE
   `y' = 10·exp(2πi·t)·y` with `solve_complex_ivp` and visualizes the
-  solution (real/imaginary parts, modulus, and a parametric curve in the
-  complex plane). Reproduces an example from the Wolfram Language
+  solution (real/imaginary parts and modulus versus time, plus a parametric
+  curve in the complex plane). Reproduces an example from the Wolfram Language
   documentation. The companion script is
   [`demo_complex_ode.py`](demo_complex_ode.py).
 

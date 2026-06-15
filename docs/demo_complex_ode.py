@@ -29,12 +29,12 @@ Because ``e^{2πi t} = 1`` whenever ``t`` is an integer, the solution
 returns to ``y = 1`` at every integer time; in particular ``y(5) = 1``.
 We use this closed form only to check the numerical accuracy.
 
-The script produces three plots, mirroring the Wolfram example:
+The script produces two figures, mirroring the Wolfram example:
 
-  1. real and imaginary parts of ``y`` versus the real variable ``t``,
-  2. the modulus ``|y|`` versus ``t``,
-  3. the trajectory drawn parametrically in the complex plane, coloured
-     by ``t``.
+  1. the real part, imaginary part, and modulus ``|y|`` versus the real
+     variable ``t``,
+  2. the trajectory drawn parametrically in the complex plane, with
+     arrows indicating the direction of travel.
 
 Run with::
 
@@ -43,7 +43,6 @@ Run with::
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 
 from zvode import solve_complex_ivp
 
@@ -89,45 +88,44 @@ print(f"y(5) = {y[-1]:.6f}  (analytic value: 1)")
 # ---------------------------------------------------------------------
 # 3. Plot
 # ---------------------------------------------------------------------
-fig = plt.figure(figsize=(13, 5))
-gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.0])
-ax_ri = fig.add_subplot(gs[0, 0])   # real & imaginary parts vs t
-ax_abs = fig.add_subplot(gs[1, 0])  # |y| vs t
-ax_c = fig.add_subplot(gs[:, 1])    # parametric curve in complex plane
+title = r"$y' = 10\,e^{2\pi i t}\,y,\quad y(0) = 1,\quad t \in [0, 5]$"
 
-# (1) Real and imaginary parts vs t
-ax_ri.plot(t_eval, y.real, label=r"$\mathrm{Re}\,y$")
-ax_ri.plot(t_eval, y.imag, "--", label=r"$\mathrm{Im}\,y$")
-ax_ri.set_title("Real and imaginary parts")
-ax_ri.set_xlabel("$t$")
-ax_ri.legend(loc="upper right")
-ax_ri.grid(True, alpha=0.4)
+# Figure 1 — real part, imaginary part, and modulus versus t.
+fig1, ax = plt.subplots(figsize=(8, 5))
+ax.plot(t_eval, y.real, label=r"$\mathrm{Re}\,y$")
+ax.plot(t_eval, y.imag, "--", label=r"$\mathrm{Im}\,y$")
+ax.plot(t_eval, np.abs(y), color="tab:purple", label=r"$|y|$")
+ax.set_title("Real part, imaginary part, and modulus\n" + title)
+ax.set_xlabel("$t$")
+ax.set_ylabel("$y$")
+ax.legend(loc="upper right")
+ax.grid(True, alpha=0.4)
+fig1.tight_layout()
 
-# (2) Modulus |y| vs t
-ax_abs.plot(t_eval, np.abs(y), color="tab:purple")
-ax_abs.set_title(r"Modulus $|y|$")
-ax_abs.set_xlabel("$t$")
-ax_abs.set_ylabel("$|y|$")
-ax_abs.grid(True, alpha=0.4)
+# Figure 2 — trajectory in the complex plane, with direction arrows.
+fig2, ax_c = plt.subplots(figsize=(6, 6))
+ax_c.plot(y.real, y.imag, color="tab:blue", linewidth=2)
 
-# (3) Parametric trajectory in the complex plane, coloured by t
-points = np.column_stack([y.real, y.imag]).reshape(-1, 1, 2)
-segments = np.concatenate([points[:-1], points[1:]], axis=1)
-lc = LineCollection(segments, cmap="viridis", linewidth=2)
-lc.set_array(t_eval)
-ax_c.add_collection(lc)
-fig.colorbar(lc, ax=ax_c, label="$t$")
+# The solution is periodic (period 1), so one loop suffices to read off
+# the direction of travel.  Drop a few arrows along the first period; a
+# fixed-size arrowhead is drawn even though successive points are close.
+period = len(t_eval) // 5  # samples per unit-time period
+for frac in (0.15, 0.45, 0.78):
+    i = int(frac * period)
+    ax_c.annotate(
+        "",
+        xy=(y.real[i + 1], y.imag[i + 1]),
+        xytext=(y.real[i], y.imag[i]),
+        arrowprops=dict(arrowstyle="-|>", color="tab:red", lw=2, mutation_scale=22),
+    )
 
-ax_c.plot(y.real[0], y.imag[0], "o", color="tab:green", zorder=5, label="$t=0$")
-ax_c.plot(y.real[-1], y.imag[-1], "s", color="tab:red", zorder=5, label="$t=5$")
-ax_c.autoscale()
+ax_c.plot(y.real[0], y.imag[0], "o", color="tab:green", zorder=5, label="start $y(0)=1$")
 ax_c.set_aspect("equal")
-ax_c.set_title("Trajectory in the complex plane")
+ax_c.set_title("Trajectory in the complex plane\n" + title)
 ax_c.set_xlabel(r"$\mathrm{Re}\,y$")
 ax_c.set_ylabel(r"$\mathrm{Im}\,y$")
 ax_c.legend(loc="upper right")
 ax_c.grid(True, alpha=0.4)
+fig2.tight_layout()
 
-fig.suptitle(r"$y' = 10\,e^{2\pi i t}\,y,\quad y(0) = 1,\quad t \in [0, 5]$")
-fig.tight_layout()
 plt.show()

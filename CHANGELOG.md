@@ -13,8 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   [Wolfram Language complex-ODE visualization example](https://www.wolfram.com/language/12/complex-visualization/solutions-of-complex-odes.html).
   Adds `docs/tutorial-complex-ode.rst` (step-by-step, `solve_complex_ivp` based)
   and the runnable `docs/demo_complex_ode.py`, which checks the result against
-  the analytic solution and plots the real/imaginary parts, the modulus, and a
-  parametric trajectory in the complex plane.
+  the analytic solution and plots the real/imaginary parts and modulus versus
+  time, plus a parametric trajectory in the complex plane with direction
+  arrows.
 
 - Cross-validation test suite (`test/test_scipy_cross_validation.py`) that runs
   identical holomorphic problems through both `solve_complex_ivp` and

@@ -105,10 +105,13 @@ We can confirm the result against the closed form:
 Step 3 — visualize
 ------------------
 
-The Wolfram example draws three views of the solution.  Each is a few lines of
+The Wolfram example draws the solution two ways.  Each is a few lines of
 Matplotlib.
 
-**Real and imaginary parts versus the real variable** ``t``:
+**The real part, imaginary part, and modulus versus the real variable** ``t``.
+Plotting all three together shows the oscillation and its envelope at a glance;
+the modulus peaks near ``|y| ≈ 5`` once per period and returns to 1 at every
+integer ``t``:
 
 .. code-block:: python
 
@@ -116,43 +119,45 @@ Matplotlib.
 
    plt.plot(t_eval, y.real, label=r"$\mathrm{Re}\,y$")
    plt.plot(t_eval, y.imag, "--", label=r"$\mathrm{Im}\,y$")
+   plt.plot(t_eval, np.abs(y), label=r"$|y|$")
    plt.xlabel("$t$")
    plt.legend()
 
-**Modulus** ``|y|`` versus ``t``:
-
-.. code-block:: python
-
-   plt.plot(t_eval, np.abs(y))
-   plt.xlabel("$t$")
-   plt.ylabel("$|y|$")
+.. image:: complex_ode_time.png
+   :width: 90%
+   :alt: Real part, imaginary part, and modulus of the solution versus time.
 
 **The trajectory drawn parametrically in the complex plane.**  Plotting
-``y.imag`` against ``y.real`` traces the path the solution follows; colouring
-the curve by ``t`` shows the direction and speed of travel.  Because the
+``y.imag`` against ``y.real`` traces the path the solution follows.  Because the
 solution is periodic with period 1, the curve is retraced five times over
-``t ∈ [0, 5]``:
+``t ∈ [0, 5]``, so a single loop is all that is visible.  A couple of arrows
+(drawn with :meth:`~matplotlib.axes.Axes.annotate` between successive sample
+points) mark the direction of travel:
 
 .. code-block:: python
 
-   from matplotlib.collections import LineCollection
-
-   points = np.column_stack([y.real, y.imag]).reshape(-1, 1, 2)
-   segments = np.concatenate([points[:-1], points[1:]], axis=1)
-   lc = LineCollection(segments, cmap="viridis", linewidth=2)
-   lc.set_array(t_eval)
-
    ax = plt.gca()
-   ax.add_collection(lc)
+   ax.plot(y.real, y.imag, linewidth=2)
    ax.set_aspect("equal")
-   ax.autoscale()
-   plt.colorbar(lc, ax=ax, label="$t$")
 
-Putting all three panels together gives:
+   # Arrows indicating the direction of travel along the curve.
+   period = len(t_eval) // 5  # samples per unit-time period
+   for frac in (0.15, 0.45, 0.78):
+       i = int(frac * period)
+       ax.annotate(
+           "",
+           xy=(y.real[i + 1], y.imag[i + 1]),
+           xytext=(y.real[i], y.imag[i]),
+           arrowprops=dict(arrowstyle="-|>", color="tab:red",
+                           lw=2, mutation_scale=22),
+       )
 
-.. image:: complex_ode.png
-   :width: 100%
-   :alt: Real/imaginary parts, modulus, and complex-plane trajectory of the solution.
+   ax.set_xlabel(r"$\mathrm{Re}\,y$")
+   ax.set_ylabel(r"$\mathrm{Im}\,y$")
+
+.. image:: complex_ode_trajectory.png
+   :width: 70%
+   :alt: Trajectory of the solution in the complex plane, with direction arrows.
 
 The complete, runnable script is ``demo_complex_ode.py``.
 
