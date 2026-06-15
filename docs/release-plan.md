@@ -381,10 +381,18 @@ are internal concerns that should not require any user-visible API changes.
     both callbacks are compiled.  `drive_knots` is already unblocked because its loop
     body contains no Python API calls other than inside the `cb.error` branch, which
     is never taken for compiled callbacks; the `StepBuf` `malloc`/`realloc` refactor
-    (0.4.0) likewise unblocked `drive_adaptive`.  Deferred until the COMMON blocks are
-    gone: dropping the GIL while ZVODE still races on process-global state would only
-    expose that race, so this becomes worthwhile once the library is genuinely
-    thread-safe and the `ZVODE_LOCK` above is lifted.
+    (0.4.0) likewise unblocked `drive_adaptive`.  Grouped here with the thread-safety
+    work for value sequencing, not because it is unsafe on its own: the GIL and the
+    COMMON-block race are separate mechanisms.  The COMMON-block race is guarded by
+    the explicit process-wide `ZVODE_LOCK`, not by the GIL (the GIL only serialises
+    ZVODE entry incidentally, and unreliably, since it is released across Python
+    callbacks and periodically).  Releasing the GIL while still holding `ZVODE_LOCK`
+    is therefore safe today, but its only benefit is letting *unrelated* Python
+    threads run during a long fully-compiled integration — it cannot run two ZVODE
+    integrations concurrently, because the lock still serialises them.  The real
+    payoff (concurrent integrations) needs the COMMON blocks gone *and* `ZVODE_LOCK`
+    lifted, of which GIL-release is the complementary final step; doing it in
+    isolation buys little, so it waits for that package.
 - [ ] Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.
