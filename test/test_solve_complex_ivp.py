@@ -27,29 +27,11 @@ from numpy.testing import assert_allclose
 
 from zvode import solve_complex_ivp, ZVODEError
 
-from _shared import (
-    LAM1,
-    LAM2,
-    C,
-    Y0,
-    T0,
-    TF,
-    LBAND,
-    UBAND,
-    RTOL,
-    ATOL,
-    coupled_exact as exact,
-    assert_coupled as _check,
-    coupled_fun as fun,
-    coupled_jac_dense as jac_dense,
-    coupled_jac_banded as jac_banded,
-    ro128,
-    rw128,
-)
+from shared import COUPLED, ro128, rw128
 
 # The coupled 2-component complex ODE under test, its analytic solution, the
 # Python RHS/Jacobian callbacks, and the ctypes view helpers all live in
-# _shared.py (see the module docstring above for the problem statement).
+# shared.py (see the module docstring above for the problem statement).
 
 
 # ---------------------------------------------------------------------------
@@ -60,35 +42,44 @@ from _shared import (
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_save_steps_true(method):
     """Default mode: collect all accepted steps."""
-    sol = solve_complex_ivp(fun, [T0, TF], Y0, method=method, rtol=RTOL, atol=ATOL)
+    sol = solve_complex_ivp(
+        COUPLED.fun, COUPLED.tspan, COUPLED.y0, method=method, **COUPLED.tols
+    )
     assert isinstance(sol.t, np.ndarray)
-    assert sol.t.ndim == 1 and sol.t[0] == T0 and sol.t[-1] == TF
+    assert sol.t.ndim == 1 and sol.t[0] == COUPLED.t0 and sol.t[-1] == COUPLED.tf
     assert sol.y.ndim == 2 and sol.y.shape == (2, len(sol.t))
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_save_steps_false(method):
     """Endpoint-only mode: scalar t and 1-D y."""
     sol = solve_complex_ivp(
-        fun, [T0, TF], Y0, method=method, rtol=RTOL, atol=ATOL, save_steps=False
+        COUPLED.fun,
+        COUPLED.tspan,
+        COUPLED.y0,
+        method=method,
+        **COUPLED.tols,
+        save_steps=False,
     )
     assert np.isscalar(sol.t)
-    assert sol.t == pytest.approx(TF)
+    assert sol.t == pytest.approx(COUPLED.tf)
     assert sol.y.ndim == 1 and sol.y.shape == (2,)
-    ref = exact(TF)  # shape (2,)
+    ref = COUPLED.exact(COUPLED.tf)  # shape (2,)
     assert np.allclose(sol.y, ref, rtol=1e-5)
 
 
 @pytest.mark.parametrize("method", ["Adams", "BDF"])
 def test_knots_mode(method):
     """Knot mode (len(tspan) > 2): output at exactly the requested times."""
-    tspan = np.linspace(T0, TF, 11)
-    sol = solve_complex_ivp(fun, tspan, Y0, method=method, rtol=RTOL, atol=ATOL)
+    tspan = np.linspace(COUPLED.t0, COUPLED.tf, 11)
+    sol = solve_complex_ivp(
+        COUPLED.fun, tspan, COUPLED.y0, method=method, **COUPLED.tols
+    )
     np.testing.assert_array_equal(sol.t, tspan)
     assert sol.y.shape == (2, 11)
     assert sol.y.dtype == np.complex128
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -101,16 +92,26 @@ def test_knots_mode(method):
     "jac_fn,jac_kwargs",
     [
         pytest.param(None, {}, id="no_jac"),
-        pytest.param(jac_dense, {}, id="dense_jac"),
-        pytest.param(jac_banded, {"lband": LBAND, "uband": UBAND}, id="banded_jac"),
+        pytest.param(COUPLED.jac_dense, {}, id="dense_jac"),
+        pytest.param(
+            COUPLED.jac_banded,
+            {"lband": COUPLED.lband, "uband": COUPLED.uband},
+            id="banded_jac",
+        ),
     ],
 )
 def test_jacobian_types(method, jac_fn, jac_kwargs):
     """Dense and banded user Jacobians against the no-Jacobian baseline."""
     sol = solve_complex_ivp(
-        fun, [T0, TF], Y0, method=method, rtol=RTOL, atol=ATOL, jac=jac_fn, **jac_kwargs
+        COUPLED.fun,
+        COUPLED.tspan,
+        COUPLED.y0,
+        method=method,
+        **COUPLED.tols,
+        jac=jac_fn,
+        **jac_kwargs,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -121,21 +122,21 @@ def test_jacobian_types(method, jac_fn, jac_kwargs):
 @pytest.mark.parametrize("mode", ["steps", "endpoint", "knots"])
 def test_backward_integration(mode):
     """tspan strictly decreasing: integrate from TF back to T0."""
-    y_tf = exact(TF)  # shape (2,); initial condition at t=TF
+    y_tf = COUPLED.exact(COUPLED.tf)  # shape (2,); initial condition at t=TF
     if mode == "knots":
-        tspan = np.linspace(TF, T0, 11)
+        tspan = np.linspace(COUPLED.tf, COUPLED.t0, 11)
     else:
-        tspan = [TF, T0]
+        tspan = [COUPLED.tf, COUPLED.t0]
     save = mode == "steps"
 
-    sol = solve_complex_ivp(fun, tspan, y_tf, save_steps=save, rtol=RTOL, atol=ATOL)
+    sol = solve_complex_ivp(COUPLED.fun, tspan, y_tf, save_steps=save, **COUPLED.tols)
 
     if mode == "endpoint":
-        ref = exact(T0)
-        assert sol.t == pytest.approx(T0)
+        ref = COUPLED.exact(COUPLED.t0)
+        assert sol.t == pytest.approx(COUPLED.t0)
         assert np.allclose(sol.y, ref, rtol=1e-5)
     else:
-        _check(sol.t, sol.y)
+        COUPLED.assert_close(sol.t, sol.y)
 
 
 def test_backward_integration_with_first_step():
@@ -146,16 +147,16 @@ def test_backward_integration_with_first_step():
     Without this correction ZVODE sees (TOUT - T)*H0 < 0 and returns
     ISTATE = -3 ("Illegal input detected").
     """
-    y_tf = exact(TF)
+    y_tf = COUPLED.exact(COUPLED.tf)
     sol = solve_complex_ivp(
-        fun,
-        [TF, T0],
+        COUPLED.fun,
+        [COUPLED.tf, COUPLED.t0],
         y_tf,
         first_step=0.1,
-        rtol=RTOL,
-        atol=ATOL,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 def test_negative_first_step_raises():
@@ -165,7 +166,7 @@ def test_negative_first_step_raises():
     nonsensical and should be rejected before ZVODE is ever called.
     """
     with pytest.raises(ValueError, match="first_step"):
-        solve_complex_ivp(fun, [T0, TF], Y0, first_step=-0.1)
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, first_step=-0.1)
 
 
 # ---------------------------------------------------------------------------
@@ -176,21 +177,21 @@ def test_negative_first_step_raises():
 def test_allow_overshoot_false():
     """allow_overshoot=False (default): last output point must equal TF exactly."""
     sol = solve_complex_ivp(
-        fun, [T0, TF], Y0, allow_overshoot=False, rtol=RTOL, atol=ATOL
+        COUPLED.fun, COUPLED.tspan, COUPLED.y0, allow_overshoot=False, **COUPLED.tols
     )
-    assert sol.t[-1] == pytest.approx(TF)
+    assert sol.t[-1] == pytest.approx(COUPLED.tf)
 
 
 def test_allow_overshoot_true():
     """allow_overshoot=True: last output point may go slightly past TF."""
     sol = solve_complex_ivp(
-        fun, [T0, TF], Y0, allow_overshoot=True, rtol=RTOL, atol=ATOL
+        COUPLED.fun, COUPLED.tspan, COUPLED.y0, allow_overshoot=True, **COUPLED.tols
     )
-    assert sol.t[-1] >= TF - 1e-12
+    assert sol.t[-1] >= COUPLED.tf - 1e-12
     # Solution at TF should still be accurate regardless of overshoot
     # Find the closest output point to TF and verify the analytic match
-    idx = np.argmin(np.abs(sol.t - TF))
-    _check(sol.t[idx : idx + 1], sol.y[:, idx : idx + 1])
+    idx = np.argmin(np.abs(sol.t - COUPLED.tf))
+    COUPLED.assert_close(sol.t[idx : idx + 1], sol.y[:, idx : idx + 1])
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +213,9 @@ def test_max_num_steps_exceeded():
     in test_result_object.py.
     """
     with pytest.raises(ZVODEError, match="ISTATE") as excinfo:
-        solve_complex_ivp(fun, [T0, TF], Y0, save_steps=False, max_num_steps=2)
+        solve_complex_ivp(
+            COUPLED.fun, COUPLED.tspan, COUPLED.y0, save_steps=False, max_num_steps=2
+        )
 
     res = excinfo.value.result
     assert res.success is False
@@ -229,7 +232,7 @@ def test_result_object():
     """The result exposes the documented fields and the success verdict, keeps
     the solver counters always present (no opt-in), and supports both attribute
     and dict access (one solve covers all of these)."""
-    sol = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
+    sol = solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, **COUPLED.tols)
 
     # Documented fields present, reachable as attributes and as dict keys.
     for attr in ("t", "y", "success", "status", "message", "nfev", "njev", "nlu"):
@@ -258,12 +261,16 @@ def test_result_object():
 def test_refine():
     """refine=4 inserts 3 interpolated points per step; solution should match."""
     REFINE = 4
-    sol_base = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL, refine=1)
-    sol_ref = solve_complex_ivp(fun, [T0, TF], Y0, rtol=RTOL, atol=ATOL, refine=REFINE)
+    sol_base = solve_complex_ivp(
+        COUPLED.fun, COUPLED.tspan, COUPLED.y0, **COUPLED.tols, refine=1
+    )
+    sol_ref = solve_complex_ivp(
+        COUPLED.fun, COUPLED.tspan, COUPLED.y0, **COUPLED.tols, refine=REFINE
+    )
     # Each of the (n-1) inter-step intervals gains (refine-1) extra points.
     n_steps = len(sol_base.t) - 1
     assert len(sol_ref.t) == len(sol_base.t) + n_steps * (REFINE - 1)
-    _check(sol_ref.t, sol_ref.y)
+    COUPLED.assert_close(sol_ref.t, sol_ref.y)
 
 
 # ---------------------------------------------------------------------------
@@ -274,53 +281,62 @@ def test_refine():
 def test_non_monotonic_tspan_raises():
     """Non-monotonic tspan must raise ValueError."""
     with pytest.raises(ValueError, match="monotonic"):
-        solve_complex_ivp(fun, [0.0, 1.0, 0.5], Y0)
+        solve_complex_ivp(COUPLED.fun, [0.0, 1.0, 0.5], COUPLED.y0)
 
 
 def test_non_monotonic_mixed_tspan_raises():
     """tspan with mixed sign differences must raise ValueError."""
     with pytest.raises(ValueError, match="monotonic"):
-        solve_complex_ivp(fun, [0.0, 2.0, 1.0, 3.0], Y0)
+        solve_complex_ivp(COUPLED.fun, [0.0, 2.0, 1.0, 3.0], COUPLED.y0)
 
 
 def test_real_y0_warns():
     """Real y0 triggers a UserWarning (not a hard error)."""
     with pytest.warns(UserWarning, match="complex"):
-        solve_complex_ivp(fun, [T0, TF], np.array([1.0, 0.0]))
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, np.array([1.0, 0.0]))
 
 
 def test_invalid_method_raises():
     with pytest.raises(ValueError, match="method"):
-        solve_complex_ivp(fun, [T0, TF], Y0, method="RK4")
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, method="RK4")
 
 
 def test_invalid_refine_raises():
     with pytest.raises(ValueError, match="refine"):
-        solve_complex_ivp(fun, [T0, TF], Y0, refine=0)
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, refine=0)
 
 
 def test_miter1_without_jac_raises():
     """miter=1 without a jac callable raises ValueError."""
     with pytest.raises(ValueError, match="jac"):
-        solve_complex_ivp(fun, [T0, TF], Y0, miter=1)
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, miter=1)
 
 
 def test_miter4_without_jac_raises():
     """miter=4 without a jac callable raises ValueError."""
     with pytest.raises(ValueError, match="jac"):
-        solve_complex_ivp(fun, [T0, TF], Y0, miter=4, lband=LBAND, uband=UBAND)
+        solve_complex_ivp(
+            COUPLED.fun,
+            COUPLED.tspan,
+            COUPLED.y0,
+            miter=4,
+            lband=COUPLED.lband,
+            uband=COUPLED.uband,
+        )
 
 
 def test_miter4_without_band_params_raises():
     """miter=4 with jac but without band parameters raises ValueError."""
     with pytest.raises(ValueError, match="lband"):
-        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_dense, miter=4)
+        solve_complex_ivp(
+            COUPLED.fun, COUPLED.tspan, COUPLED.y0, jac=COUPLED.jac_dense, miter=4
+        )
 
 
 def test_miter5_without_band_params_raises():
     """miter=5 without band parameters raises ValueError."""
     with pytest.raises(ValueError, match="lband"):
-        solve_complex_ivp(fun, [T0, TF], Y0, miter=5)
+        solve_complex_ivp(COUPLED.fun, COUPLED.tspan, COUPLED.y0, miter=5)
 
 
 def test_miter4_dense_jac_shape_raises():
@@ -331,7 +347,15 @@ def test_miter4_dense_jac_shape_raises():
     mismatch detectable.
     """
     with pytest.raises(ValueError, match="shape"):
-        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_dense, miter=4, lband=0, uband=0)
+        solve_complex_ivp(
+            COUPLED.fun,
+            COUPLED.tspan,
+            COUPLED.y0,
+            jac=COUPLED.jac_dense,
+            miter=4,
+            lband=0,
+            uband=0,
+        )
 
 
 def test_miter1_banded_jac_shape_raises():
@@ -345,7 +369,9 @@ def test_miter1_banded_jac_shape_raises():
         return np.zeros((1, len(y)), dtype=np.complex128)  # (1, 2) for miter=1
 
     with pytest.raises(ValueError, match="shape"):
-        solve_complex_ivp(fun, [T0, TF], Y0, jac=jac_wrong, miter=1)
+        solve_complex_ivp(
+            COUPLED.fun, COUPLED.tspan, COUPLED.y0, jac=jac_wrong, miter=1
+        )
 
 
 def test_compiled_callback_works():
@@ -361,11 +387,11 @@ def test_compiled_callback_works():
     def cfun(neq, t, y_ptr, dy_ptr, ctx):
         y = ro128(y_ptr, neq)
         dy = rw128(dy_ptr, neq)
-        dy[0] = LAM1 * y[0] + C * y[1]
-        dy[1] = LAM2 * y[1]
+        dy[0] = COUPLED.lam1 * y[0] + COUPLED.c * y[1]
+        dy[1] = COUPLED.lam2 * y[1]
 
-    sol = solve_complex_ivp(cfun, [T0, TF], Y0, rtol=1e-8, atol=1e-10)
-    _check(sol.t, sol.y)
+    sol = solve_complex_ivp(cfun, COUPLED.tspan, COUPLED.y0, rtol=1e-8, atol=1e-10)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -695,9 +721,7 @@ def test_adaptive_buffer_no_refine():
     the interpolation-free endpoints matching the exact solution.
     """
     y0 = np.array([1.0 + 0j])
-    sol = solve_complex_ivp(
-        buf_fun, [0.0, 12.0], y0, rtol=1e-11, atol=1e-13, refine=1
-    )
+    sol = solve_complex_ivp(buf_fun, [0.0, 12.0], y0, rtol=1e-11, atol=1e-13, refine=1)
 
     assert sol.success, sol.message
 

@@ -52,7 +52,7 @@ import pytest
 
 from zvode import solve_complex_ivp
 
-from _shared import pack_banded
+from shared import pack_banded
 
 # scipy.integrate.ode is the reference; skip the whole module if absent.
 ode = pytest.importorskip("scipy.integrate").ode

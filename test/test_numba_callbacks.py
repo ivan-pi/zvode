@@ -31,32 +31,22 @@ from numba import cfunc, types  # noqa: E402
 from zvode import solve_complex_ivp  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Problem: coupled 2-component complex ODE (defined in _shared.py, identical to
+# Problem: coupled 2-component complex ODE (defined in shared.py, identical to
 # the one exercised by test_ctypes_callbacks.py).
 # ---------------------------------------------------------------------------
 
-from _shared import (  # noqa: E402
-    LAM1,
-    LAM2,
-    C,
-    Y0,
-    T0,
-    TF,
-    LBAND,
-    UBAND,
-    RTOL,
-    ATOL,
-    coupled_exact as _exact,
-    assert_coupled as _check,
-    coupled_fun as _python_rhs,
-    coupled_jac_dense as _python_jac,
-)
+from shared import COUPLED  # noqa: E402
+
+# numba @cfunc bodies cannot attribute-access a Python object in nopython
+# mode, so capture the scalar parameters as module-level constants here for
+# the compiled callbacks below to close over.
+lam1, lam2, c = COUPLED.lam1, COUPLED.lam2, COUPLED.c
 
 # Parameters stored as float64 [re(LAM1), im(LAM1), re(LAM2), im(LAM2), re(C), im(C)]
 # for ctx-parameterized tests; complex128 is avoided to sidestep any
 # voidptr ↔ CPointer(complex128) casting issues inside nopython mode.
 _PARAMS_F64 = np.array(
-    [LAM1.real, LAM1.imag, LAM2.real, LAM2.imag, C.real, C.imag],
+    [lam1.real, lam1.imag, lam2.real, lam2.imag, c.real, c.imag],
     dtype=np.float64,
 )
 _CTX = ctypes.cast(_PARAMS_F64.ctypes.data, ctypes.c_void_p)
@@ -94,26 +84,26 @@ _zvode_jac_sig = types.void(
 
 @cfunc(_zvode_fun_sig)
 def _fun(neq, t, y, dy, ctx):
-    dy[0] = LAM1 * y[0] + C * y[1]
-    dy[1] = LAM2 * y[1]
+    dy[0] = lam1 * y[0] + c * y[1]
+    dy[1] = lam2 * y[1]
 
 
 @cfunc(_zvode_jac_sig)
 def _jac_dense(neq, t, y, ml, mu, pd, nrowpd, ctx):
     # nb.farray creates a 2-D Fortran-order view: J[i,j] = df_i/dy_j
     J = nb.farray(pd, (nrowpd, neq))
-    J[0, 0] = LAM1
-    J[0, 1] = C
-    J[1, 1] = LAM2
+    J[0, 0] = lam1
+    J[0, 1] = c
+    J[1, 1] = lam2
 
 
 @cfunc(_zvode_jac_sig)
 def _jac_banded(neq, t, y, ml, mu, pd, nrowpd, ctx):
     # Band storage: J[mu + i - j, j] = df_i/dy_j
     J = nb.farray(pd, (nrowpd, neq))
-    J[mu, 0] = LAM1  # df[0]/dy[0]
-    J[mu - 1, 1] = C  # df[0]/dy[1]
-    J[mu, 1] = LAM2  # df[1]/dy[1]
+    J[mu, 0] = lam1  # df[0]/dy[0]
+    J[mu - 1, 1] = c  # df[0]/dy[1]
+    J[mu, 1] = lam2  # df[1]/dy[1]
 
 
 # ---------------------------------------------------------------------------
@@ -194,24 +184,24 @@ def test_export_jac_sig():
 
 def test_fun_only_steps():
     """Compiled closure RHS, no Jacobian; collect all steps."""
-    sol = solve_complex_ivp(_fun.ctypes, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    _check(sol.t, sol.y)
+    sol = solve_complex_ivp(_fun.ctypes, COUPLED.tspan, COUPLED.y0, **COUPLED.tols)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 def test_fun_only_endpoint():
     """Compiled closure RHS, no Jacobian; endpoint-only mode."""
     sol = solve_complex_ivp(
-        _fun.ctypes, [T0, TF], Y0, rtol=RTOL, atol=ATOL, save_steps=False
+        _fun.ctypes, COUPLED.tspan, COUPLED.y0, **COUPLED.tols, save_steps=False
     )
-    np.testing.assert_allclose(sol.y, _exact(TF), rtol=1e-5)
+    np.testing.assert_allclose(sol.y, COUPLED.exact(COUPLED.tf), rtol=1e-5)
 
 
 def test_fun_only_knots():
     """Compiled closure RHS, no Jacobian; output at requested knots."""
-    tspan = np.linspace(T0, TF, 11)
-    sol = solve_complex_ivp(_fun.ctypes, tspan, Y0, rtol=RTOL, atol=ATOL)
+    tspan = np.linspace(COUPLED.t0, COUPLED.tf, 11)
+    sol = solve_complex_ivp(_fun.ctypes, tspan, COUPLED.y0, **COUPLED.tols)
     np.testing.assert_array_equal(sol.t, tspan)
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -223,13 +213,13 @@ def test_dense_jac():
     """Compiled closure RHS + compiled dense Jacobian; no ctx."""
     sol = solve_complex_ivp(
         _fun.ctypes,
-        [T0, TF],
-        Y0,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_dense.ctypes,
-        rtol=RTOL,
-        atol=ATOL,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -241,15 +231,15 @@ def test_banded_jac():
     """Compiled closure RHS + compiled banded Jacobian; no ctx."""
     sol = solve_complex_ivp(
         _fun.ctypes,
-        [T0, TF],
-        Y0,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_banded.ctypes,
-        lband=LBAND,
-        uband=UBAND,
-        rtol=RTOL,
-        atol=ATOL,
+        lband=COUPLED.lband,
+        uband=COUPLED.uband,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -272,9 +262,9 @@ def test_make_rhs_factory():
 
         return rhs
 
-    my_rhs = make_rhs(LAM1, LAM2, C)
-    sol = solve_complex_ivp(my_rhs.ctypes, [T0, TF], Y0, rtol=RTOL, atol=ATOL)
-    _check(sol.t, sol.y)
+    my_rhs = make_rhs(lam1, lam2, c)
+    sol = solve_complex_ivp(my_rhs.ctypes, COUPLED.tspan, COUPLED.y0, **COUPLED.tols)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -285,9 +275,9 @@ def test_make_rhs_factory():
 def test_fun_ctx():
     """Compiled RHS parameterized via ctx; no Jacobian."""
     sol = solve_complex_ivp(
-        _fun_ctx.ctypes, [T0, TF], Y0, ctx=_CTX, rtol=RTOL, atol=ATOL
+        _fun_ctx.ctypes, COUPLED.tspan, COUPLED.y0, ctx=_CTX, **COUPLED.tols
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -299,14 +289,14 @@ def test_dense_jac_ctx():
     """Compiled RHS + compiled dense Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
         _fun_ctx.ctypes,
-        [T0, TF],
-        Y0,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_dense_ctx.ctypes,
         ctx=_CTX,
-        rtol=RTOL,
-        atol=ATOL,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -318,16 +308,16 @@ def test_banded_jac_ctx():
     """Compiled RHS + compiled banded Jacobian; both parameterized via ctx."""
     sol = solve_complex_ivp(
         _fun_ctx.ctypes,
-        [T0, TF],
-        Y0,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_banded_ctx.ctypes,
-        lband=LBAND,
-        uband=UBAND,
+        lband=COUPLED.lband,
+        uband=COUPLED.uband,
         ctx=_CTX,
-        rtol=RTOL,
-        atol=ATOL,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -338,29 +328,29 @@ def test_banded_jac_ctx():
 def test_mixed_python_rhs_compiled_dense_jac():
     """Python return-value RHS with a compiled dense Jacobian."""
     sol = solve_complex_ivp(
-        _python_rhs,
-        [T0, TF],
-        Y0,
+        COUPLED.fun,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_dense.ctypes,
-        rtol=RTOL,
-        atol=ATOL,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 def test_mixed_python_rhs_compiled_banded_jac():
     """Python return-value RHS with a compiled banded Jacobian."""
     sol = solve_complex_ivp(
-        _python_rhs,
-        [T0, TF],
-        Y0,
+        COUPLED.fun,
+        COUPLED.tspan,
+        COUPLED.y0,
         jac=_jac_banded.ctypes,
-        lband=LBAND,
-        uband=UBAND,
-        rtol=RTOL,
-        atol=ATOL,
+        lband=COUPLED.lband,
+        uband=COUPLED.uband,
+        rtol=COUPLED.rtol,
+        atol=COUPLED.atol,
     )
-    _check(sol.t, sol.y)
+    COUPLED.assert_close(sol.t, sol.y)
 
 
 # ---------------------------------------------------------------------------
@@ -375,4 +365,6 @@ def test_ctx_with_both_python_warns():
     so a UserWarning must be issued regardless of whether jac is also present.
     """
     with pytest.warns(UserWarning, match="ctx"):
-        solve_complex_ivp(_python_rhs, [T0, TF], Y0, jac=_python_jac, ctx=_CTX)
+        solve_complex_ivp(
+            COUPLED.fun, COUPLED.tspan, COUPLED.y0, jac=COUPLED.jac_dense, ctx=_CTX
+        )
