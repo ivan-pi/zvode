@@ -145,7 +145,8 @@ More OdeSolver examples are in the [`docs/`](https://github.com/ivan-pi/zvode/tr
 ### Python / R ecosystem
 
 - [`scipy.integrate.OdeSolver`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.OdeSolver.html) — base class used by the OdeSolver API
-- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper
+- [`scipy.integrate.ode`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html) — legacy stateful ZVODE wrapper (`integrator='zvode'`)
+- [`odeintw`](https://github.com/WarrenWeckesser/odeintw) — complex-valued (and matrix/array) wrapper around `scipy.integrate.odeint`
 - [deSolve `zvode`](https://www.rdocumentation.org/packages/deSolve/versions/1.42/topics/zvode) — R wrapper
 
 SciPy has historically provided a ZVODE wrapper through
