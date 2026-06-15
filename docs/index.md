@@ -148,6 +148,13 @@ api
 
 :::{toctree}
 :maxdepth: 1
+:caption: Tutorials
+
+tutorial-complex-ode
+:::
+
+:::{toctree}
+:maxdepth: 1
 :caption: How-to guides
 
 how-to-procedural-api
