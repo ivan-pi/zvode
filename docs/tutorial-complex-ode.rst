@@ -13,12 +13,7 @@ example from the Wolfram Language documentation.
    `Solutions of Complex ODEs
    <https://www.wolfram.com/language/12/complex-visualization/solutions-of-complex-odes.html>`_
    in the Wolfram Language 12 documentation, where it is solved with
-   ``NDSolveValue``:
-
-   .. code-block:: text
-
-      z = NDSolveValue[{y'[t] == 10 E^(2 Pi I t) y[t], y[0] == 1},
-                       y, {t, 0, 5}];
+   ``NDSolveValue``.
 
 The problem
 -----------

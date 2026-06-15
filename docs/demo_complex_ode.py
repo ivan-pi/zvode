@@ -5,10 +5,7 @@ Demo / tutorial: a driven scalar complex ODE solved with ZVODE.
 
 This is the example used in the Wolfram Language documentation on
 visualizing solutions of complex ODEs, where it is solved with
-``NDSolveValue``:
-
-    z = NDSolveValue[{y'[t] == 10 E^(2 Pi I t) y[t], y[0] == 1},
-                     y, {t, 0, 5}];
+``NDSolveValue``.
 
 Attribution / original example:
   "Solutions of Complex ODEs", Wolfram Language 12 documentation,
