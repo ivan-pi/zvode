@@ -182,14 +182,12 @@ for 1.0.0; those items are recorded here, where they actually shipped.
 ## 0.4.0 — Performance follow-through and API hardening
 
 The C-level integration loops and compiled callbacks originally planned for this
-release landed early, in 0.3.0.  What remains here is the GIL-free execution path,
-result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
+release landed early, in 0.3.0.  What remains here is result-object polish and
+benchmarks ahead of the 1.0.0 API freeze.  The GIL-free execution path was deferred
+to Post-1.0: it is an internal performance concern that only becomes meaningful once
+the COMMON-block thread-safety work lands, so it now sits alongside that item rather
+than here.
 
-- [ ] GIL-free path: release the GIL around `drive_knots` / `drive_adaptive` when
-  both callbacks are compiled.  `drive_knots` is already unblocked because its loop
-  body contains no Python API calls other than inside the `cb.error` branch, which
-  is never taken for compiled callbacks; `drive_adaptive` is blocked on the
-  `StepBuf` refactor below.
 - [x] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
   its backing store, so the adaptive loop in `drive_adaptive_py` contains no Python
   C API calls when compiled callbacks are in use.  The final output arrays are
@@ -379,6 +377,14 @@ are internal concerns that should not require any user-visible API changes.
   class documents user-side locking.
   - [ ] Remove the interim `ZVODE_LOCK` once the COMMON-block refactor is complete
     and concurrent calls are genuinely safe
+  - [ ] GIL-free path: release the GIL around `drive_knots` / `drive_adaptive` when
+    both callbacks are compiled.  `drive_knots` is already unblocked because its loop
+    body contains no Python API calls other than inside the `cb.error` branch, which
+    is never taken for compiled callbacks; the `StepBuf` `malloc`/`realloc` refactor
+    (0.4.0) likewise unblocked `drive_adaptive`.  Deferred until the COMMON blocks are
+    gone: dropping the GIL while ZVODE still races on process-global state would only
+    expose that race, so this becomes worthwhile once the library is genuinely
+    thread-safe and the `ZVODE_LOCK` above is lifted.
 - [ ] Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.
