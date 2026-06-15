@@ -31,24 +31,26 @@ from numba import cfunc, types  # noqa: E402
 from zvode import solve_complex_ivp  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Problem: coupled 2-component complex ODE (same as test_ctypes_callbacks.py)
-#   dy[0]/dt = LAM1*y[0] + C*y[1]
-#   dy[1]/dt = LAM2*y[1]
+# Problem: coupled 2-component complex ODE (defined in _shared.py, identical to
+# the one exercised by test_ctypes_callbacks.py).
 # ---------------------------------------------------------------------------
 
-LAM1 = -1 + 2j
-LAM2 = -2 + 1j
-C = 0.5j
-Y0 = np.array([1.0 + 0j, 0.0 + 1j])
-T0 = 0.0
-TF = 2.0
-LBAND = 0
-UBAND = 1
-RTOL = 1e-8
-ATOL = 1e-10
-
-_B = C * Y0[1] / (LAM2 - LAM1)
-_A = Y0[0] - _B
+from _shared import (  # noqa: E402
+    LAM1,
+    LAM2,
+    C,
+    Y0,
+    T0,
+    TF,
+    LBAND,
+    UBAND,
+    RTOL,
+    ATOL,
+    coupled_exact as _exact,
+    assert_coupled as _check,
+    coupled_fun as _python_rhs,
+    coupled_jac_dense as _python_jac,
+)
 
 # Parameters stored as float64 [re(LAM1), im(LAM1), re(LAM2), im(LAM2), re(C), im(C)]
 # for ctx-parameterized tests; complex128 is avoided to sidestep any
@@ -58,23 +60,6 @@ _PARAMS_F64 = np.array(
     dtype=np.float64,
 )
 _CTX = ctypes.cast(_PARAMS_F64.ctypes.data, ctypes.c_void_p)
-
-
-def _exact(t):
-    t = np.asarray(t, dtype=float)
-    return np.array(
-        [
-            _A * np.exp(LAM1 * t) + _B * np.exp(LAM2 * t),
-            Y0[1] * np.exp(LAM2 * t),
-        ]
-    )
-
-
-def _check(t_arr, y_arr, sol_rtol=1e-5):
-    ref = _exact(t_arr)
-    assert np.allclose(y_arr, ref, rtol=sol_rtol), (
-        f"max err={np.max(np.abs(y_arr - ref)):.2e}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -168,26 +153,6 @@ def _jac_banded_ctx(neq, t, y, ml, mu, pd, nrowpd, ctx):
     J[mu, 0] = lam1
     J[mu - 1, 1] = c
     J[mu, 1] = lam2
-
-
-# ---------------------------------------------------------------------------
-# Python callbacks for mixed-mode and ctx-warning tests
-# ---------------------------------------------------------------------------
-
-
-def _python_rhs(t, y):
-    dy = np.empty(len(y), dtype=np.complex128)
-    dy[0] = LAM1 * y[0] + C * y[1]
-    dy[1] = LAM2 * y[1]
-    return dy
-
-
-def _python_jac(t, y):
-    pd = np.zeros((len(y), len(y)), dtype=np.complex128)
-    pd[0, 0] = LAM1
-    pd[0, 1] = C
-    pd[1, 1] = LAM2
-    return pd
 
 
 # ---------------------------------------------------------------------------

@@ -16,50 +16,32 @@ import pytest
 
 from zvode import solve_complex_ivp
 
-# ---------------------------------------------------------------------------
-# Problem: coupled 2-component complex ODE
-#   dy[0]/dt = LAM1*y[0] + C*y[1]
-#   dy[1]/dt = LAM2*y[1]
-# Exact solution:
-#   y[1](t) = Y0[1]*exp(LAM2*t)
-#   y[0](t) = A*exp(LAM1*t) + B*exp(LAM2*t),  B = C*Y0[1]/(LAM2-LAM1)
-# ---------------------------------------------------------------------------
+from _shared import (
+    LAM1,
+    LAM2,
+    C,
+    Y0,
+    T0,
+    TF,
+    LBAND,
+    UBAND,
+    RTOL,
+    ATOL,
+    coupled_exact as _exact,
+    assert_coupled as _check,
+    coupled_fun as _python_rhs,
+    coupled_jac_dense as _python_jac,
+    ro128 as _ro128,
+    rw128 as _rw128,
+)
 
-LAM1 = -1 + 2j
-LAM2 = -2 + 1j
-C = 0.5j
-Y0 = np.array([1.0 + 0j, 0.0 + 1j])
-T0 = 0.0
-TF = 2.0
-LBAND = 0
-UBAND = 1
-RTOL = 1e-8
-ATOL = 1e-10
-
-_B = C * Y0[1] / (LAM2 - LAM1)
-_A = Y0[0] - _B
+# Problem: coupled 2-component complex ODE (defined in _shared.py, along with its
+# analytic solution and the Python RHS/Jacobian used by the mixed-mode tests).
 
 # Parameters array kept alive for the entire module; _CTX is a c_void_p
 # pointing at its first element (a complex128[3] = [LAM1, LAM2, C]).
 _PARAMS = np.array([LAM1, LAM2, C], dtype=np.complex128)
 _CTX = ctypes.cast(_PARAMS.ctypes.data, ctypes.c_void_p)
-
-
-def _exact(t):
-    t = np.asarray(t, dtype=float)
-    return np.array(
-        [
-            _A * np.exp(LAM1 * t) + _B * np.exp(LAM2 * t),
-            Y0[1] * np.exp(LAM2 * t),
-        ]
-    )
-
-
-def _check(t_arr, y_arr, sol_rtol=1e-5):
-    ref = _exact(t_arr)
-    assert np.allclose(y_arr, ref, rtol=sol_rtol), (
-        f"max err={np.max(np.abs(y_arr - ref)):.2e}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -87,23 +69,6 @@ _ZVODE_JAC_CTYPE = ctypes.CFUNCTYPE(
     ctypes.c_int,  # nrowpd
     ctypes.c_void_p,  # void *ctx
 )
-
-
-# ---------------------------------------------------------------------------
-# Low-level helpers: create numpy views over raw C memory addresses
-# ---------------------------------------------------------------------------
-
-
-def _ro128(addr, count):
-    """Read-only complex128 view of *count* elements at *addr*."""
-    buf = (ctypes.c_double * (2 * count)).from_address(addr)
-    return np.frombuffer(buf, dtype=np.complex128)
-
-
-def _rw128(addr, count):
-    """Writable complex128 view of *count* elements at *addr*."""
-    buf = (ctypes.c_double * (2 * count)).from_address(addr)
-    return np.ctypeslib.as_array(buf).view(np.complex128)
 
 
 # ---------------------------------------------------------------------------
@@ -167,26 +132,6 @@ def _jac_banded_ctx(neq, t, y_ptr, ml, mu, pd_ptr, nrowpd, ctx):
     pd[mu, 0] = p[0]  # df[0]/dy[0]
     pd[mu - 1, 1] = p[2]  # df[0]/dy[1]
     pd[mu, 1] = p[1]  # df[1]/dy[1]
-
-
-# ---------------------------------------------------------------------------
-# Python callbacks for mixed-mode and ctx-warning tests
-# ---------------------------------------------------------------------------
-
-
-def _python_rhs(t, y):
-    dy = np.empty(len(y), dtype=np.complex128)
-    dy[0] = LAM1 * y[0] + C * y[1]
-    dy[1] = LAM2 * y[1]
-    return dy
-
-
-def _python_jac(t, y):
-    pd = np.zeros((len(y), len(y)), dtype=np.complex128)
-    pd[0, 0] = LAM1
-    pd[0, 1] = C
-    pd[1, 1] = LAM2
-    return pd
 
 
 # ---------------------------------------------------------------------------

@@ -47,8 +47,6 @@ from zvode.zvode_impl import ZVODEDenseOutput
 # Helpers
 # ---------------------------------------------------------------------------
 
-print("Hello from test_zvode.py")
-
 
 def _make_workspaces(neq, mf):
     """Allocate ZVODE work arrays for the given NEQ and MF.
@@ -122,11 +120,6 @@ def _call_zvode(
     )
 
 
-def _array_range(arr):
-    base = arr.ctypes.data
-    return f"[{hex(base)}, {hex(base + arr.nbytes)})"
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -151,15 +144,6 @@ def test_zvode_scalar_real_decay():
     tout = 1.0
     zwork, rwork, iwork = _make_workspaces(neq, mf)
     iopt = 0
-
-    print(f"lzw = {zwork.shape}")
-    print(f"lrw = {rwork.shape}")
-    print(f"liw = {iwork.shape}")
-
-    print(f"y     : {_array_range(y)}")
-    print(f"zwork : {_array_range(zwork)}")
-    print(f"rwork : {_array_range(rwork)}")
-    print(f"iwork : {_array_range(iwork)}")
 
     itol = 1
     rtol_arr = np.array([1e-6], dtype=np.float64)
@@ -765,21 +749,4 @@ def test_dense_output_endpoints():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    test_zvode_scalar_real_decay()
-    test_zvode_complex_rotation()
-    test_zvode_multistep_continuation()
-    test_zvode_two_component_system()
-    test_zvode_bdf_method()
-    test_zvode_optional_output_populated()
-    test_zvode_wrong_array_type()
-    test_zvode_bdf_user_jacobian()
-    test_zvode_adams_user_jacobian()
-    test_zvindy_cubic_interpolation()
-    test_zvindy_quintic_interpolation()
-    test_zvindy_at_endpoints()
-    test_zvindy_out_of_range_raises()
-    test_dense_output_cubic_scalar()
-    test_dense_output_cubic_array()
-    test_dense_output_quintic_complex()
-    test_dense_output_endpoints()
-    print("All tests passed.")
+    pytest.main([__file__, "-v"])

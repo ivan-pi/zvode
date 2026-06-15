@@ -52,6 +52,8 @@ import pytest
 
 from zvode import solve_complex_ivp
 
+from _shared import pack_banded
+
 # scipy.integrate.ode is the reference; skip the whole module if absent.
 ode = pytest.importorskip("scipy.integrate").ode
 
@@ -75,20 +77,6 @@ REF_ATOL = 1e-7
 
 # Shared output knots: every problem starts at t=0 and reports at KNOTS points.
 KNOTS = 9
-
-
-def pack_banded(a, lband, uband):
-    """Pack a dense matrix into ZVODE band storage ``packed[i-j+uband, j]``.
-
-    This is the layout shared verbatim by ``solve_complex_ivp`` and
-    ``scipy.integrate.ode('zvode')``; shape ``(lband + uband + 1, n)``.
-    """
-    n = a.shape[0]
-    pd = np.zeros((lband + uband + 1, n), dtype=np.complex128)
-    for j in range(n):
-        for i in range(max(0, j - uband), min(n, j + lband + 1)):
-            pd[i - j + uband, j] = a[i, j]
-    return pd
 
 
 @dataclass(frozen=True)
