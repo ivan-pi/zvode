@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Tutorial and demo for a driven scalar complex ODE
+  (`y' = 10·exp(2πi·t)·y`, `y(0) = 1`), reproducing the
+  [Wolfram Language complex-ODE visualization example](https://www.wolfram.com/language/12/complex-visualization/solutions-of-complex-odes.html).
+  Adds `docs/tutorial-complex-ode.rst` (step-by-step, `solve_complex_ivp` based)
+  and the runnable `docs/demo_complex_ode.py`, which checks the result against
+  the analytic solution and plots the real/imaginary parts, the modulus, and a
+  parametric trajectory in the complex plane.
+
 - Cross-validation test suite (`test/test_scipy_cross_validation.py`) that runs
   identical holomorphic problems through both `solve_complex_ivp` and
   `scipy.integrate.ode('zvode')` and asserts the trajectories agree to

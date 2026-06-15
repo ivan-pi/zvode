@@ -10,6 +10,16 @@ pip install ".[docs]"
 sphinx-build -b html docs docs/_build/html
 ```
 
+## Tutorials
+
+- **[`tutorial-complex-ode.rst`](tutorial-complex-ode.rst)** — a gentle,
+  step-by-step walk-through that solves the driven scalar ODE
+  `y' = 10·exp(2πi·t)·y` with `solve_complex_ivp` and visualizes the
+  solution (real/imaginary parts, modulus, and a parametric curve in the
+  complex plane). Reproduces an example from the Wolfram Language
+  documentation. The companion script is
+  [`demo_complex_ode.py`](demo_complex_ode.py).
+
 ## How-to guides
 
 The guides are written in reStructuredText and use Sphinx cross-references
@@ -64,6 +74,13 @@ They require [NumPy](https://numpy.org/), [SciPy](https://scipy.org/), and [Matp
    two-level quantum system (qubit) undergoing Rabi oscillations with spontaneous emission.
    The 2×2 density matrix is vectorized to a 4-component complex array to interface with
    `solve_ivp`.
+
+7. **[`demo_complex_ode.py`](demo_complex_ode.py)** — Driven scalar complex ODE
+   `y' = 10·exp(2πi·t)·y` solved with the procedural `solve_complex_ivp` API. Checks the
+   result against the analytic solution and visualizes it three ways (real/imaginary parts,
+   modulus, and a parametric trajectory in the complex plane). See the companion
+   [`tutorial-complex-ode.rst`](tutorial-complex-ode.rst). Reproduces a Wolfram Language
+   documentation example.
 
 ---
 
