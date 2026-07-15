@@ -32,8 +32,9 @@ from ._helpers import (
     _check_tolerances,
     _make_workspace,
     _resolve_miter,
-    _validate_max_step,
-    _validate_min_step,
+    _validate_first_step,
+    _validate_max_order,
+    _validate_step_bounds,
     _validate_fun_shape,
     _validate_jac_shape,
 )
@@ -788,19 +789,9 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     if method not in _LMM:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
-    meth, maxord_allowed = _LMM[method]
+    meth, _ = _LMM[method]
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
-
-    if _miter in (4, 5):
-        bandwidth = ml + mu + 1
-        if bandwidth * 2 > n:
-            warnings.warn(
-                f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
-                f"the system size neq = {n}; verify that a banded "
-                "solver is appropriate for this problem.",
-                stacklevel=2,
-            )
 
     nfev = 0
     njev = 0
@@ -808,20 +799,11 @@ def solve_complex_ivp(
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
-    _validate_max_step(max_step)
-    _validate_min_step(min_step)
+    _validate_step_bounds(min_step, max_step)
+    _validate_first_step(first_step, float(tspan[0]), float(tspan[-1]))
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
-    if max_order is not None:
-        if max_order <= 0:
-            raise ValueError("`max_order` must be a positive integer.")
-        if max_order > maxord_allowed:
-            warnings.warn(
-                f"`max_order` ({max_order}) exceeds the maximum allowed order "
-                f"({maxord_allowed}) for the selected method; it will be reduced "
-                "automatically.",
-                stacklevel=2,
-            )
+    max_order = _validate_max_order(max_order, meth)
 
     # ------------------------------------------------------------------
     # 4.  Workspace
@@ -961,42 +943,10 @@ def solve_complex_ivp(
                 refine=refine,
                 allow_overshoot=allow_overshoot,
             )
-    elif len(tspan) == 2:
-        # Endpoint-only: ZVODE steps freely to t_bound; returns scalar t
-        # and 1-D y — no intermediate storage.
-        if _USE_C_KNOTS:
-            ytmp = y0.copy()
-            ts_out = np.empty(2, dtype=np.float64)
-            ys_out = np.empty((n, 2), dtype=np.complex128, order="F")
-            with ZVODE_LOCK:
-                istate, knots_completed = _zvode.drive_knots(
-                    _fun,
-                    _jac,
-                    ctx_addr,
-                    mf,
-                    tspan,
-                    ytmp,
-                    ts_out,
-                    ys_out,
-                    itol,
-                    rtol,
-                    atol,
-                    iopt,
-                    zwork,
-                    rwork,
-                    iwork,
-                )
-            if istate != 2:
-                ts_out, ys_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
-            t_out, y_out = float(ts_out[-1]), ys_out[:, -1]
-        else:
-            t_out, y_out, istate = _zvode_knots(
-                _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
-            )
-            t_out = float(t_out[-1])
-            y_out = y_out[:, -1]
     else:
-        # Knots: output at each element of tspan.
+        # Knot mode: output at each element of tspan.  Endpoint-only
+        # (len(tspan) == 2, save_steps=False) is the two-knot special case,
+        # scalarised to a float t and 1-D y after the solve.
         if _USE_C_KNOTS:
             ytmp = y0.copy()
             ts_out = np.empty(len(tspan), dtype=np.float64)
@@ -1020,13 +970,16 @@ def solve_complex_ivp(
                     iwork,
                 )
             if istate != 2:
-                t_out, y_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
-            else:
-                t_out, y_out = ts_out, ys_out
+                ts_out, ys_out = ts_out[:knots_completed], ys_out[:, :knots_completed]
         else:
-            t_out, y_out, istate = _zvode_knots(
+            ts_out, ys_out, istate = _zvode_knots(
                 _fun, _jac, y0, tspan, itol, rtol, atol, mf, iopt, zwork, rwork, iwork
             )
+
+        if len(tspan) == 2:  # endpoint-only
+            t_out, y_out = float(ts_out[-1]), ys_out[:, -1]
+        else:
+            t_out, y_out = ts_out, ys_out
 
     # ------------------------------------------------------------------
     # 8.  Error reporting

@@ -9,8 +9,9 @@ from ._helpers import (
     _LMM,
     _eval_nordsieck,
     _make_workspace,
-    _validate_max_step,
-    _validate_min_step,
+    _validate_first_step,
+    _validate_max_order,
+    _validate_step_bounds,
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -282,7 +283,7 @@ class ZVODE(OdeSolver):
                 f"Invalid linear multistep method (lmm) {lmm!r}. "
                 "Valid options are 'Adams' or 'BDF'."
             )
-        self.meth, maxord_allowed = _LMM[lmm]
+        self.meth, _ = _LMM[lmm]
 
         # OdeSolver.__init__ already stored the (complex-coerced) RHS as
         # self.fun_single; reuse it as the C callback.  nfev is tracked from
@@ -294,16 +295,6 @@ class ZVODE(OdeSolver):
         self.miter, self.ml, self.mu = _resolve_miter(
             jac, lband, uband, self.meth, self.n, miter
         )
-
-        if self.miter in (4, 5):
-            bandwidth = self.ml + self.mu + 1
-            if bandwidth * 2 > self.n:
-                warnings.warn(
-                    f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
-                    f"the system size neq = {self.n}; verify that a banded "
-                    "solver is appropriate for this problem.",
-                    stacklevel=2,
-                )
 
         self.wrap_jac = jac if jac else None
 
@@ -321,18 +312,12 @@ class ZVODE(OdeSolver):
             f"miter={self.miter!r}); this is a bug in zvode"
         )
 
-        self.max_step = _validate_max_step(max_step)
-        self.min_step = _validate_min_step(min_step)
-        if max_order is not None:
-            if max_order <= 0:
-                raise ValueError("'max_order' must be a positive integer.")
-            if max_order > maxord_allowed:
-                warnings.warn(
-                    f"'max_order' ({max_order}) exceeds the maximum allowed order "
-                    f"({maxord_allowed}) for the selected method. The solver will "
-                    f"automatically reduce it.",
-                    stacklevel=2,
-                )
+        # Step-size and order arguments are consumed only by _make_workspace
+        # (written into the ZVODE work arrays), so validate them here at the
+        # public boundary and forward them without keeping copies on self.
+        _validate_step_bounds(min_step, max_step)
+        _validate_first_step(first_step, t0, t_bound)
+        max_order = _validate_max_order(max_order, self.meth)
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n,
@@ -343,8 +328,8 @@ class ZVODE(OdeSolver):
             t0,
             t_bound,
             first_step=first_step,
-            min_step=self.min_step,
-            max_step=self.max_step,
+            min_step=min_step,
+            max_step=max_step,
             max_order=max_order,
         )
         # Last: probing jac(t0, y0) may allocate an (neq, neq) array; validate

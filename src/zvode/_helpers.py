@@ -14,34 +14,38 @@ MESSAGES = {
     -6: "Error weight became zero during problem integration.",
 }
 
+# Maps linear multistep method name to (ZVODE integer code, maximum order).
+_LMM = {"Adams": (1, 12), "BDF": (2, 5)}
+# Reverse map: ZVODE integer code → maximum order.  A dict, not a list: the
+# codes are 1-based (1 = Adams, 2 = BDF), so list indexing would be off by one.
+_METH_MAXORD = {m: o for m, o in _LMM.values()}
 
-def _validate_max_step(max_step):
-    """Validate that max_step is a positive number."""
-    if max_step <= 0:
-        raise ValueError("`max_step` must be positive.")
-    return max_step
 
+def _validate_step_bounds(min_step, max_step):
+    """Validate the step-size bounds: ``min_step >= 0`` and ``max_step > 0``.
 
-def _validate_min_step(min_step):
-    """Validate that min_step is a non-negative number."""
+    Both are unsigned magnitudes, independent of integration direction; ZVODE
+    carries the direction sign itself.  Results are not returned — the caller
+    forwards the original values straight into the work arrays.
+    """
     if min_step < 0:
         raise ValueError("`min_step` must be non-negative.")
-    return min_step
+    if max_step <= 0:
+        raise ValueError("`max_step` must be positive.")
 
 
 def _validate_first_step(first_step, t0, t_bound):
-    """Validate the user-supplied initial step size.
+    """Validate the user-supplied initial step size (``None`` passes through).
 
-    Like ``max_step`` and ``min_step``, ``first_step`` is always a positive
-    magnitude regardless of integration direction.  ZVODE's H0 (RWORK(5))
-    must carry the sign of the direction, so the caller is responsible for
-    applying ``np.sign(t_bound - t0)`` when writing the value into rwork[4].
+    ``first_step`` is an unsigned magnitude: it must be positive and no larger
+    than the total interval ``abs(t_bound - t0)``.
     """
+    if first_step is None:
+        return
     if first_step <= 0:
         raise ValueError("`first_step` must be positive.")
     if first_step > abs(t_bound - t0):
         raise ValueError("`first_step` exceeds `abs(t_bound - t0)`.")
-    return first_step
 
 
 def _check_tolerances(rtol, atol, n):
@@ -196,8 +200,9 @@ def _eval_nordsieck(yh, h, t, tn):
 def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
     """Validate Jacobian/band arguments and resolve the MITER iteration-method flag.
 
-    Raises TypeError or ValueError for inconsistent or out-of-range inputs,
-    then returns ``(miter, lband, uband)`` with ``None`` band values normalised to 0.
+    Raises TypeError or ValueError for inconsistent or out-of-range inputs and
+    warns when a banded method's bandwidth exceeds half the system size, then
+    returns ``(miter, lband, uband)`` with ``None`` band values normalised to 0.
     """
 
     if jac is not None and not callable(jac):
@@ -237,14 +242,38 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
             raise ValueError(f"'lband' ({lband}) must be less than neq ({n}).")
         if uband >= n:
             raise ValueError(f"'uband' ({uband}) must be less than neq ({n}).")
+        bandwidth = lband + uband + 1
+        if bandwidth * 2 > n:
+            warnings.warn(
+                f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
+                f"the system size neq = {n}; verify that a banded "
+                "solver is appropriate for this problem.",
+                stacklevel=3,
+            )
 
     return miter, lband, uband
 
 
-# Maps linear multistep method name to (ZVODE integer code, maximum order).
-_LMM = {"Adams": (1, 12), "BDF": (2, 5)}
-# Reverse map: ZVODE integer code → maximum order.
-_METH_MAXORD = {m: o for m, o in _LMM.values()}
+def _validate_max_order(max_order, meth):
+    """Validate `max_order` and cap it to the method's ceiling (12 Adams / 5 BDF).
+
+    `meth` is the ZVODE method code (1 = Adams, 2 = BDF).  ``None`` passes
+    through; a positive value above the ceiling is capped to it after warning.
+    Returns the order to use.
+    """
+    if max_order is None:
+        return None
+    if max_order <= 0:
+        raise ValueError("`max_order` must be a positive integer.")
+    maxord_allowed = _METH_MAXORD[meth]
+    if max_order > maxord_allowed:
+        warnings.warn(
+            f"`max_order` ({max_order}) exceeds the maximum allowed order "
+            f"for the selected method; it will be reduced to {maxord_allowed}.",
+            stacklevel=3,
+        )
+        return maxord_allowed
+    return max_order
 
 
 def _make_workspace(
@@ -262,6 +291,11 @@ def _make_workspace(
     max_num_steps=0,
 ):
     """Allocate and initialise ZVODE's three workspace arrays.
+
+    Internal helper: it sizes the arrays and packs the (already-validated) user
+    parameters into their ZVODE slots.  Callers validate the step-size and order
+    arguments at the public boundary; the only checks here are the int32 length
+    overflows, which are intrinsic to the sizing itself.
 
     Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
     Note: zwork, rwork, and iwork are mutable; the integration drivers update
@@ -290,7 +324,9 @@ def _make_workspace(
     elif miter in (4, 5):
         lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
     else:
-        raise RuntimeError(f"Unhandled miter={miter}")
+        # Unreachable: _resolve_miter guarantees miter is 0..5.  Assert only in
+        # the fallthrough, so the normal path pays nothing for the check.
+        assert False, f"unexpected miter={miter!r} — bug in zvode"
 
     meth = abs(mf) // 10
     maxord = _METH_MAXORD[meth]
@@ -309,7 +345,6 @@ def _make_workspace(
 
     rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
-        _validate_first_step(first_step, t0, t_bound)
         # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
     rwork[5] = float(max_step)
