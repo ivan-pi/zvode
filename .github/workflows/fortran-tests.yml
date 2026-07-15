@@ -11,7 +11,6 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -52,9 +51,9 @@ jobs:
   ctest-macos-flang:
     name: CTest / macos-latest / flang+clang / ${{ matrix.backend }}
     runs-on: macos-latest
-    # macOS runners bill at 10x, so this job is opt-in: it runs only on a
-    # manual dispatch or when a pull request carries the `ci:macos` label.
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:macos')
+    # macOS runners bill at 10x, so this job runs only on a manual dispatch
+    # (Actions -> Run workflow).
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:

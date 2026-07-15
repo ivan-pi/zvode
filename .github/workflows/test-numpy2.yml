@@ -4,7 +4,6 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -12,33 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  matrix:
-    name: Select OS matrix
-    runs-on: ubuntu-latest
-    outputs:
-      os: ${{ steps.pick.outputs.os }}
-    steps:
-      # macOS runners bill at 10x, so they are opt-in: they run only on a
-      # manual dispatch or when a pull request carries the `ci:macos` label.
-      # Every push and every other PR stays Linux-only.
-      - id: pick
-        env:
-          RUN_MACOS: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:macos') }}
-        run: |
-          if [ "$RUN_MACOS" = "true" ]; then
-            echo 'os=["ubuntu-latest", "macos-latest"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
-          fi
-
   test:
-    needs: matrix
     name: NumPy 2 / Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.matrix.outputs.os) }}
+        # macOS runners bill at 10x, so they run only on a manual dispatch
+        # (Actions -> Run workflow).  Every push and PR stays Linux-only.
+        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
         python-version: ["3.10", "3.12"]
 
     steps:
