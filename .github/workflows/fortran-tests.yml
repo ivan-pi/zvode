@@ -27,7 +27,7 @@ jobs:
         backend: [LAPACK, LINPACK]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install gfortran, OpenBLAS and CMake
         run: |
