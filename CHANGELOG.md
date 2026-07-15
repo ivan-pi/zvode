@@ -79,7 +79,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   storage association, was rewritten to pack/unpack the module variables
   explicitly while preserving the original `RSAV`/`ISAV` layout (51 reals, 41
   integers).  This is a stepping stone toward moving the internal state into a
-  derived type.  No behavioural change
+  derived type.  No behavioural change for the documented `JOB` values
+- `ZVSRCO`'s `IF (JOB .EQ. 2) GO TO 100` control flow was replaced with a
+  `SELECT CASE (JOB)` that dispatches `JOB = 1` (save) and `JOB = 2` (restore)
+  and issues an `ERROR STOP` in the `CASE DEFAULT`.  Previously any `JOB` other
+  than 2 (including out-of-contract values) silently fell through to the save
+  branch; invalid `JOB` values are now rejected
 - `drive_adaptive`'s internal `StepBuf` now uses a plain `malloc`/`realloc`
   backing store instead of NumPy arrays.  The adaptive stepping loop performs
   no Python/NumPy C API calls on its hot path (and defers any error reporting

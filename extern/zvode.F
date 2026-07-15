@@ -3335,7 +3335,9 @@ C        JOB  = 2 if the state is to be restored (read from RSAV/ISAV).
 C        A call with JOB = 2 presumes a prior call with JOB = 1.
 C-----------------------------------------------------------------------
 C
-      IF (JOB .EQ. 2) GO TO 100
+      SELECT CASE (JOB)
+C
+      CASE (1)
 C Save: pack the module variables into RSAV/ISAV.
       RSAV(1) = ACNRM
       RSAV(2) = CCMXJ
@@ -3402,9 +3404,8 @@ C
       ISAV(39) = NNI
       ISAV(40) = NQU
       ISAV(41) = NST
-      RETURN
 C
- 100  CONTINUE
+      CASE (2)
 C Restore: unpack RSAV/ISAV back into the module variables.
       ACNRM = RSAV(1)
       CCMXJ = RSAV(2)
@@ -3471,7 +3472,10 @@ C
       NNI = ISAV(39)
       NQU = ISAV(40)
       NST = ISAV(41)
-      RETURN
+C
+      CASE DEFAULT
+      ERROR STOP 'ZVSRCO: JOB must be 1 (save) or 2 (restore)'
+      END SELECT
 C----------------------- End of Subroutine ZVSRCO ----------------------
       END SUBROUTINE
 *DECK ZEWSET
