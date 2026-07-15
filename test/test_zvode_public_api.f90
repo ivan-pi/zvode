@@ -12,15 +12,15 @@
 !  round-trip.  Decoupling only makes the reference solution analytic --
 !  ZVODE still forms and LU-factors the full NEQ x NEQ Jacobian.
 !
-!  Coverage (assertion codes passed to `error stop`):
-!    ZVODE   1-4   integration reaches TOUT and matches exp(lam t)
-!    ZVINDY  10-13 interpolation reproduces y and dy/dt, and out-of-range
+!  Coverage (assertion codes passed to `error stop`, unique per check):
+!    ZVODE   1-5   integration reaches TOUT and matches exp(lam t)
+!    ZVINDY  10-14 interpolation reproduces y and dy/dt, and out-of-range
 !                  K returns IFLAG = -1
-!    ZVSRCO  20-33 save slots map to the SAME variables as ZVODE's
+!    ZVSRCO  20-32 save slots map to the SAME variables as ZVODE's
 !                  documented IWORK/RWORK outputs -- i.e. the save/restore
 !                  ORDER matches the historical COMMON-block layout, so
 !                  this is not a breaking change
-!    ZVSRCO  40-42 save -> (solve an unrelated problem, clobbering the
+!    ZVSRCO  40-43 save -> (solve an unrelated problem, clobbering the
 !                  module state) -> restore -> resume reproduces the
 !                  uninterrupted reference solution
 ! ============================================================
@@ -113,8 +113,8 @@ program test_zvode_public_api
 
   type(solver_settings) :: s, sq
   complex(dp) :: y(neq), zwork(lzw), yref(neq), dky(neq), ysav(neq)
-  real(dp) :: rwork(lrw), t, rsav(51), tsav
-  integer :: iwork(liw), iflag, isav(41)
+  real(dp) :: rwork(lrw), t, rsav(51), rsavq(51), tsav
+  integer :: iwork(liw), iflag, isav(41), isavq(41)
 
   complex(dp) :: yq(neq), zworkq(lzw)
   real(dp) :: rworkq(lrw), tq
@@ -133,6 +133,8 @@ program test_zvode_public_api
              s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
   call check(s%istate == 2, 1, 'ZVODE reference: istate /= 2')
+  ! exact comparison is intended: on a successful ITASK = 1 return,
+  ! ZVODE assigns T = TOUT verbatim
   call check(t == tf,       2, 'ZVODE reference: T /= tf')
   call check(all(is_close(y, analytic(lam, tf), 1.0e-5_dp)), 3, &
              'ZVODE reference accuracy')
@@ -151,7 +153,7 @@ program test_zvode_public_api
              s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
   call check(s%istate == 2, 4, 'ZVODE leg1: istate /= 2')
-  call check(all(is_close(y, analytic(lam, tmid), 1.0e-5_dp)), 4, &
+  call check(all(is_close(y, analytic(lam, tmid), 1.0e-5_dp)), 5, &
              'ZVODE leg1 accuracy')
 
   ! ================================================================
@@ -167,14 +169,14 @@ program test_zvode_public_api
   ! K = 1 gives dy/dt, compared against the analytic derivative lam*y.
   call zvindy(tmid, 1, zwork, neq, dky, iflag)
   call check(iflag == 0, 12, 'ZVINDY K=1: iflag /= 0')
-  call check(all(is_close(dky, lam*analytic(lam, tmid), 1.0e-3_dp)), 12, &
+  call check(all(is_close(dky, lam*analytic(lam, tmid), 1.0e-3_dp)), 13, &
              'ZVINDY K=1 vs lam*y')
 
   ! Out-of-range derivative order must be reported, not computed.
   call xsetf(0)                       ! silence the informational message
   call zvindy(tmid, 13, zwork, neq, dky, iflag)
   call xsetf(1)
-  call check(iflag == -1, 13, 'ZVINDY K=13: expected iflag = -1')
+  call check(iflag == -1, 14, 'ZVINDY K=13: expected iflag = -1')
 
   ! ================================================================
   ! ZVSRCO save: the saved slots must hold the SAME quantities that
@@ -185,6 +187,8 @@ program test_zvode_public_api
   ! ================================================================
   call zvsrco(rsav, isav, job=save_state)
 
+  ! exact equality is intended throughout this block: both sides are
+  ! verbatim copies of the same internal variable
   call check(rsav(51) == rwork(11), 20, 'RSAV(51) = HU  = RWORK(11)')
   call check(rsav(49) == rwork(13), 21, 'RSAV(49) = TN  = RWORK(13)')
   call check(isav(41) == iwork(11), 22, 'ISAV(41) = NST  = IWORK(11)')
@@ -225,6 +229,12 @@ program test_zvode_public_api
              lrw, iworkq, liw, diag_jac(neq, lamq), mf)
   call check(sq%istate == 2, 40, 'ZVODE problem Q: istate /= 2')
 
+  ! sanity: Q must actually have changed the module state, otherwise the
+  ! restore below would be vacuous
+  call zvsrco(rsavq, isavq, job=save_state)
+  call check(any(rsavq /= rsav) .or. any(isavq /= isav), 41, &
+             'problem Q did not change the module state (test vacuous)')
+
   ! restore P's internal state and pick up exactly where leg 1 stopped
   call zvsrco(rsav, isav, job=restore_state)
   y = ysav
@@ -233,12 +243,12 @@ program test_zvode_public_api
   call zvode(diag_fun(neq, lam), neq, y, t, tf, s%itol, [s%rtol], [s%atol], &
              s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
-  call check(s%istate == 2, 41, 'ZVODE resume: istate /= 2')
-  call check(all(is_close(y, yref, 1.0e-6_dp)), 42, &
+  call check(s%istate == 2, 42, 'ZVODE resume: istate /= 2')
+  call check(all(is_close(y, yref, 1.0e-6_dp)), 43, &
              'resume matches uninterrupted reference')
 
   write(*,'(a)') 'PASS: test_zvode_public_api'
-  write(*,'(a,i0,a,i0,a,i0)') '  reference NST=', iwork(11), &
+  write(*,'(a,i0,a,i0,a,i0)') '  resumed-run NST=', iwork(11), &
        ' NJE=', iwork(13), ' NLU=', iwork(20)
 
 contains
