@@ -70,6 +70,4 @@ sdist.exclude = [
     ".github/**",
     ".gitignore",
     "docs/release-plan.md",
-    "TODO.txt",
-    "notes.txt",
 ]

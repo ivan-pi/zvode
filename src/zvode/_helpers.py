@@ -196,8 +196,9 @@ def _eval_nordsieck(yh, h, t, tn):
 def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
     """Validate Jacobian/band arguments and resolve the MITER iteration-method flag.
 
-    Raises TypeError or ValueError for inconsistent or out-of-range inputs,
-    then returns ``(miter, lband, uband)`` with ``None`` band values normalised to 0.
+    Raises TypeError or ValueError for inconsistent or out-of-range inputs and
+    warns when a banded method's bandwidth exceeds half the system size, then
+    returns ``(miter, lband, uband)`` with ``None`` band values normalised to 0.
     """
 
     if jac is not None and not callable(jac):
@@ -237,8 +238,38 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
             raise ValueError(f"'lband' ({lband}) must be less than neq ({n}).")
         if uband >= n:
             raise ValueError(f"'uband' ({uband}) must be less than neq ({n}).")
+        bandwidth = lband + uband + 1
+        if bandwidth * 2 > n:
+            warnings.warn(
+                f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
+                f"the system size neq = {n}; verify that a banded "
+                "solver is appropriate for this problem.",
+                stacklevel=3,
+            )
 
     return miter, lband, uband
+
+
+def _validate_max_order(max_order, maxord_allowed):
+    """Validate `max_order` and warn if it exceeds the method's ceiling.
+
+    ``None`` passes through unchanged.  A value above the method's maximum
+    (12 for Adams, 5 for BDF) is not an error — ZVODE caps it internally — so
+    that case only warns.  Called directly by the public entry points, hence
+    ``stacklevel=3`` to point the warning at the user's call.
+    """
+    if max_order is None:
+        return None
+    if max_order <= 0:
+        raise ValueError("`max_order` must be a positive integer.")
+    if max_order > maxord_allowed:
+        warnings.warn(
+            f"`max_order` ({max_order}) exceeds the maximum allowed order "
+            f"({maxord_allowed}) for the selected method; it will be reduced "
+            "automatically.",
+            stacklevel=3,
+        )
+    return max_order
 
 
 # Maps linear multistep method name to (ZVODE integer code, maximum order).

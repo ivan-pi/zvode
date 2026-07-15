@@ -9,6 +9,7 @@ from ._helpers import (
     _LMM,
     _eval_nordsieck,
     _make_workspace,
+    _validate_max_order,
     _validate_max_step,
     _validate_min_step,
     _check_tolerances,
@@ -295,16 +296,6 @@ class ZVODE(OdeSolver):
             jac, lband, uband, self.meth, self.n, miter
         )
 
-        if self.miter in (4, 5):
-            bandwidth = self.ml + self.mu + 1
-            if bandwidth * 2 > self.n:
-                warnings.warn(
-                    f"Bandwidth lband + uband + 1 = {bandwidth} exceeds half "
-                    f"the system size neq = {self.n}; verify that a banded "
-                    "solver is appropriate for this problem.",
-                    stacklevel=2,
-                )
-
         self.wrap_jac = jac if jac else None
 
         if jsv not in (1, -1):
@@ -323,16 +314,7 @@ class ZVODE(OdeSolver):
 
         self.max_step = _validate_max_step(max_step)
         self.min_step = _validate_min_step(min_step)
-        if max_order is not None:
-            if max_order <= 0:
-                raise ValueError("'max_order' must be a positive integer.")
-            if max_order > maxord_allowed:
-                warnings.warn(
-                    f"'max_order' ({max_order}) exceeds the maximum allowed order "
-                    f"({maxord_allowed}) for the selected method. The solver will "
-                    f"automatically reduce it.",
-                    stacklevel=2,
-                )
+        _validate_max_order(max_order, maxord_allowed)
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n,
