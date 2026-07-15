@@ -331,7 +331,10 @@ def _make_workspace(
     else:
         # Unreachable: _resolve_miter guarantees miter is 0..5.  Assert only in
         # the fallthrough, so the normal path pays nothing for the check.
-        assert False, f"unhandled miter={miter}"
+        assert False, (
+            f"_make_workspace: miter={miter!r} is outside the valid range 0..5; "
+            "_resolve_miter should have rejected it — this is a bug in zvode"
+        )
 
     meth = abs(mf) // 10
     maxord = _METH_MAXORD[meth]
