@@ -4,21 +4,43 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
+  matrix:
+    name: Select OS matrix
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{ steps.pick.outputs.os }}
+    steps:
+      # macOS runners bill at 10x, so they are opt-in: they run only on a
+      # manual dispatch or when a pull request carries the `ci:macos` label.
+      # Every push and every other PR stays Linux-only.
+      - id: pick
+        env:
+          RUN_MACOS: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ci:macos') }}
+        run: |
+          if [ "$RUN_MACOS" = "true" ]; then
+            echo 'os=["ubuntu-latest", "macos-latest"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'os=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: matrix
     name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    env:
-      FC: ${{ matrix.FC }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(needs.matrix.outputs.os) }}
         python-version: ["3.10", "3.12"]
         include:
-          - os: macos-latest
-            FC: gfortran-14
           # Exercise the numba compiled-callback tests in a release build, on
           # one cell only.  This merges into the existing ubuntu-latest / 3.12
           # job (no extra job) and pulls in numba via the `numba` extra; the
@@ -40,6 +62,10 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y gfortran libopenblas-dev
+
+      - name: Select Fortran compiler (macOS)
+        if: runner.os == 'macOS'
+        run: echo "FC=gfortran-14" >> "$GITHUB_ENV"
 
       - name: Install package and test dependencies from source
         run: pip install -v ".[${{ matrix.extras || 'test' }}]"
