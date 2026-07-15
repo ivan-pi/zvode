@@ -38,14 +38,7 @@ jobs:
 
       - name: Set up gfortran 14 (macOS)
         if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          # Match the release wheels' toolchain: gfortran 14 for Fortran and
-          # Apple clang (CMake's default when CC is unset) for C.  Install
-          # gcc@14 only if the runner doesn't already ship gfortran-14, then
-          # point FC at it.  CC is left untouched so the C extension uses clang.
           command -v gfortran-14 >/dev/null || brew install gcc@14
           echo "FC=$(command -v gfortran-14)" >> "$GITHUB_ENV"
 
