@@ -179,17 +179,24 @@ for 1.0.0; those items are recorded here, where they actually shipped.
 
 ---
 
-## 0.4.0 — Performance follow-through and API hardening
+## [RELEASED] 0.4.0 — Performance follow-through and API hardening
 
 The C-level integration loops and compiled callbacks originally planned for this
-release landed early, in 0.3.0.  What remains here is the GIL-free execution path,
-result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
+release landed early, in 0.3.0.  This release delivered the result-object polish,
+the benchmarks, and the trust-building test/CI infrastructure ahead of the 1.0.0
+API freeze; the GIL-free execution path was unblocked (the `StepBuf` refactor
+landed) but the GIL release itself was deferred — see the item below and the
+1.0.0 milestone.
 
 - [ ] GIL-free path: release the GIL around `drive_knots` / `drive_adaptive` when
   both callbacks are compiled.  `drive_knots` is already unblocked because its loop
   body contains no Python API calls other than inside the `cb.error` branch, which
   is never taken for compiled callbacks; `drive_adaptive` is blocked on the
   `StepBuf` refactor below.
+  **Deferred to 1.0.0.**  The prerequisite `StepBuf` refactor shipped in 0.4.0
+  (see below), so both loops are now free of Python C API calls on their compiled
+  hot paths; wrapping them in `Py_BEGIN_ALLOW_THREADS` / `Py_END_ALLOW_THREADS`
+  is tracked under the 1.0.0 fully-compiled path.
 - [x] Refactor `StepBuf` to use plain `malloc`/`realloc` instead of NumPy arrays as
   its backing store, so the adaptive loop in `drive_adaptive_py` contains no Python
   C API calls when compiled callbacks are in use.  The final output arrays are
@@ -289,7 +296,7 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > defined once) and registers each with `add_test`; the `Fortran tests`
   > workflow runs `ctest` under gfortran/gcc for both the LAPACK and LINPACK
   > backends.  This unblocks the multi-compiler conformance item below.
-- [~] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
+- [x] Build-side hardening (needs scoping): the pure C, Fortran, and CMake build
   side still needs work in general — e.g. clean compiles under strict warning
   flags for the C extension and the Fortran layer, and a review of the CMake
   setup against current best practice
@@ -304,9 +311,11 @@ result-object polish, and benchmarks ahead of the 1.0.0 API freeze.
   > ASan/UBSan jobs for the C layer already exist (`memory-safety.yml`); the
   > sanitizers job now also passes gfortran `-fcheck=all`
   > (`-DCMAKE_Fortran_FLAGS`) so the vendored Fortran core gets runtime checking
-  > (bounds, array temporaries, pointers) under the same test run.  Remaining: a
-  > Fortran-layer compile-warning sweep and a broader CMake best-practice
-  > review.
+  > (bounds, array temporaries, pointers) under the same test run.  The CMake
+  > layer was also consolidated around a single shared `libzvode` core linked by
+  > both the Python extension and the native tests, and the C sources pinned to
+  > C11.  **Remaining work deferred to a future version:** a Fortran-layer
+  > compile-warning sweep and a broader CMake best-practice review.
 
 
 ---
@@ -318,6 +327,12 @@ in 0.4.0 must handle the case where the RHS and Jacobian are fully compiled (no
 Python callbacks), so that the entire integration runs in compiled code without GIL
 round-trips.
 
+- [ ] GIL-free fully-compiled path (deferred from 0.4.0): release the GIL around
+  `drive_knots` / `drive_adaptive` with `Py_BEGIN_ALLOW_THREADS` /
+  `Py_END_ALLOW_THREADS` when both callbacks are compiled.  The prerequisite
+  `StepBuf` malloc/realloc refactor landed in 0.4.0, so both loops are now free
+  of Python C API calls on the compiled hot path; what remains is the wrapping
+  itself plus a test that the release is safe.
 - [ ] Procedural interface declared stable (no breaking changes after this point)
 - [ ] Remove the Python-level integration loops (`_zvode_adaptive`, `_zvode_knots`
   in `solve.py`) that were retained in 0.3.0 as a debugging reference, along with
