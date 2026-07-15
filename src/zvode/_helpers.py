@@ -14,6 +14,12 @@ MESSAGES = {
     -6: "Error weight became zero during problem integration.",
 }
 
+# Maps linear multistep method name to (ZVODE integer code, maximum order).
+_LMM = {"Adams": (1, 12), "BDF": (2, 5)}
+# Reverse map: ZVODE integer code → maximum order.  A dict, not a list: the
+# codes are 1-based (1 = Adams, 2 = BDF), so list indexing would be off by one.
+_METH_MAXORD = {m: o for m, o in _LMM.values()}
+
 
 def _validate_step_bounds(min_step, max_step):
     """Validate the step-size bounds: ``min_step >= 0`` and ``max_step > 0``.
@@ -248,20 +254,23 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
     return miter, lband, uband
 
 
-def _validate_max_order(max_order, maxord_allowed):
+def _validate_max_order(max_order, meth):
     """Validate `max_order` and cap it to the method's ceiling.
 
+    `meth` is the ZVODE method code (1 = Adams, 2 = BDF); the ceiling
+    (12 / 5) is resolved here from `_METH_MAXORD` so callers need not carry it.
     Returns the order to use: ``None`` passes through unchanged, a positive
-    value above the method's maximum (12 for Adams, 5 for BDF) is capped to
-    that maximum after warning.  Capping here mirrors ZVODE's own
-    ``MAXORD = MIN(MAXORD, MORD(METH))``, so what we write into IWORK(5)
-    matches what the solver actually uses.  Called directly by the public
-    entry points, hence ``stacklevel=3`` to point the warning at the user.
+    value above the method's maximum is capped to that maximum after warning.
+    Capping here mirrors ZVODE's own ``MAXORD = MIN(MAXORD, MORD(METH))``, so
+    what we write into IWORK(5) matches what the solver actually uses.  Called
+    directly by the public entry points, hence ``stacklevel=3`` to point the
+    warning at the user.
     """
     if max_order is None:
         return None
     if max_order <= 0:
         raise ValueError("`max_order` must be a positive integer.")
+    maxord_allowed = _METH_MAXORD[meth]
     if max_order > maxord_allowed:
         warnings.warn(
             f"`max_order` ({max_order}) exceeds the maximum allowed order "
@@ -270,13 +279,6 @@ def _validate_max_order(max_order, maxord_allowed):
         )
         return maxord_allowed
     return max_order
-
-
-# Maps linear multistep method name to (ZVODE integer code, maximum order).
-_LMM = {"Adams": (1, 12), "BDF": (2, 5)}
-# Reverse map: ZVODE integer code → maximum order.  A dict, not a list: the
-# codes are 1-based (1 = Adams, 2 = BDF), so list indexing would be off by one.
-_METH_MAXORD = {m: o for m, o in _LMM.values()}
 
 
 def _make_workspace(

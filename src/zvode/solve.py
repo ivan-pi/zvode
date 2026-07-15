@@ -789,7 +789,7 @@ def solve_complex_ivp(
     # ------------------------------------------------------------------
     if method not in _LMM:
         raise ValueError(f"Invalid method {method!r}; choose 'Adams' or 'BDF'.")
-    meth, maxord_allowed = _LMM[method]
+    meth, _ = _LMM[method]
 
     _miter, ml, mu = _resolve_miter(jac, lband, uband, meth, n, miter)
 
@@ -803,7 +803,7 @@ def solve_complex_ivp(
     _validate_first_step(first_step, float(tspan[0]), float(tspan[-1]))
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
-    max_order = _validate_max_order(max_order, maxord_allowed)
+    max_order = _validate_max_order(max_order, meth)
 
     # ------------------------------------------------------------------
     # 4.  Workspace

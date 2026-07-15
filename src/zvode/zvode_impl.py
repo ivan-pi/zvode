@@ -283,7 +283,7 @@ class ZVODE(OdeSolver):
                 f"Invalid linear multistep method (lmm) {lmm!r}. "
                 "Valid options are 'Adams' or 'BDF'."
             )
-        self.meth, maxord_allowed = _LMM[lmm]
+        self.meth, _ = _LMM[lmm]
 
         # OdeSolver.__init__ already stored the (complex-coerced) RHS as
         # self.fun_single; reuse it as the C callback.  nfev is tracked from
@@ -317,7 +317,7 @@ class ZVODE(OdeSolver):
         # public boundary and forward them without keeping copies on self.
         _validate_step_bounds(min_step, max_step)
         _validate_first_step(first_step, t0, t_bound)
-        max_order = _validate_max_order(max_order, maxord_allowed)
+        max_order = _validate_max_order(max_order, self.meth)
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n,
