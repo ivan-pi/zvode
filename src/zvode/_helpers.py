@@ -18,7 +18,7 @@ MESSAGES = {
 def _validate_step_bounds(min_step, max_step):
     """Validate the step-size bounds: ``min_step >= 0`` and ``max_step > 0``.
 
-    Both are positive magnitudes regardless of integration direction; ZVODE
+    Both are unsigned magnitudes, independent of integration direction; ZVODE
     carries the direction sign itself.  Results are not returned — the caller
     forwards the original values straight into the work arrays.
     """
@@ -31,10 +31,8 @@ def _validate_step_bounds(min_step, max_step):
 def _validate_first_step(first_step, t0, t_bound):
     """Validate the user-supplied initial step size (``None`` passes through).
 
-    Like ``max_step`` and ``min_step``, ``first_step`` is always a positive
-    magnitude regardless of integration direction.  ZVODE's H0 (RWORK(5)) must
-    carry the sign of the direction, applied by ``_make_workspace`` when it
-    packs the value into rwork[4].
+    ``first_step`` is an unsigned magnitude: it must be positive and no larger
+    than the total interval ``abs(t_bound - t0)``.
     """
     if first_step is None:
         return
