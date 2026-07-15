@@ -129,6 +129,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `EL(13)` and `L`; `ZVNLSD` was missing `IPUP` and `JSTART` and listed all
   nine `/ZVOD02/` counters when it only touches `NFE`, `NNI`, `NST`; `ZVJAC`
   was missing `JSV`.  `ZVHIN`, `ZVINDY`, `ZVSET`, and `ZVSOL` were accurate
+- The per-routine "Call sequence input/output" intent documentation was
+  checked mechanically against each dummy argument's read/write behaviour
+  (including writes through internal callees) and corrected: the
+  `ZVSTEP`/`ZVNLSD`/`ZVJAC` input lists still named the removed `RPAR`/`IPAR`
+  arguments; `ZVNLSD` listed `YH` as output although it never writes it,
+  while its real outputs `Y` (the corrected y, loaded internally from `YH`)
+  and `SAVF` (last f evaluation) were missing and `Y` was misdocumented as
+  input; `ZVSTEP` was missing outputs `Y`, `SAVF`, and `YH1`; `ZVSOL` was
+  missing output `WM` (the MITER = 3 path refreshes the stored inverse
+  diagonal); `ZVHIN`'s `Y`/`TEMP` and `ZVJAC`'s `FTEM` are now labeled as
+  work arrays whose input values are not used
 
 ## [0.3.0] - 2026-06-09
 

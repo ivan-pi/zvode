@@ -1789,7 +1789,8 @@ C----------------------- End of Subroutine ZVODE -----------------------
      1   TEMP(*)
 C-----------------------------------------------------------------------
 C Call sequence input -- N, T0, Y0, YDOT, F, TOUT, UROUND,
-C                        EWT, ITOL, ATOL, Y, TEMP
+C                        EWT, ITOL, ATOL
+C Call sequence work arrays -- Y, TEMP (contents overwritten)
 C Call sequence output -- H0, NITER, IER
 C Module variables accessed -- None
 C
@@ -2030,9 +2031,9 @@ C----------------------- End of Subroutine ZVINDY ----------------------
       DIMENSION Y(*), YH(LDYH,*), YH1(*), EWT(*), SAVF(*), VSAV(*),
      1   ACOR(*), WM(*), IWM(*)
 C-----------------------------------------------------------------------
-C Call sequence input -- Y, YH, LDYH, YH1, EWT, SAVF, VSAV,
-C                        ACOR, WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR
-C Call sequence output -- YH, ACOR, WM, IWM
+C Call sequence input -- YH, LDYH, YH1, EWT, SAVF, VSAV,
+C                        WM, IWM, F, JAC, PSOL, VNLS
+C Call sequence output -- Y, YH, YH1, SAVF, ACOR, WM, IWM
 C Module variables accessed:
 C     former /ZVOD01/ -- ACNRM, CONP, EL(13), ETA, ETAMAX, H, HMIN,
 C                 HMXI, HNEW, HSCAL, PRL1, RC, RL1, TAU(13), TQ(5),
@@ -2057,7 +2058,9 @@ C step, and H is the last step size attempted.
 C
 C Communication with ZVSTEP is done with the following variables:
 C
-C Y      = An array of length N used for the dependent variable vector.
+C Y      = An array of length N used for the dependent variable
+C          vector.  Output only:  it is set via VNLS and on return
+C          holds the corrected y;  its input value is not used.
 C YH     = An LDYH by LMAX array containing the dependent variables
 C          and their approximate scaled derivatives, where
 C          LMAX = MAXORD + 1.  YH(i,j+1) contains the approximate
@@ -2773,9 +2776,8 @@ C----------------------- End of Subroutine ZVJUST ----------------------
       DIMENSION Y(*), YH(LDYH,*), VSAV(*), SAVF(*), EWT(*), ACOR(*),
      1          IWM(*), WM(*)
 C-----------------------------------------------------------------------
-C Call sequence input -- Y, YH, LDYH, SAVF, EWT, ACOR, IWM, WM,
-C                        F, JAC, NFLAG, RPAR, IPAR
-C Call sequence output -- YH, ACOR, WM, IWM, NFLAG
+C Call sequence input -- YH, LDYH, EWT, IWM, WM, F, JAC, NFLAG
+C Call sequence output -- Y, SAVF, ACOR, WM, IWM, NFLAG
 C Module variables accessed:
 C     former /ZVOD01/ -- ACNRM, CRATE, DRC, H, RC, RL1, TQ(5), TN,
 C                 ICF, IPUP, JCUR, JSTART, METH, MITER, N, NSLP
@@ -2792,12 +2794,15 @@ C
 C Communication with ZVNLSD is done with the following variables. (For
 C more details, please see the comments in the driver subroutine.)
 C
-C Y          = The dependent variable, a vector of length N, input.
-C YH         = The Nordsieck (Taylor) array, LDYH by LMAX, input
-C              and output.  On input, it contains predicted values.
+C Y          = The dependent variable, a vector of length N, output.
+C              It is loaded from the predicted y (column 1 of YH) on
+C              entry, and holds the corrected y on return.
+C YH         = The Nordsieck (Taylor) array, LDYH by LMAX, input.
+C              It contains predicted values and is not changed here.
 C LDYH       = A constant .ge. N, the first dimension of YH, input.
 C VSAV       = Unused work array.
-C SAVF       = A work array of length N.
+C SAVF       = A work array of length N; on return it holds f(TN,y)
+C              at the last corrector iterate.
 C EWT        = An error weight vector of length N, input.
 C ACOR       = A work array of length N, used for the accumulated
 C              corrections to the predicted y vector.
@@ -2980,8 +2985,8 @@ C----------------------- End of Subroutine ZVNLSD ----------------------
       DIMENSION Y(*), YH(LDYH,*), EWT(*), FTEM(*), SAVF(*),
      1   WM(*), IWM(*)
 C-----------------------------------------------------------------------
-C Call sequence input -- Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM,
-C                        F, JAC, RPAR, IPAR
+C Call sequence input -- Y, YH, LDYH, EWT, SAVF, WM, IWM, F, JAC
+C Call sequence work arrays -- FTEM (contents overwritten)
 C Call sequence output -- WM, IWM, IERPJ
 C Module variables accessed:
 C     former /ZVOD01/ -- CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND,
@@ -3234,7 +3239,7 @@ C----------------------- End of Subroutine ZVJAC -----------------------
       DIMENSION WM(*), IWM(*), X(*)
 C-----------------------------------------------------------------------
 C Call sequence input -- WM, IWM, X
-C Call sequence output -- X, IERSL
+C Call sequence output -- WM, X, IERSL
 C Module variables accessed:
 C     former /ZVOD01/ -- H, HRL1, RL1, MITER, N
 C
