@@ -276,7 +276,8 @@ def _validate_max_order(max_order, maxord_allowed):
 
 # Maps linear multistep method name to (ZVODE integer code, maximum order).
 _LMM = {"Adams": (1, 12), "BDF": (2, 5)}
-# Reverse map: ZVODE integer code → maximum order.
+# Reverse map: ZVODE integer code → maximum order.  A dict, not a list: the
+# codes are 1-based (1 = Adams, 2 = BDF), so list indexing would be off by one.
 _METH_MAXORD = {m: o for m, o in _LMM.values()}
 
 
@@ -319,17 +320,18 @@ def _make_workspace(
                 f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
             )
 
-    # miter is 0..5, guaranteed by _resolve_miter; the branches below are then
-    # exhaustive (0 / 1,2 / 3 / 4,5) so the final case needs no guard.
-    assert miter in range(6), f"unhandled miter={miter}"
     if miter == 0:
         lwm = 0
     elif miter in (1, 2):
         lwm = 2 * n**2 if mf > 0 else n**2
     elif miter == 3:
         lwm = n
-    else:  # miter in (4, 5)
+    elif miter in (4, 5):
         lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
+    else:
+        # Unreachable: _resolve_miter guarantees miter is 0..5.  Assert only in
+        # the fallthrough, so the normal path pays nothing for the check.
+        assert False, f"unhandled miter={miter}"
 
     meth = abs(mf) // 10
     maxord = _METH_MAXORD[meth]
