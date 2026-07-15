@@ -3,22 +3,25 @@ name: Tests (NumPy 2)
 on:
   push:
     branches: ["main", "master"]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: NumPy 2 / Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    env:
-      FC: ${{ matrix.FC }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # macOS runners bill at 10x, so they run only on a manual dispatch or
+        # a version-tag push (v*).  Branch pushes and PRs stay Linux-only.
+        os: ${{ (github.event_name == 'workflow_dispatch' || github.ref_type == 'tag') && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
         python-version: ["3.10", "3.12"]
-        include:
-          - os: macos-latest
-            FC: gfortran-14
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +36,12 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y libopenblas-dev
+
+      - name: Set up gfortran 14 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          command -v gfortran-14 >/dev/null || brew install gcc@14
+          echo "FC=$(command -v gfortran-14)" >> "$GITHUB_ENV"
 
       - name: Install package and test dependencies from source
         run: pip install -v ".[test]" "numpy>=2.0,<3"
