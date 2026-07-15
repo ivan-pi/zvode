@@ -1,18 +1,15 @@
 """
-Example from the ZVODE source file (zvode.f).
+Demo: 2-ODE complex system from the ZVODE source file (zvode.f).
 
-Solves a 2-ODE complex system:
+    dw/dt = -i·w²·z,   dz/dt = i·z
+    w(0) = 1/2.1,   z(0) = 1,   t ∈ [0, 2π]
 
-    dw/dt = -i*w*w*z,  dz/dt = i*z
-    w(0) = 1/2.1,  z(0) = 1,  t in [0, 2*pi]
-
-Analytic solution: w = 1/(z + 1.1), z = exp(i*t).
+Analytic solution: w = 1/(z + 1.1),  z = exp(i·t).
 As z traces the unit circle, w traces a circle of radius 10/2.1
 centered at 11/2.1.
 
-The imaginary unit i is passed as an extra argument to demonstrate
-the use of the args parameter in solve_ivp. Uses MF = 21 (BDF with
-user-supplied Jacobian).
+Uses MF = 21 (BDF with user-supplied Jacobian). The imaginary unit i is
+passed as an extra argument to demonstrate the `args` parameter of solve_ivp.
 """
 
 import numpy as np

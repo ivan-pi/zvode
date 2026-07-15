@@ -1,0 +1,59 @@
+name: Docs
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+# Allow one concurrent deployment; cancel in-progress runs on the same branch.
+concurrency:
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Fortran compiler and BLAS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gfortran libopenblas-dev
+
+      - name: Install documentation dependencies
+        run: pip install ".[docs]"
+
+      - name: Build HTML
+        run: sphinx-build -b html docs/ docs/_build/html -q
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/_build/html
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

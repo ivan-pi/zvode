@@ -380,6 +380,43 @@ def test_dense_output_oscillator():
         )
 
 
+def test_dense_output_at_order_increase_step():
+    """Dense output must be correct at the exact step where the order increases.
+
+    When ZVODE proposes an order increase (NEWQ = NQU + 1), IWORK(15) = NEWQ
+    while IWORK(14) = NQU.  The YH array still contains only NQU+1 valid
+    columns.  Reading NEWQ+1 columns would include a populated (but stale)
+    column from a prior integration at that higher order, corrupting the
+    interpolant.  This test verifies that evaluation at a fine grid — which
+    may land inside such a transition step — remains accurate.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    t_span = (0.0, 0.5)
+    t_eval = np.linspace(t_span[0], t_span[1], 500)
+
+    sol = solve_ivp(
+        lambda t, y: -y,
+        t_span,
+        y0,
+        method=ZVODE,
+        miter=2,
+        dense_output=True,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+    assert sol.success
+    y_interp = sol.sol(t_eval)
+    expected = np.exp(-t_eval)
+    assert_allclose(
+        y_interp[0],
+        expected,
+        rtol=1e-7,
+        atol=1e-10,
+        err_msg="Dense output failed at order-increase transition step",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers shared by the linear complex ODE system tests below
 # (adapted from scipy/integrate/tests/test_banded_ode_solvers.py)
@@ -630,8 +667,117 @@ def test_invalid_lmm():
 def test_miter1_without_jac_raises():
     """miter=1 without a jac callable raises ValueError."""
     y0 = np.array([1.0 + 0j], dtype=np.complex128)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="jac"):
         solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=1)
+
+
+def test_miter4_without_jac_raises():
+    """miter=4 without a jac callable raises ValueError."""
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="jac"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=4, lband=0, uband=0)
+
+
+# ---------------------------------------------------------------------------
+# miter override: missing band parameters
+# ---------------------------------------------------------------------------
+
+
+def test_miter4_without_band_params_raises():
+    """miter=4 without either lband or uband raises ValueError.
+
+    Banded user-Jacobian (miter=4) requires at least one band parameter so the
+    workspace and Jacobian wrapper can be sized correctly.  Omitting both must
+    be caught before any Fortran call.  Supplying only lband or only uband is
+    allowed — the missing half-bandwidth defaults to 0 (triangular structure).
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="lband"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, jac=jac_decay_dense, miter=4)
+
+
+def test_miter5_without_band_params_raises():
+    """miter=5 without either lband or uband raises ValueError.
+
+    Internally generated banded Jacobian (miter=5) still requires band
+    parameters so the workspace can be correctly sized.  Omitting both must be
+    caught before any Fortran call.
+    """
+    y0 = np.array([1.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="lband"):
+        solve_ivp(fun_decay, (0.0, 1.0), y0, method=ZVODE, miter=5)
+
+
+# ---------------------------------------------------------------------------
+# miter override: Jacobian shape mismatch detected at __init__ time
+# ---------------------------------------------------------------------------
+
+
+def _fun_decay2(t, y):
+    """Two-component complex decay: dy/dt = -y."""
+    return -y
+
+
+def _jac_decay2_dense(t, y):
+    """Dense (2, 2) Jacobian for the two-component decay."""
+    return -np.eye(2, dtype=np.complex128)
+
+
+def _jac_decay2_banded(t, y):
+    """Banded (1, 2) Jacobian for the two-component decay (ml=0, mu=0)."""
+    pd = np.zeros((1, 2), dtype=np.complex128)
+    pd[0, :] = -1.0
+    return pd
+
+
+def test_miter4_dense_jac_shape_raises():
+    """miter=4 with a dense (n×n) jac raises ValueError at __init__ time.
+
+    The jac callback returns a (2, 2) array but miter=4 with lband=0, uband=0
+    expects shape (1, 2).  ZVODE evaluates the jac once at t0 to detect the
+    mismatch before any data reaches Fortran.
+    """
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        ZVODE(
+            _fun_decay2, 0.0, y0, 1.0, jac=_jac_decay2_dense, miter=4, lband=0, uband=0
+        )
+
+
+def test_miter4_dense_jac_shape_raises_via_solve_ivp():
+    """Same shape mismatch detected when ZVODE is used through solve_ivp."""
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(
+            _fun_decay2,
+            (0.0, 1.0),
+            y0,
+            method=ZVODE,
+            jac=_jac_decay2_dense,
+            miter=4,
+            lband=0,
+            uband=0,
+        )
+
+
+def test_miter1_banded_jac_shape_raises():
+    """miter=1 with a banded-format (1×n) jac raises ValueError at __init__ time.
+
+    The jac callback returns a (1, 2) banded array but miter=1 expects shape
+    (2, 2).  The shape check catches the mismatch before Fortran is entered.
+    """
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        ZVODE(_fun_decay2, 0.0, y0, 1.0, jac=_jac_decay2_banded, miter=1)
+
+
+def test_miter1_banded_jac_shape_raises_via_solve_ivp():
+    """Same miter=1 shape mismatch detected through solve_ivp."""
+    y0 = np.array([1.0 + 0j, 2.0 + 0j], dtype=np.complex128)
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(
+            _fun_decay2, (0.0, 1.0), y0, method=ZVODE, jac=_jac_decay2_banded, miter=1
+        )
 
 
 def test_negative_rtol_raises():
@@ -660,7 +806,10 @@ def test_dense_jac_int32_overflow_guard():
     with pytest.raises(ValueError, match="neq"):
         ZVODE(_rhs, 0.0, y0, 1.0)
 
-    # miter=1: user-supplied dense Jacobian
+    # miter=1: user-supplied dense Jacobian.
+    # WARNING: if the overflow guard fails to fire, _validate_jac_shape will
+    # evaluate this lambda and attempt to allocate a (46341, 46341) complex128
+    # array (~32 GiB), causing a MemoryError on most CI runners.
     with pytest.raises(ValueError, match="neq"):
         ZVODE(
             _rhs,
@@ -837,18 +986,34 @@ def test_complex_rotation_norm_conservation():
         return 1j * omega * y
 
     sol = solve_ivp(
-        fun, t_span, y0, method=ZVODE, lmm="Adams",
-        t_eval=t_eval, rtol=1e-10, atol=1e-12,
+        fun,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="Adams",
+        t_eval=t_eval,
+        rtol=1e-10,
+        atol=1e-12,
     )
     assert sol.success, f"Complex rotation: {sol.message}"
 
     expected = y0[0] * np.exp(1j * omega * t_eval)
-    assert_allclose(sol.y[0], expected, rtol=1e-8, atol=1e-10,
-                    err_msg="Complex rotation: pointwise error")
+    assert_allclose(
+        sol.y[0],
+        expected,
+        rtol=1e-8,
+        atol=1e-10,
+        err_msg="Complex rotation: pointwise error",
+    )
 
     norms = np.abs(sol.y[0])
-    assert_allclose(norms, abs(y0[0]), rtol=1e-8, atol=1e-10,
-                    err_msg="Complex rotation: |y(t)| drifts — amplitude error")
+    assert_allclose(
+        norms,
+        abs(y0[0]),
+        rtol=1e-8,
+        atol=1e-10,
+        err_msg="Complex rotation: |y(t)| drifts — amplitude error",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -886,13 +1051,24 @@ def test_stiff_prothero_robinson_bdf():
     t_span = (0.0, 10.0)
 
     sol = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
-        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=_jac_pr,
+        rtol=1e-8,
+        atol=1e-10,
     )
 
     assert sol.success, f"BDF failed on Prothero-Robinson: {sol.message}"
-    assert_allclose(sol.y[0], _pr_exact(sol.t), rtol=1e-5, atol=1e-8,
-                    err_msg="Prothero-Robinson: BDF solution mismatch")
+    assert_allclose(
+        sol.y[0],
+        _pr_exact(sol.t),
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Prothero-Robinson: BDF solution mismatch",
+    )
 
 
 def test_stiff_prothero_robinson_bdf_vs_adams():
@@ -904,14 +1080,25 @@ def test_stiff_prothero_robinson_bdf_vs_adams():
     t_span = (0.0, 10.0)
 
     sol_bdf = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="BDF",
-        jac=_jac_pr, rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=_jac_pr,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol_bdf.success
 
     sol_adams = solve_ivp(
-        _fun_pr, t_span, y0, method=ZVODE, lmm="Adams",
-        rtol=1e-8, atol=1e-10,
+        _fun_pr,
+        t_span,
+        y0,
+        method=ZVODE,
+        lmm="Adams",
+        rtol=1e-8,
+        atol=1e-10,
     )
 
     if sol_adams.success:
@@ -948,13 +1135,21 @@ def test_nonlinear_analytic_ivp():
 
     for lmm in ("Adams", "BDF"):
         sol = solve_ivp(
-            fun, t_span, y0, method=ZVODE, lmm=lmm,
-            jac=jac, rtol=1e-9, atol=1e-11,
+            fun,
+            t_span,
+            y0,
+            method=ZVODE,
+            lmm=lmm,
+            jac=jac,
+            rtol=1e-9,
+            atol=1e-11,
         )
         assert sol.success, f"Nonlinear analytic ({lmm}): {sol.message}"
         assert_allclose(
-            sol.y[0, -1], exact_final,
-            rtol=1e-6, atol=1e-9,
+            sol.y[0, -1],
+            exact_final,
+            rtol=1e-6,
+            atol=1e-9,
             err_msg=f"Nonlinear analytic: {lmm} mismatch",
         )
 
@@ -994,21 +1189,43 @@ def test_schrodinger_rabi_oscillations():
     t_eval = np.linspace(*t_span, 201)
 
     sol = solve_ivp(
-        fun, t_span, psi0, method=ZVODE, lmm="BDF",
-        jac=jac, dense_output=True, rtol=1e-10, atol=1e-12,
+        fun,
+        t_span,
+        psi0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac,
+        dense_output=True,
+        rtol=1e-10,
+        atol=1e-12,
     )
     assert sol.success, f"Rabi oscillations: {sol.message}"
 
     psi = sol.sol(t_eval)
 
-    assert_allclose(psi[0], np.cos(t_eval),
-                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₁ = cos(t) mismatch")
-    assert_allclose(psi[1], -1j * np.sin(t_eval),
-                    rtol=1e-7, atol=1e-9, err_msg="Rabi: ψ₂ = -i·sin(t) mismatch")
+    assert_allclose(
+        psi[0],
+        np.cos(t_eval),
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: ψ₁ = cos(t) mismatch",
+    )
+    assert_allclose(
+        psi[1],
+        -1j * np.sin(t_eval),
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: ψ₂ = -i·sin(t) mismatch",
+    )
 
     norms_sq = np.abs(psi[0]) ** 2 + np.abs(psi[1]) ** 2
-    assert_allclose(norms_sq, 1.0, rtol=1e-7, atol=1e-9,
-                    err_msg="Rabi: unitarity violated — ‖ψ(t)‖² ≠ 1")
+    assert_allclose(
+        norms_sq,
+        1.0,
+        rtol=1e-7,
+        atol=1e-9,
+        err_msg="Rabi: unitarity violated — ‖ψ(t)‖² ≠ 1",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1043,9 +1260,8 @@ def test_coupled_stiff_two_component():
 
     def exact(t):
         y2 = y0[1] * np.exp(lam2 * t)
-        y1 = (
-            y0[0] * np.exp(lam1 * t)
-            + y0[1] / (lam2 - lam1) * (np.exp(lam2 * t) - np.exp(lam1 * t))
+        y1 = y0[0] * np.exp(lam1 * t) + y0[1] / (lam2 - lam1) * (
+            np.exp(lam2 * t) - np.exp(lam1 * t)
         )
         return np.array([y1, y2])
 
@@ -1053,15 +1269,24 @@ def test_coupled_stiff_two_component():
     t_check = np.array([1e-3, 5e-3, 0.01, 0.1, 1.0, 5.0])
 
     sol = solve_ivp(
-        fun, (0.0, 5.0), y0, method=ZVODE, lmm="BDF",
-        jac=jac, t_eval=t_check, rtol=1e-8, atol=1e-10,
+        fun,
+        (0.0, 5.0),
+        y0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac,
+        t_eval=t_check,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol.success, f"Coupled stiff system: {sol.message}"
 
     for k, t in enumerate(t_check):
         assert_allclose(
-            sol.y[:, k], exact(t),
-            rtol=1e-5, atol=1e-8,
+            sol.y[:, k],
+            exact(t),
+            rtol=1e-5,
+            atol=1e-8,
             err_msg=f"Coupled stiff system: mismatch at t={t}",
         )
 
@@ -1096,8 +1321,7 @@ def test_tight_binding_chain():
     kappa = 1.0
 
     H = (
-        np.diag(np.full(N - 1, kappa), k=1)
-        + np.diag(np.full(N - 1, kappa), k=-1)
+        np.diag(np.full(N - 1, kappa), k=1) + np.diag(np.full(N - 1, kappa), k=-1)
     ).astype(np.complex128)
 
     def fun(t, a):
@@ -1123,20 +1347,148 @@ def test_tight_binding_chain():
     a_ref = expm(-1j * H * t_end) @ a0
 
     sol = solve_ivp(
-        fun, t_span, a0, method=ZVODE, lmm="BDF",
-        jac=jac_banded, lband=1, uband=1,
-        t_eval=t_eval, rtol=1e-8, atol=1e-10,
+        fun,
+        t_span,
+        a0,
+        method=ZVODE,
+        lmm="BDF",
+        jac=jac_banded,
+        lband=1,
+        uband=1,
+        t_eval=t_eval,
+        rtol=1e-8,
+        atol=1e-10,
     )
     assert sol.success, f"Tight-binding chain: {sol.message}"
 
     # Unitarity at every output point
     total_prob = np.sum(np.abs(sol.y) ** 2, axis=0)
-    assert_allclose(total_prob, 1.0, rtol=1e-5, atol=1e-8,
-                    err_msg="Tight-binding chain: Σ|a_n|² ≠ 1 (norm not conserved)")
+    assert_allclose(
+        total_prob,
+        1.0,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Tight-binding chain: Σ|a_n|² ≠ 1 (norm not conserved)",
+    )
 
     # Accuracy at final time (reference via matrix exponential)
-    assert_allclose(sol.y[:, -1], a_ref, rtol=1e-5, atol=1e-8,
-                    err_msg="Tight-binding chain: final-state mismatch vs expm")
+    assert_allclose(
+        sol.y[:, -1],
+        a_ref,
+        rtol=1e-5,
+        atol=1e-8,
+        err_msg="Tight-binding chain: final-state mismatch vs expm",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Jacobian shape semantics: scalar-like forms for a single-equation system
+#
+# Problem: dy/dt = -1j*y,  y(0) = 1+0j,  exact solution y(t) = exp(-1j*t).
+# For neq=1, miter=1 requires shape (1, 1).  The table below lists the five
+# natural ways a user might write "the scalar -1j" and what np.asarray() makes
+# of each:
+#
+#   Form               np.asarray(...)   shape    ZVODE    SciPy Radau/BDF
+#   -----------------  ----------------  -------  -------  ---------------
+#   -1j                complex scalar    ()       Error    Error (same msg)
+#   [-1j]              1-D list          (1,)     Error    Error
+#   [[-1j]]            nested list       (1, 1)   OK       OK
+#   np.array(-1j)      0-D ndarray       ()       Error    Error
+#   np.array([-1j])    1-D ndarray       (1,)     Error    Error
+#
+# SciPy's own implicit solvers (Radau, BDF) apply the same check and produce
+# the same error: "`jac` is expected to have shape (1, 1), but actually has …".
+# ZVODE raises via _validate_jac_shape before any Fortran call, matching that
+# behaviour exactly.
+# ---------------------------------------------------------------------------
+
+
+def _SJ_FUN(t, y):
+    return -1j * y
+
+
+_SJ_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
+_SJ_T_SPAN = (0.0, 1.0)
+_SJ_EXACT_FINAL = np.exp(-1j * 1.0)
+
+
+@pytest.mark.parametrize(
+    "jac,label",
+    [
+        (lambda t, y: -1j, "scalar complex"),
+        (lambda t, y: [-1j], "1-D list"),
+        (lambda t, y: np.array(-1j), "0-D ndarray"),
+        (lambda t, y: np.array([-1j]), "1-D ndarray"),
+    ],
+)
+def test_scalar_jac_shape_raises(jac, label):
+    """Jacobians that don't return a (1,1) array raise ValueError naming 'shape'."""
+    with pytest.raises(ValueError, match="shape"):
+        solve_ivp(_SJ_FUN, _SJ_T_SPAN, _SJ_Y0, method=ZVODE, jac=jac)
+
+
+def test_nested_list_jac_accepted():
+    """[[item]] produces shape (1,1) after np.asarray() and is the correct form."""
+    sol = solve_ivp(
+        _SJ_FUN,
+        _SJ_T_SPAN,
+        _SJ_Y0,
+        method=ZVODE,
+        jac=lambda t, y: [[-1j]],
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    assert sol.success, f"solve_ivp failed: {sol.message}"
+    assert_allclose(sol.y[0, -1], _SJ_EXACT_FINAL, rtol=1e-5, atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# RHS shape semantics: scalar-like forms for a single-equation system
+#
+# Problem: dy/dt = -1j*y,  y(0) = 1,  exact solution y(t) = exp(-1j*t).
+# For neq=1, fun must return shape (1,).  Note the asymmetry with jac:
+# jac's correct form is [[item]] (2-D), fun's correct form is [item] (1-D).
+#
+#   Form                    np.asarray(...)   shape    result
+#   ----------------------  ----------------  -------  --------
+#   -1j*y[0]  scalar        complex scalar    ()       ValueError
+#   np.array(-1j*y[0]) 0-D  0-D ndarray       ()       ValueError
+#   [[-1j*y[0]]] 2-D list   nested list       (1, 1)   ValueError
+#   [-1j*y[0]]  1-D list    1-D list          (1,)     accepted  ← correct form
+# ---------------------------------------------------------------------------
+
+_SF_Y0 = np.array([1.0 + 0j], dtype=np.complex128)
+_SF_T_SPAN = (0.0, 1.0)
+_SF_EXACT_FINAL = np.exp(-1j * 1.0)
+
+
+@pytest.mark.parametrize(
+    "fun,label",
+    [
+        (lambda t, y: -1j * y[0], "scalar"),
+        (lambda t, y: np.array(-1j * y[0]), "0-D ndarray"),
+        (lambda t, y: [[-1j * y[0]]], "2-D list"),
+    ],
+)
+def test_wrong_fun_shape_raises(fun, label):
+    """RHS functions that don't return a (1,) array raise ValueError naming 'fun'."""
+    with pytest.raises(ValueError, match="fun"):
+        solve_ivp(fun, _SF_T_SPAN, _SF_Y0, method=ZVODE)
+
+
+def test_1d_list_fun_accepted():
+    """[-1j*y[0]] produces shape (1,) after np.asarray() and is the correct scalar form."""
+    sol = solve_ivp(
+        lambda t, y: [-1j * y[0]],
+        _SF_T_SPAN,
+        _SF_Y0,
+        method=ZVODE,
+        rtol=1e-8,
+        atol=1e-10,
+    )
+    assert sol.success, f"solve_ivp failed: {sol.message}"
+    assert_allclose(sol.y[0, -1], _SF_EXACT_FINAL, rtol=1e-5, atol=1e-8)
 
 
 # ---------------------------------------------------------------------------

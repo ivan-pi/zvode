@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define NPY_TARGET_VERSION NPY_1_23_API_VERSION
 #define NPY_NO_DEPRECATED_API NPY_1_23_API_VERSION
@@ -15,7 +17,7 @@
 #include "zvode.h"
 
 /* ------------------------------------------------------------------ */
-/* Debug helpers (compile with -DZVODE_DEBUG to enable)               */
+/* Debug helpers — compile with -DZVODE_DEBUG (or -DZVODE_DEBUG=1)   */
 /* ------------------------------------------------------------------ */
 
 #ifndef ZVODE_DEBUG
@@ -209,12 +211,31 @@ check_array_scalar_or_1d(PyArrayObject *ap, const char *name, int typenum)
 /* Callback plumbing                                                  */
 /* ------------------------------------------------------------------ */
 
+/* Compiled-callback dispatch tag.
+ *   CB_PYTHON = Python callable
+ *   CB_CFUNC  = raw C function pointer extracted by the Python layer
+ *   CB_NONE   = no callback provided (jac only; ZVODE must not call it) */
+typedef enum { CB_PYTHON = 0, CB_CFUNC = 1, CB_NONE = 2 } cb_kind_t;
+
 struct zvode_callbacks {
-    PyObject *fun;
-    PyObject *jac;
-    int jac_is_banded; /* 1 when MITER=4 (abs(mf)%10 == 4), 0 otherwise */
-    int error;
-    // TODO: add zewset and zwnorm in the future
+    /* RHS */
+    cb_kind_t fun_kind;
+    union {
+        PyObject  *pyobj;   /* CB_PYTHON: the callable (never NULL) */
+        zvode_fun  cfunc;   /* CB_CFUNC:  raw function pointer       */
+    } fun_u;
+
+    /* Jacobian — jac_kind == CB_NONE when no Jacobian is provided. */
+    cb_kind_t jac_kind;
+    union {
+        PyObject  *pyobj;   /* CB_PYTHON: the callable (never NULL) */
+        zvode_jac  cfunc;   /* CB_CFUNC:  raw function pointer      */
+    } jac_u;
+
+    void *ctx;         /* shared user data for compiled callbacks; NULL = none */
+    int   jac_is_banded; /* 1 when MITER=4 (abs(mf)%10 == 4), 0 otherwise */
+    int   error;         /* set to 1 by Python adaptor on exception */
+    /* TODO: add zewset and zwnorm in the future */
 };
 
 static void fun_adaptor(
@@ -222,16 +243,32 @@ static void fun_adaptor(
         double t,
         const double complex y[],
         double complex dy[],
-        void *ctx) {
+        void *data) {
 
-    struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
+    struct zvode_callbacks *cb = (struct zvode_callbacks *) data;
     assert(cb != NULL);
-    assert(cb->fun != NULL);
     assert(neq > 0);
+
+    if (cb->fun_kind == CB_CFUNC) {
+        /* Compiled path: call the C function pointer directly, no Python overhead. */
+        assert(cb->fun_u.cfunc != NULL);
+        cb->fun_u.cfunc(neq, t, y, dy, cb->ctx);
+        return;
+    }
+
+    /* CB_PYTHON path */
+    assert(cb->fun_u.pyobj != NULL);
+
+    /* A previous callback already raised a Python exception; short-circuit so
+     * the original exception is preserved rather than clobbered by calling
+     * back into Python with an error already pending. */
+    if (cb->error) {
+        return;
+    }
 
     const npy_intp dims[1] = { neq };
 
-    /* Wrap the solver-owned buffers as NumPy views (no copy). */
+    /* Wrap the solver-owned y buffer as a read-only NumPy view (no copy). */
     PyArrayObject *ap_y =
         (PyArrayObject *) PyArray_SimpleNewFromData(1, dims, NPY_COMPLEX128, (void *) y);
     if (ap_y == NULL) {
@@ -240,28 +277,51 @@ static void fun_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    const npy_intp dims_dy[1] = { neq };
-
-    PyArrayObject *ap_dy =
-        (PyArrayObject *) PyArray_SimpleNewFromData(1, dims_dy, NPY_COMPLEX128, dy);
-    if (ap_dy == NULL) {
+    /* SciPy-style call: fun(t, y) returns the derivative array.  Use the
+     * vectorcall protocol with a small C stack to skip the format-string
+     * parsing and the intermediate args tuple PyObject_CallFunction builds. */
+    PyObject *t_obj = PyFloat_FromDouble(t);
+    if (t_obj == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+    PyObject *stack[2] = { t_obj, (PyObject *) ap_y };
+    PyObject *result = PyObject_Vectorcall(cb->fun_u.pyobj, stack, 2, NULL);
+    Py_DECREF(t_obj);
+    if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
 
-    /* fun(t, y, dy): Python writes the derivative into dy in place. */
-    PyObject *res = PyObject_CallFunction(cb->fun, "dOO", t,
-        (PyObject *) ap_y,
-        (PyObject *) ap_dy);
-
-    Py_DECREF(ap_y);
-    Py_DECREF(ap_dy);
-    if (res == NULL) {
+    /* Coerce the result to a contiguous complex128 array.  FORCECAST accepts
+     * Python lists and real arrays, matching the old `dy[:] = fun(t, y)`. */
+    PyArrayObject *arr = (PyArrayObject *) PyArray_FROM_OTF(
+        result, NPY_COMPLEX128, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
+    if (arr == NULL) {
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
-    Py_DECREF(res);
+
+    if (PyArray_SIZE(arr) != (npy_intp) neq) {
+        PyErr_Format(PyExc_ValueError,
+            "fun(t, y) must return an array of size neq=%d; got size %zd.",
+            neq, (Py_ssize_t) PyArray_SIZE(arr));
+        Py_DECREF(arr);
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+
+    memcpy(dy, PyArray_DATA(arr), (size_t) neq * sizeof(double complex));
+
+    Py_DECREF(arr);
+    Py_DECREF(result);
+    Py_DECREF(ap_y);
 }
 
 static void jac_adaptor(
@@ -271,14 +331,33 @@ static void jac_adaptor(
         int ml, int mu,
         double complex pd[],
         int nrowpd,
-        void *ctx) {
+        void *data) {
 
-    struct zvode_callbacks *cb = (struct zvode_callbacks *) ctx;
+    struct zvode_callbacks *cb = (struct zvode_callbacks *) data;
     assert(cb != NULL);
-    assert(cb->jac != NULL && cb->jac != Py_None);
     assert(neq > 0);
     assert(ml >= 0 && mu >= 0);
     assert(nrowpd >= (cb->jac_is_banded ? ml+mu+1 : neq));
+
+    if (cb->jac_kind == CB_CFUNC) {
+        /* Compiled path: call the C function pointer directly. */
+        assert(cb->jac_u.cfunc != NULL);
+        cb->jac_u.cfunc(neq, t, y, ml, mu, pd, nrowpd, cb->ctx);
+        return;
+    }
+
+    /* CB_PYTHON path — jac_adaptor is only invoked by ZVODE when miter
+     * requires a user Jacobian (miter=1 or 4).  CB_NONE reaching here
+     * would indicate an mf/miter mismatch. */
+    assert(cb->jac_kind == CB_PYTHON);
+    assert(cb->jac_u.pyobj != NULL);
+
+    /* A previous callback already raised a Python exception; short-circuit so
+     * the original exception is preserved rather than clobbered by calling
+     * back into Python with an error already pending. */
+    if (cb->error) {
+        return;
+    }
 
     const npy_intp dims_y[1] = { (npy_intp) neq };
     PyArrayObject *ap_y =
@@ -289,46 +368,85 @@ static void jac_adaptor(
     }
     PyArray_CLEARFLAGS(ap_y, NPY_ARRAY_WRITEABLE);
 
-    /* PD is column-major with leading dimension NROWPD, exactly the layout
-     * ZVODE/LAPACK expect.  Expose it as an F-contiguous (nrowpd, neq) view
-     * so that pd[i, j] in Python is PD(i+1, j+1) in Fortran. */
-
-    const npy_intp dims_pd[2] = { (npy_intp) nrowpd, (npy_intp) neq };
-
-    /* Explicitly define strides to achieve Fortran contiguity */
-    const npy_intp strides_pd[2] = {
-        sizeof(double complex),
-        (npy_intp) ((size_t) nrowpd * sizeof(double complex))
-    };
-
-    PyArrayObject *ap_pd = (PyArrayObject *) PyArray_New(
-        &PyArray_Type, 2, dims_pd, NPY_COMPLEX128,
-        strides_pd, (void *)pd, 0, NPY_ARRAY_WRITEABLE, NULL
-    );
-    if (ap_pd == NULL) {
+    /* SciPy-style call: jac(t, y) returns the Jacobian array.
+     *   dense  (miter=1): shape (neq, neq), J[i,j] = df_i/dy_j
+     *   banded (miter=4): shape (ml + mu + 1, neq) */
+    PyObject *t_obj = PyFloat_FromDouble(t);
+    if (t_obj == NULL) {
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+    PyObject *stack[2] = { t_obj, (PyObject *) ap_y };
+    PyObject *result = PyObject_Vectorcall(cb->jac_u.pyobj, stack, 2, NULL);
+    Py_DECREF(t_obj);
+    if (result == NULL) {
         Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
 
-
-    PyObject *res;
-    if (cb->jac_is_banded) {
-        /* jac(t, y, pd, ml, mu): Python writes the Jacobian into pd in place. */
-        res = PyObject_CallFunction(cb->jac, "dOOii", t,
-            (PyObject *) ap_y, (PyObject *) ap_pd, ml, mu);
-    } else {
-        /* jac(t, y, pd): Python writes the Jacobian into pd in place. */
-        res = PyObject_CallFunction(cb->jac, "dOO", t,
-            (PyObject *) ap_y, (PyObject *) ap_pd);
-    }
-    Py_DECREF(ap_y);
-    Py_DECREF(ap_pd);
-    if (res == NULL) {
+    /* Coerce to F-contiguous complex128 so each column is laid out
+     * contiguously, reducing the copy into PD's column-major buffer to one
+     * memcpy per column (below).
+     *
+     * PD is a Fortran (column-major) array handed to ZGETRF/ZGBTRF, so a
+     * conventional row-major Jacobian must be transposed into it regardless of
+     * what we do here; that strided pass over neq*neq elements is fundamental.
+     * Requesting F-contiguity folds the transpose into FROM_OTF: an F-ordered
+     * or transposed return is taken as a zero-copy view, while the common
+     * C-contiguous return costs one extra buffer + pass. We could instead drop
+     * the flag and transpose stride-aware directly into PD in a single pass,
+     * but `jac` is a cold path -- ZVODE factors the Jacobian once and reuses it
+     * across many steps, so it runs far less often than `fun` and is dominated
+     * by the ZGETRF/ZGBTRF factorization that follows -- so the simpler,
+     * obviously-correct form here is preferred over shaving that copy. */
+    PyArrayObject *arr = (PyArrayObject *) PyArray_FROM_OTF(
+        result, NPY_COMPLEX128, NPY_ARRAY_F_CONTIGUOUS | NPY_ARRAY_FORCECAST);
+    if (arr == NULL) {
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
         cb->error = 1;
         return;
     }
-    Py_DECREF(res);
+
+    const npy_intp rows = cb->jac_is_banded ? (npy_intp) (ml + mu + 1) : (npy_intp) neq;
+    if (PyArray_NDIM(arr) != 2 ||
+        PyArray_DIM(arr, 0) != rows ||
+        PyArray_DIM(arr, 1) != (npy_intp) neq) {
+        if (PyArray_NDIM(arr) != 2) {
+            PyErr_Format(PyExc_ValueError,
+                "jac(t, y) must return a 2-D array of shape (%zd, %d); "
+                "got an array with ndim=%d.",
+                (Py_ssize_t) rows, neq, PyArray_NDIM(arr));
+        } else {
+            PyErr_Format(PyExc_ValueError,
+                "jac(t, y) must return an array of shape (%zd, %d); "
+                "got shape (%zd, %zd).",
+                (Py_ssize_t) rows, neq,
+                (Py_ssize_t) PyArray_DIM(arr, 0),
+                (Py_ssize_t) PyArray_DIM(arr, 1));
+        }
+        Py_DECREF(arr);
+        Py_DECREF(result);
+        Py_DECREF(ap_y);
+        cb->error = 1;
+        return;
+    }
+
+    /* PD is column-major with leading dimension NROWPD.  Copy each column of
+     * the user Jacobian into the first `rows` entries of PD's column; the
+     * remaining nrowpd - rows rows are LAPACK fill workspace, left untouched. */
+    const double complex *src = (const double complex *) PyArray_DATA(arr);
+    for (npy_intp j = 0; j < (npy_intp) neq; ++j) {
+        memcpy(&pd[(size_t) j * (size_t) nrowpd],
+               &src[(size_t) j * (size_t) rows],
+               (size_t) rows * sizeof(double complex));
+    }
+
+    Py_DECREF(arr);
+    Py_DECREF(result);
+    Py_DECREF(ap_y);
 }
 
 /* ------------------------------------------------------------------ */
@@ -343,8 +461,12 @@ PyDoc_STRVAR(zvode_doc,
 "\n"
 "`y`, `zwork`, `rwork`, `iwork` are modified in place and must be\n"
 "contiguous arrays of dtype ``complex128``, ``complex128``, ``float64`` and ``int32``.\n"
-"`fun` is called as ``fun(t, y, dy)`` and must fill `dy`; `jac` (or None) is\n"
-"called as ``jac(t, y, pd)``.  Returns the advanced time and the ZVODE istate.\n");
+"`fun` is called as ``fun(t, y) -> array`` of shape ``(neq,)``; `jac` (or None)\n"
+"is called as ``jac(t, y) -> array`` of shape ``(neq, neq)`` (dense) or\n"
+"``(ml + mu + 1, neq)`` (banded).  Compiled cfunc callbacks instead use the\n"
+"in-place C ABI.  The `y` passed to a Python callback is a read-only view onto\n"
+"solver-owned memory, valid only for the duration of that call.\n"
+"Returns the advanced time and the ZVODE istate.\n");
 
 static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
 
@@ -354,12 +476,13 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
     double t, tout;
     int itol, itask, istate, iopt, mf;
 
-    // Container for the actual Python callbacks
-    struct zvode_callbacks cb = { .fun = NULL, .jac = NULL,
-        .jac_is_banded = 0, .error = 0, };
+    /* zvode_py is the low-level single-step entry point used only from the
+     * Python-level integration loop (_zvode_adaptive/_zvode_knots).  It
+     * always receives Python callables — never compiled cfuncs. */
+    PyObject *fun_obj = NULL, *jac_obj = NULL;
 
     if (!PyArg_ParseTuple(args,"OO!ddiO!O!iiiO!O!O!Oi:zvode",
-       &cb.fun,
+       &fun_obj,
        &PyArray_Type, &ap_y,
        &t, &tout, &itol,
        &PyArray_Type, &ap_rtol,
@@ -368,56 +491,49 @@ static PyObject* zvode_py(PyObject* Py_UNUSED(self), PyObject *args) {
        &PyArray_Type, &ap_zwork,
        &PyArray_Type, &ap_rwork,
        &PyArray_Type, &ap_iwork,
-       &cb.jac, &mf)) {
+       &jac_obj, &mf)) {
         return NULL;
     }
 
-    assert(ap_y);
-    assert(ap_rtol);
-    assert(ap_atol);
-    assert(ap_zwork);
-    assert(ap_rwork);
-    assert(ap_iwork);
-    assert(cb.fun);
-    assert(cb.jac); // should be Py_None or a callable
+    assert(PyCallable_Check(fun_obj));
+    assert(jac_obj == Py_None || PyCallable_Check(jac_obj));
+
+    /* zvode_py always uses Python callbacks; cfuncs go through drive_knots/
+     * drive_adaptive which handle the dispatch internally. */
+    struct zvode_callbacks cb = {
+        .fun_kind      = CB_PYTHON,
+        .fun_u         = { .pyobj = fun_obj },
+        .jac_kind      = (jac_obj == Py_None) ? CB_NONE : CB_PYTHON,
+        .jac_u         = { .pyobj = (jac_obj == Py_None) ? NULL : jac_obj },
+        .ctx           = NULL,
+        .jac_is_banded = (abs(mf) % 10 == 4),
+    };
 
     if (ZVODE_DEBUG) {
-        dump_zvode_args(cb.fun, ap_y, t, tout, itol, ap_rtol, ap_atol,
+        dump_zvode_args(fun_obj, ap_y, t, tout, itol, ap_rtol, ap_atol,
                         itask, istate, iopt, ap_zwork, ap_rwork, ap_iwork,
-                        cb.jac, mf);
+                        jac_obj, mf);
     }
 
     const int neq = (int) PyArray_DIM(ap_y, 0);
-    if (neq <= 0) {
-        PyErr_SetString(PyExc_ValueError, "zvode: y must be non-empty");
-        return NULL;
-    }
+    assert(neq > 0);          /* Python guarantees y0 is non-empty */
+    assert(itask >= 1 && itask <= 5);  /* Python manages itask internally */
 
-    if (itask < 1 || itask > 5) {
-        PyErr_Format(PyExc_ValueError,
-            "zvode: itask must be between 1 and 5 (got %d)", itask);
-        return NULL;
-    }
-
-    const int miter = abs(mf) % 10;
-    assert(miter <= 5);
+    assert(abs(mf) % 10 <= 5);
     assert(abs(mf)/10 == 1 || abs(mf)/10 == 2); /* method */
 
-    cb.jac_is_banded = (miter == 4);
+    /* Python validates all of the following before the first call and the
+     * arrays are not supposed to change between repeated calls.  Keep the
+     * checks compiled in but only run them when ZVODE_DEBUG is set so they
+     * can be re-enabled during development without rebuilding from scratch. */
+    if (ZVODE_DEBUG && istate == 1) {
 
-    // Upon initialization of ZVODE, do stringent type checks, but skip
-    // them otherwise, because they are expensive.
-    // The caller should not change any of the arrays when the integration
-    // is active.
-
-    if (istate == 1) {
-
-        if (!PyCallable_Check(cb.fun)) {
+        if (!PyCallable_Check(fun_obj)) {
             PyErr_SetString(PyExc_TypeError, "zvode: fun must be callable");
             return NULL;
         }
 
-        if (cb.jac != Py_None && !PyCallable_Check(cb.jac)) {
+        if (jac_obj != Py_None && !PyCallable_Check(jac_obj)) {
             PyErr_SetString(PyExc_TypeError, "zvode: jac must be callable or None");
             return NULL;
         }
@@ -535,22 +651,21 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
         return NULL;
     }
 
-    if (!check_array(ap_yh, "yh", 2, NPY_COMPLEX128, 'F')) return NULL;
-    if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
-    if (!check_writable(ap_dky, "dky"))                 return NULL;
+    /* Python always passes correctly typed, contiguous, writable arrays.
+     * Only verify in debug builds — zvindy is called on every interpolated
+     * sub-point (refine-1 times per accepted step) so these checks would
+     * otherwise run in a tight loop during integration. */
+    if (ZVODE_DEBUG) {
+        if (!check_array(ap_yh, "yh", 2, NPY_COMPLEX128, 'F')) return NULL;
+        if (!check_array(ap_dky, "dky", 1, NPY_COMPLEX128, 'C')) return NULL;
+        if (!check_writable(ap_dky, "dky"))                      return NULL;
+    }
 
     const int n    = (int) PyArray_DIM(ap_dky,0);     /* number of equations */
     const int ldyh = (int) PyArray_DIM(ap_yh, 0);     /* leading dimension   */
     const int nq   = (int) PyArray_DIM(ap_yh, 1) - 1; /* current order       */
 
     assert(ldyh >= n);
-
-    if ((int) PyArray_SIZE(ap_dky) < n) {
-        PyErr_Format(PyExc_ValueError,
-            "zvindy: dky must have length >= %d (got %d)",
-            n, (int) PyArray_SIZE(ap_dky));
-        return NULL;
-    }
 
     if (k < 0 || k > nq) {
         PyErr_Format(PyExc_ValueError,
@@ -584,9 +699,657 @@ static PyObject* zvindy_py(PyObject* Py_UNUSED(self), PyObject *args) {
     Py_RETURN_NONE;
 }
 
+/* ------------------------------------------------------------------ */
+/* cb_init_from_pyobjs — shared callback-struct initialiser           */
+/* ------------------------------------------------------------------ */
+
+/* Populate *cb from the three Python objects that drive_knots_py and
+ * drive_adaptive_py both receive as their first three arguments.
+ *
+ * fun_obj: Python callable  → CB_PYTHON
+ *          Python int        → CB_CFUNC (raw function-pointer address)
+ * jac_obj: Py_None           → CB_PYTHON with pyobj = Py_None (no jac)
+ *          Python callable   → CB_PYTHON
+ *          Python int        → CB_CFUNC
+ * ctx_obj: Python int; 0 maps to NULL via PyLong_AsVoidPtr.
+ * mf     : ZVODE method flag; used to derive jac_is_banded.
+ *
+ * Returns 0 on success; sets PyErr and returns -1 on error.
+ */
+static int
+cb_init_from_pyobjs(struct zvode_callbacks *cb,
+                    PyObject *fun_obj, PyObject *jac_obj,
+                    PyObject *ctx_obj, int mf)
+{
+    cb->error = 0;
+
+    if (PyCallable_Check(fun_obj)) {
+        cb->fun_kind    = CB_PYTHON;
+        cb->fun_u.pyobj = fun_obj;
+    } else {
+        cb->fun_kind    = CB_CFUNC;
+        /* PyLong_AsVoidPtr returns void *; converting it to a function
+         * pointer is forbidden by ISO C (hence the -Wpedantic warning) but
+         * is required to accept a raw ctypes/numba callback address and works
+         * on every platform zvode targets. */
+        cb->fun_u.cfunc = (zvode_fun) PyLong_AsVoidPtr(fun_obj);
+        if (PyErr_Occurred()) return -1;
+        assert(cb->fun_u.cfunc != NULL);
+    }
+
+    if (jac_obj == Py_None) {
+        cb->jac_kind    = CB_NONE;
+        cb->jac_u.pyobj = NULL;
+    } else if (PyCallable_Check(jac_obj)) {
+        cb->jac_kind    = CB_PYTHON;
+        cb->jac_u.pyobj = jac_obj;
+    } else {
+        cb->jac_kind    = CB_CFUNC;
+        cb->jac_u.cfunc = (zvode_jac) PyLong_AsVoidPtr(jac_obj);  /* see note above */
+        if (PyErr_Occurred()) return -1;
+        assert(cb->jac_u.cfunc != NULL);
+    }
+
+    cb->ctx = PyLong_AsVoidPtr(ctx_obj);
+    if (PyErr_Occurred()) return -1;
+
+    cb->jac_is_banded = (abs(mf) % 10 == 4);
+
+    assert(cb->fun_kind == CB_CFUNC ||
+           (cb->fun_u.pyobj != NULL && PyCallable_Check(cb->fun_u.pyobj)));
+    assert(cb->jac_kind == CB_NONE ||
+           cb->jac_kind == CB_CFUNC ||
+           (cb->jac_u.pyobj != NULL && PyCallable_Check(cb->jac_u.pyobj)));
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* drive_knots                                                        */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_knots_doc,
+"drive_knots(fun, jac, ctx, mf, tspan, y, ts_out, ys_out,\n"
+"            itol, rtol, atol, iopt, zwork, rwork, iwork) -> (istate, knots_completed)\n"
+"\n"
+"Integrate a complex ODE system to a sequence of pre-specified output knots.\n"
+"\n"
+"Accepts both Python callables and compiled C function pointers (ctypes/numba).\n"
+"For compiled callbacks, pass the function pointer address as a Python int.\n"
+"\n"
+"Advances the ODE from ``tspan[0]`` to ``tspan[-1]``, evaluating the solution\n"
+"at each requested knot and writing the results into the pre-allocated output\n"
+"arrays ``ts_out`` and ``ys_out``.  The initial condition (``tspan[0]``, ``y``)\n"
+"is copied into column 0 of the output arrays before the first ZVODE call.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun    : callable or int -- RHS.  Python callable: called as ``fun(t, y, dy)``\n"
+"         (must fill ``dy`` in place).  Compiled: an int holding the function\n"
+"         pointer address; called as ``fun(neq, t, y, dy, ctx)``.\n"
+"jac    : callable, int, or None -- Jacobian.  Same kind convention as fun.\n"
+"         Python callable: ``jac(t, y, pd)`` or ``jac(t, y, pd, ml, mu)``.\n"
+"         Compiled: ``jac(neq, t, y, ml, mu, pd, nrowpd, ctx)``.\n"
+"         Pass ``None`` when not used.\n"
+"ctx    : int -- shared user-data pointer for compiled callbacks; 0 = NULL.\n"
+"         Ignored when the corresponding callback is a Python callable.\n"
+"mf     : int -- ZVODE method flag (encodes linear multistep method and miter).\n"
+"tspan  : float64 ndarray, 1-D -- output knot times; ``tspan[0]`` is t0.\n"
+"         Must have at least 2 elements and be strictly monotone.\n"
+"y      : complex128 ndarray, 1-D, writable -- working state vector.\n"
+"         Must be initialised to ``y(tspan[0])`` by the caller on entry.\n"
+"         On return contains the last successfully reached state.\n"
+"ts_out : float64 ndarray, 1-D, writable -- receives the output times;\n"
+"         must have length ``len(tspan)``.\n"
+"ys_out : complex128 ndarray, shape (neq, len(tspan)), F-contiguous, writable\n"
+"         -- receives the solution; column k holds the state at ``ts_out[k]``.\n"
+"itol   : int -- tolerance mode flag (1–4); controls scalar vs per-component\n"
+"         interpretation of ``rtol`` and ``atol``.\n"
+"rtol   : float64 scalar or 1-D ndarray -- relative tolerance.\n"
+"atol   : float64 scalar or 1-D ndarray -- absolute tolerance.\n"
+"iopt   : int -- optional-input flag: 0 = use ZVODE defaults,\n"
+"         1 = read optional inputs from the ``rwork``/``iwork`` slots.\n"
+"zwork  : complex128 ndarray, 1-D, writable -- ZVODE complex workspace.\n"
+"rwork  : float64 ndarray, 1-D, writable -- ZVODE real workspace.\n"
+"iwork  : int32 ndarray, 1-D, writable -- ZVODE integer workspace.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"(istate, knots_completed) : (int, int)\n"
+"    ``istate`` is the final ZVODE istate (2 = success, negative = failure).\n"
+"    ``knots_completed`` is the number of columns written into ``ts_out`` and\n"
+"    ``ys_out``, including column 0 (the initial condition).  On success this\n"
+"    equals ``len(tspan)``; on failure it equals the number of knots reached\n"
+"    before ZVODE gave up, so the caller can truncate the output arrays.\n"
+"\n"
+"Raises\n"
+"------\n"
+"Exception\n"
+"    If a Python callback (``fun`` or ``jac``) raises an exception, it is\n"
+"    propagated immediately; the output arrays may be partially filled.\n");
+
+static PyObject *drive_knots_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_tspan  = NULL;
+    PyArrayObject *ap_y      = NULL;
+    PyArrayObject *ap_ts_out = NULL, *ap_ys_out = NULL;
+    PyArrayObject *ap_rtol   = NULL, *ap_atol   = NULL;
+    PyArrayObject *ap_zwork  = NULL, *ap_rwork  = NULL, *ap_iwork = NULL;
+    int mf, itol, iopt;
+    PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOiO!O!O!O!iO!O!iO!O!O!:drive_knots",
+            &fun_obj,
+            &jac_obj,
+            &ctx_obj,
+            &mf,
+            &PyArray_Type, &ap_tspan,
+            &PyArray_Type, &ap_y,
+            &PyArray_Type, &ap_ts_out,
+            &PyArray_Type, &ap_ys_out,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork))
+        return NULL;
+
+    struct zvode_callbacks cb;
+    if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
+        return NULL;
+
+    const int neq    = (int) PyArray_DIM(ap_y,     0);
+    const int nknots = (int) PyArray_DIM(ap_tspan,  0);
+
+    assert(neq    >= 1);
+    assert(nknots >= 2);
+    assert((int) PyArray_DIM(ap_ts_out, 0) == nknots);
+    assert((int) PyArray_DIM(ap_ys_out, 0) == neq &&
+           (int) PyArray_DIM(ap_ys_out, 1) == nknots);
+
+    /* ---- extract raw pointers ---- */
+
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
+
+    double complex       *y      = (double complex *) PyArray_DATA(ap_y);
+    const double         *tspan  = (const double *)   PyArray_DATA(ap_tspan);
+    double               *ts_out = (double *)         PyArray_DATA(ap_ts_out);
+    double complex       *ys_out = (double complex *) PyArray_DATA(ap_ys_out);
+    double complex       *zwork  = (double complex *) PyArray_DATA(ap_zwork);
+    double               *rwork  = (double *)         PyArray_DATA(ap_rwork);
+    int                  *iwork  = (int *)            PyArray_DATA(ap_iwork);
+    const double         *rtol   = (const double *)   PyArray_DATA(ap_rtol);
+    const double         *atol   = (const double *)   PyArray_DATA(ap_atol);
+
+    /* ---- store initial condition in output arrays ---- */
+
+    double t  = tspan[0];
+    ts_out[0] = t;
+    memcpy(ys_out, y, (size_t) neq * sizeof(double complex));  /* column 0 */
+
+    /* ---- integration loop ---- */
+
+    const int itask  = 1;   /* advance to tout, landing exactly on it */
+    int istate       = 1;   /* first call: initialise ZVODE            */
+    int knots_completed = 1; /* column 0 (initial condition) always filled */
+
+    for (int knot = 1; knot < nknots; knot++) {
+
+        c_zvode(
+            &fun_adaptor, neq, y,
+            &t, tspan[knot],
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            &jac_adaptor,
+            mf,
+            &cb
+        );
+
+        /* A Python callback raised an exception; it is already active. */
+        if (cb.error) {
+            assert(PyErr_Occurred());
+            return NULL;
+        }
+
+        /* On ZVODE failure, stop filling output and let the caller decide. */
+        if (istate != 2)
+            break;
+
+        ts_out[knot] = t;
+        memcpy(ys_out + (npy_intp) knot * neq, y,
+               (size_t) neq * sizeof(double complex));
+        knots_completed++;
+    }
+
+    return Py_BuildValue("ii", istate, knots_completed);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* StepBuf: growable column buffer for adaptive stepping output       */
+/*                                                                    */
+/* Lifecycle:                                                         */
+/*   stepbuf_init(&buf, neq, cap)        -- allocate; -1 on OOM      */
+/*   stepbuf_append(&buf, t, y)          -- add one (t, y[neq]) pair */
+/*   stepbuf_shrink_to_fit(&buf)         -- drop growth slack        */
+/*   stepbuf_copy_out(&buf, ts, ys)      -- copy into caller buffers */
+/*   stepbuf_free(&buf)                  -- release backing arrays   */
+/*                                                                    */
+/* The backing store is plain malloc/realloc memory, NOT NumPy        */
+/* arrays, and NO StepBuf routine touches the Python/NumPy C API, so  */
+/* the entire lifecycle may run with the GIL released — a prerequisite */
+/* for releasing the GIL around the whole adaptive loop.  The caller   */
+/* allocates the output arrays and stepbuf_copy_out fills them with a  */
+/* plain memcpy.                                                       */
+/*                                                                    */
+/* On allocation failure init/append/grow return -1 without setting   */
+/* a Python exception; the caller raises one once the GIL is held.    */
+/*                                                                    */
+/* ts is float64, length capacity; ys is complex128, length           */
+/* capacity*neq, in column-major order: column k occupies             */
+/* ys[k*neq .. (k+1)*neq-1].                                          */
+/* ------------------------------------------------------------------ */
+
+/* Initial column capacity.  Grown by STEPBUF_GROWTH on each overflow. */
+#define STEPBUF_INIT_CAP 10
+
+/* Geometric growth factor applied on overflow.  1.5x rather than 2x bounds
+ * the capacity slack (and thus the peak buffer size at finalize) to 1.5x the
+ * live data, and a factor below the golden ratio (~1.618) lets the allocator
+ * eventually reuse previously-freed blocks. */
+#define STEPBUF_GROWTH 1.5
+
+typedef struct {
+    double         *ts;  /* float64, length = capacity                  */
+    double complex *ys;  /* complex128, length = capacity * neq         */
+                         /* column k occupies ys[k*neq .. (k+1)*neq-1]  */
+    int neq;
+    int size;            /* columns filled so far                       */
+    int capacity;        /* allocated columns                           */
+} StepBuf;
+
+/* Allocate backing buffers.  Returns 0 on success, -1 on failure. */
+static int
+stepbuf_init(StepBuf *buf, int neq, int init_cap)
+{
+    assert(neq > 0);
+    assert(init_cap > 0);
+
+    buf->ts = (double *) malloc((size_t)init_cap * sizeof(double));
+    if (!buf->ts) return -1;
+
+    buf->ys = (double complex *)
+        malloc((size_t)init_cap * neq * sizeof(double complex));
+    if (!buf->ys) { free(buf->ts); buf->ts = NULL; return -1; }
+
+    buf->neq      = neq;
+    buf->size     = 0;
+    buf->capacity = init_cap;
+    return 0;
+}
+
+/* Release backing buffers (safe to call even after a partial init). */
+static void
+stepbuf_free(StepBuf *buf)
+{
+    free(buf->ts); buf->ts = NULL;
+    free(buf->ys); buf->ys = NULL;
+}
+
+/* Grow capacity by STEPBUF_GROWTH (1.5x) via realloc, preserving existing
+ * data.  Returns 0 on success, -1 on failure (buf left valid and unchanged). */
+static int
+stepbuf_grow(StepBuf *buf)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->capacity > 0);
+    assert(buf->size == buf->capacity);  /* grow is only called when full */
+
+    /* +1 guarantees forward progress even if the truncated product would
+     * otherwise stall (only possible at capacity == 1). */
+    int new_cap = (int)(buf->capacity * STEPBUF_GROWTH) + 1;
+
+    double *new_ts = (double *)
+        realloc(buf->ts, (size_t)new_cap * sizeof(double));
+    if (!new_ts) return -1;          /* buf->ts still valid at old capacity */
+    buf->ts = new_ts;
+
+    double complex *new_ys = (double complex *)
+        realloc(buf->ys, (size_t)new_cap * buf->neq * sizeof(double complex));
+    if (!new_ys) return -1;          /* buf->ys still valid; ts merely larger */
+    buf->ys = new_ys;
+
+    buf->capacity = new_cap;
+
+    assert(buf->capacity > buf->size);
+    return 0;
+}
+
+/* Shrink the backing buffers so capacity == size, releasing growth slack.
+ * Best-effort: if a shrinking realloc declines, the old (larger) buffer is
+ * kept. */
+static void
+stepbuf_shrink_to_fit(StepBuf *buf)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);
+    assert(buf->size <= buf->capacity);
+
+    if (buf->size == buf->capacity)
+        return;                      /* already tight — nothing to release */
+
+    double *new_ts = (double *)
+        realloc(buf->ts, (size_t)buf->size * sizeof(double));
+    if (new_ts) buf->ts = new_ts;    /* keep old pointer if shrink declined */
+
+    double complex *new_ys = (double complex *)
+        realloc(buf->ys, (size_t)buf->size * buf->neq * sizeof(double complex));
+    if (new_ys) buf->ys = new_ys;
+
+    buf->capacity = buf->size;
+}
+
+/* Append one (t, y[neq]) pair, growing if needed.
+ * Returns 0 on success, -1 on failure (allocation). */
+static int
+stepbuf_append(StepBuf *buf, double t, const double complex *y)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size <= buf->capacity);
+    assert(y != NULL);
+#ifndef NDEBUG
+    int old_size = buf->size;
+#endif
+
+    if (buf->size == buf->capacity) {
+        if (stepbuf_grow(buf) < 0)
+            return -1;
+    }
+
+    buf->ts[buf->size] = t;
+    memcpy(buf->ys + (size_t)buf->size * buf->neq, y,
+           (size_t)buf->neq * sizeof(double complex));
+    buf->size++;
+
+    assert(buf->size == old_size + 1);
+    assert(buf->size <= buf->capacity);
+    return 0;
+}
+
+/* Copy the filled portion of the buffer into caller-provided contiguous
+ * destinations:
+ *   ts_dst : size doubles               -- the t values
+ *   ys_dst : size * neq double complex  -- column-major, column k at
+ *            offset k*neq (matches an F-contiguous (neq, size) array)
+ *
+ * The caller owns and sizes both destinations; buf is left unchanged. */
+static void
+stepbuf_copy_out(const StepBuf *buf, double *ts_dst, double complex *ys_dst)
+{
+    assert(buf->ts != NULL && buf->ys != NULL);
+    assert(buf->size > 0);           /* nothing to export from an empty buffer */
+    assert(buf->size <= buf->capacity);
+    assert(ts_dst != NULL && ys_dst != NULL);
+
+    memcpy(ts_dst, buf->ts, (size_t)buf->size * sizeof(double));
+    memcpy(ys_dst, buf->ys,
+           (size_t)buf->size * buf->neq * sizeof(double complex));
+}
+
+/* ------------------------------------------------------------------ */
+/* drive_adaptive                                                     */
+/* ------------------------------------------------------------------ */
+
+PyDoc_STRVAR(drive_adaptive_doc,
+"drive_adaptive(fun, jac, ctx, mf, t0, t_bound, y,\n"
+"               itol, rtol, atol, iopt, zwork, rwork, iwork,\n"
+"               refine, allow_overshoot) -> (ts, ys, istate)\n"
+"\n"
+"Integrate a complex ODE system in single-step mode, collecting every\n"
+"accepted step into growable output buffers.\n"
+"\n"
+"Accepts both Python callables and compiled C function pointers (ctypes/numba).\n"
+"For compiled callbacks, pass the function pointer address as a Python int.\n"
+"\n"
+"Uses ITASK=5 by default (solver may not overshoot t_bound = rwork[0] =\n"
+"TCRIT).  When allow_overshoot=1 uses ITASK=2 instead.\n"
+"\n"
+"When refine > 1, inserts (refine - 1) interpolated points inside each\n"
+"accepted step via ZVINDY before appending the step endpoint.\n"
+"\n"
+"Parameters\n"
+"----------\n"
+"fun           : callable or int -- RHS.  Python: fun(t, y, dy).\n"
+"               Compiled: int address, called as fun(neq, t, y, dy, ctx).\n"
+"jac           : callable, int, or None -- Jacobian.  Same kind convention.\n"
+"ctx           : int -- shared user-data pointer for compiled callbacks; 0 = NULL.\n"
+"mf            : int -- ZVODE method flag.\n"
+"t0, t_bound   : float -- start and end times.\n"
+"y             : complex128 ndarray, 1-D, writable -- working state;\n"
+"               must be initialised to y(t0) by the caller.\n"
+"itol          : int -- tolerance mode flag (1-4).\n"
+"rtol, atol    : float64 scalar or 1-D ndarray -- tolerances.\n"
+"iopt          : int -- optional-input flag (0 or 1).\n"
+"zwork         : complex128 ndarray, 1-D, writable -- complex workspace.\n"
+"rwork         : float64 ndarray, 1-D, writable -- real workspace;\n"
+"               rwork[0] must be set to t_bound (TCRIT) by the caller.\n"
+"iwork         : int32 ndarray, 1-D, writable -- integer workspace.\n"
+"refine        : int >= 1 -- interpolated sub-points per accepted step.\n"
+"allow_overshoot : int (0 or 1) -- 0: ITASK=5 (default), 1: ITASK=2.\n"
+"\n"
+"Returns\n"
+"-------\n"
+"(ts, ys, istate) : (float64 ndarray shape (m,),\n"
+"                    complex128 ndarray shape (neq, m) F-contiguous,\n"
+"                    int)\n"
+"    ts and ys include the initial condition at index 0.  On solver\n"
+"    failure istate < 0 and the arrays contain all points up to and\n"
+"    including the last successful step.\n"
+"\n"
+"Raises\n"
+"------\n"
+"Exception\n"
+"    Propagated immediately if fun or jac raises inside a callback.\n"
+"RuntimeError\n"
+"    If ZVINDY fails during refinement interpolation.\n");
+
+static PyObject *
+drive_adaptive_py(PyObject *Py_UNUSED(self), PyObject *args)
+{
+    PyArrayObject *ap_y     = NULL;
+    PyArrayObject *ap_rtol  = NULL, *ap_atol  = NULL;
+    PyArrayObject *ap_zwork = NULL, *ap_rwork = NULL, *ap_iwork = NULL;
+    double t0, t_bound;
+    int mf, itol, iopt, refine, allow_overshoot;
+    PyObject *fun_obj = NULL, *jac_obj = NULL, *ctx_obj = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOiddO!iO!O!iO!O!O!ii:drive_adaptive",
+            &fun_obj,
+            &jac_obj,
+            &ctx_obj,
+            &mf,
+            &t0, &t_bound,
+            &PyArray_Type, &ap_y,
+            &itol,
+            &PyArray_Type, &ap_rtol,
+            &PyArray_Type, &ap_atol,
+            &iopt,
+            &PyArray_Type, &ap_zwork,
+            &PyArray_Type, &ap_rwork,
+            &PyArray_Type, &ap_iwork,
+            &refine,
+            &allow_overshoot))
+        return NULL;
+
+    struct zvode_callbacks cb;
+    if (cb_init_from_pyobjs(&cb, fun_obj, jac_obj, ctx_obj, mf) < 0)
+        return NULL;
+
+    assert(refine >= 1);
+
+    const int neq = (int) PyArray_DIM(ap_y, 0);
+    const int lzw = (int) PyArray_SIZE(ap_zwork);
+    const int lrw = (int) PyArray_SIZE(ap_rwork);
+    const int liw = (int) PyArray_SIZE(ap_iwork);
+
+    double complex       *y     = (double complex *) PyArray_DATA(ap_y);
+    double complex       *zwork = (double complex *) PyArray_DATA(ap_zwork);
+    double               *rwork = (double *)         PyArray_DATA(ap_rwork);
+    int                  *iwork = (int *)            PyArray_DATA(ap_iwork);
+    const double         *rtol  = (const double *)   PyArray_DATA(ap_rtol);
+    const double         *atol  = (const double *)   PyArray_DATA(ap_atol);
+
+    /* Scratch buffer for ZVINDY interpolated output; allocated once if
+     * refine > 1, managed by Python's allocator. */
+    double complex *dky = NULL;
+    if (refine > 1) {
+        dky = PyMem_New(double complex, neq);
+        if (!dky) { PyErr_NoMemory(); return NULL; }
+    }
+
+    StepBuf buf = {0};
+    if (stepbuf_init(&buf, neq, STEPBUF_INIT_CAP) < 0) {
+        PyErr_NoMemory();
+        goto cleanup;
+    }
+
+    /* Store initial condition. */
+    double t = t0;
+    if (stepbuf_append(&buf, t, y) < 0) {
+        PyErr_NoMemory();
+        goto cleanup;
+    }
+
+    const int itask   = allow_overshoot ? 2 : 5;
+    int       istate  = 1;
+    assert(t_bound != t0);  /* Python layer guarantees strict monotonicity of tspan */
+    double    direction = (t_bound > t0) ? 1.0 : -1.0;
+
+    /* Deferred error state.  The loop below performs no Python C API calls
+     * (with compiled callbacks); any failure records its cause here and
+     * leaves the loop, and the exception is raised afterwards once the GIL
+     * is guaranteed held.  This is what makes the loop safe to run with the
+     * GIL released in a later step. */
+    int    alloc_failed = 0;     /* StepBuf ran out of memory               */
+    int    zvindy_iflag = 0;     /* nonzero => ZVINDY interpolation failure  */
+    double zvindy_t     = 0.0;   /* t at which ZVINDY failed (for message)   */
+
+    while (direction * (t_bound - t) > 0.0) {
+        double t_old = t;
+
+        c_zvode(
+            &fun_adaptor, neq, y,
+            &t, t_bound,
+            itol, rtol, atol,
+            itask, &istate,
+            iopt,
+            zwork, lzw,
+            rwork, lrw,
+            iwork, liw,
+            &jac_adaptor,
+            mf,
+            &cb
+        );
+
+        if (cb.error)
+            break;  /* callback raised — exception already pending */
+
+        if (istate < 0)
+            break;  /* solver error — return what we have so far */
+
+        if (refine > 1) {
+            /* Nordsieck array yh lives at zwork[0..neq*(nq+1)-1], ldyh = neq.
+             * h == hu immediately after an accepted step. */
+            int    nq = iwork[13];    /* NQU: IWORK(14), order last used   */
+            double hu = rwork[10];    /* HU:  RWORK(11), step size last used */
+            struct zvode_step_t step = { .h = hu, .tn = t, .hu = hu, .nq = nq };
+
+            for (int i = 1; i < refine; i++) {
+                double t_i = t_old + (double)i * (t - t_old) / refine;
+                int iflag = c_zvindy(neq, t_i, zwork, neq, 0, dky, &step);
+                if (iflag != 0) {
+                    zvindy_iflag = iflag;
+                    zvindy_t     = t_i;
+                    break;
+                }
+                if (stepbuf_append(&buf, t_i, dky) < 0) {
+                    alloc_failed = 1;
+                    break;
+                }
+            }
+            if (zvindy_iflag != 0 || alloc_failed)
+                break;  /* refinement failed — escape the step loop */
+        }
+
+        if (stepbuf_append(&buf, t, y) < 0) {
+            alloc_failed = 1;
+            break;
+        }
+    }
+
+    /* Raise any deferred error now (GIL held). */
+    if (cb.error) {
+        assert(PyErr_Occurred());
+        goto cleanup;
+    }
+    if (alloc_failed) {
+        PyErr_NoMemory();
+        goto cleanup;
+    }
+    if (zvindy_iflag != 0) {
+        PyErr_Format(PyExc_RuntimeError,
+            "ZVINDY failed (iflag=%d) interpolating at t=%.17g",
+            zvindy_iflag, zvindy_t);
+        goto cleanup;
+    }
+
+    /* Drop the growth slack before allocating the output, so the buffer and
+     * output are not both oversized at once (lowers peak memory for large neq). */
+    stepbuf_shrink_to_fit(&buf);
+
+    /* Allocate the output arrays here (StepBuf is Python-free), then let
+     * stepbuf_copy_out fill them with a plain memcpy.
+     *   ts_out : shape (size,)       float64
+     *   ys_out : shape (neq, size)   complex128, F-contiguous so column k
+     *            at offset k*neq matches the buffer's column-major layout. */
+    npy_intp ts_shape[1] = { buf.size };
+    PyArrayObject *ts_out = (PyArrayObject *)
+        PyArray_EMPTY(1, ts_shape, NPY_FLOAT64, 0);
+    if (!ts_out)
+        goto cleanup;
+
+    npy_intp ys_shape[2] = { buf.neq, buf.size };
+    PyArrayObject *ys_out = (PyArrayObject *)
+        PyArray_EMPTY(2, ys_shape, NPY_COMPLEX128, 1 /* fortran order */);
+    if (!ys_out) { Py_DECREF(ts_out); goto cleanup; }
+
+    stepbuf_copy_out(&buf, PyArray_DATA(ts_out), PyArray_DATA(ys_out));
+
+    PyMem_Free(dky);
+    stepbuf_free(&buf);
+
+    /* "N" steals the references — no explicit Py_DECREF needed. */
+    return Py_BuildValue("(NNi)", ts_out, ys_out, istate);
+
+cleanup:
+    PyMem_Free(dky);
+    stepbuf_free(&buf);
+    return NULL;
+}
+
+
 static struct PyMethodDef zvode_module_methods[] = {
-    {"zvode", zvode_py, METH_VARARGS, zvode_doc},
-    {"zvindy", zvindy_py, METH_VARARGS, zvindy_doc},
+    {"zvode",          zvode_py,          METH_VARARGS, zvode_doc},
+    {"zvindy",         zvindy_py,         METH_VARARGS, zvindy_doc},
+    {"drive_knots",    drive_knots_py,    METH_VARARGS, drive_knots_doc},
+    {"drive_adaptive", drive_adaptive_py, METH_VARARGS, drive_adaptive_doc},
     {NULL, NULL, 0, NULL}
 };
 

@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "zvode"
-version = "0.1.0"
+version = "0.3.0"
 description = "Python bindings to the classic ZVODE ODE solver"
 authors = [{name = "Ivan Pribec", email = "ivan.pribec@gmail.com"}]
 requires-python = ">=3.9"
@@ -29,14 +29,24 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.23",
-    "scipy>=1.9",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9"]
+scipy = ["scipy>=1.9"]
+test = ["pytest>=9", "scipy>=1.9"]
+numba = ["numba>=0.59"]
+docs = [
+    "sphinx>=7",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    "numpydoc",
+    "scipy>=1.9",
+]
 
 [project.urls]
 Repository = "https://github.com/ivan-pi/zvode"
+Documentation = "https://ivan-pi.github.io/zvode/"
 Issues = "https://github.com/ivan-pi/zvode/issues"
 
 [tool.pytest]
@@ -53,14 +63,11 @@ sdist.include = [
     "CMakeLists.txt",
     "extern/**",
     "src/_zvode.c",
-    "src/zvode.h",
+    "test/**",
 ]
 sdist.exclude = [
+    ".claude/**",
     ".github/**",
     ".gitignore",
-    "docs/**",
-    "TODO.txt",
-    "notes.txt",
-    "test/*.f",
-    "test/*.F90",
+    "docs/release-plan.md",
 ]
