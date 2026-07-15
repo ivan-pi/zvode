@@ -9,12 +9,12 @@
 !  with NEQ = 8 distinct eigenvalues (a mix of decaying and oscillatory
 !  modes), integrated with BDF + a dense analytic Jacobian (MF = 21),
 !  which populates the Newton/Jacobian/LU counters that ZVSRCO must
-!  round-trip.  Decoupling only makes the reference solution analytic;
+!  round-trip.  Decoupling only makes the reference solution analytic --
 !  ZVODE still forms and LU-factors the full NEQ x NEQ Jacobian.
 !
 !  Coverage (assertion codes passed to `error stop`):
 !    ZVODE   1-4   integration reaches TOUT and matches exp(lam t)
-!    ZVINDY  10-13 interpolation reproduces y and dy/dt; out-of-range
+!    ZVINDY  10-13 interpolation reproduces y and dy/dt, and out-of-range
 !                  K returns IFLAG = -1
 !    ZVSRCO  20-33 save slots map to the SAME variables as ZVODE's
 !                  documented IWORK/RWORK outputs -- i.e. the save/restore
@@ -92,8 +92,12 @@ program test_zvode_public_api
   integer, parameter :: lrw = 20 + neq
   integer, parameter :: liw = 30 + neq
 
+  ! Named ZVSRCO JOB flags, so the call sites read as save/restore rather
+  ! than the bare 1/2.
+  integer, parameter :: save_state = 1, restore_state = 2
+
   ! Problem P and (unrelated) problem Q eigenvalues -- all with negative
-  ! real part; a spread of pure-decay and decaying-oscillatory modes.
+  ! real part, spanning pure-decay and decaying-oscillatory modes.
   complex(dp), parameter :: lam(neq) = [ &
        cmplx(-2.0_dp, 0.0_dp, dp), cmplx(-5.0_dp,  0.0_dp, dp), &
        cmplx(-0.5_dp, 5.0_dp, dp), cmplx(-1.0_dp,  3.0_dp, dp), &
@@ -120,8 +124,11 @@ program test_zvode_public_api
   ! Reference: solve P from 0 to tf in a single call.
   ! ================================================================
   s = solver_settings()
-  y = cmplx(1.0_dp, 0.0_dp, dp); t = 0.0_dp
-  zwork = 0.0_dp; rwork = 0.0_dp; iwork = 0
+  y = cmplx(1.0_dp, 0.0_dp, dp)
+  t = 0.0_dp
+  zwork = 0.0_dp
+  rwork = 0.0_dp
+  iwork = 0
   call zvode(diag_fun(neq, lam), neq, y, t, tf, s%itol, [s%rtol], [s%atol], &
              s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
@@ -135,8 +142,11 @@ program test_zvode_public_api
   ! Interrupted solve: leg 1 from 0 to tmid.
   ! ================================================================
   s = solver_settings()
-  y = cmplx(1.0_dp, 0.0_dp, dp); t = 0.0_dp
-  zwork = 0.0_dp; rwork = 0.0_dp; iwork = 0
+  y = cmplx(1.0_dp, 0.0_dp, dp)
+  t = 0.0_dp
+  zwork = 0.0_dp
+  rwork = 0.0_dp
+  iwork = 0
   call zvode(diag_fun(neq, lam), neq, y, t, tmid, s%itol, [s%rtol], [s%atol], &
              s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
@@ -154,7 +164,7 @@ program test_zvode_public_api
   call check(iflag == 0, 10, 'ZVINDY K=0: iflag /= 0')
   call check(all(is_close(dky, y, 1.0e-10_dp)), 11, 'ZVINDY K=0 vs y')
 
-  ! K = 1 gives dy/dt; compare to the analytic derivative lam*y.
+  ! K = 1 gives dy/dt, compared against the analytic derivative lam*y.
   call zvindy(tmid, 1, zwork, neq, dky, iflag)
   call check(iflag == 0, 12, 'ZVINDY K=1: iflag /= 0')
   call check(all(is_close(dky, lam*analytic(lam, tmid), 1.0e-3_dp)), 12, &
@@ -173,7 +183,7 @@ program test_zvode_public_api
   !   RSAV(1:50) = /ZVOD01/ reals, RSAV(51) = HU (/ZVOD02/)
   !   ISAV(1:33) = /ZVOD01/ ints,  ISAV(34:41) = /ZVOD02/ ints
   ! ================================================================
-  call zvsrco(rsav, isav, 1)
+  call zvsrco(rsav, isav, job=save_state)
 
   call check(rsav(51) == rwork(11), 20, 'RSAV(51) = HU  = RWORK(11)')
   call check(rsav(49) == rwork(13), 21, 'RSAV(49) = TN  = RWORK(13)')
@@ -194,7 +204,7 @@ program test_zvode_public_api
              'counters not populated (test would be vacuous)')
 
   ! stash P's solution and time for the resume test (module state is in
-  ! RSAV/ISAV; P's ZWORK/RWORK/IWORK are left untouched below)
+  ! RSAV/ISAV, and P's ZWORK/RWORK/IWORK are left untouched below)
   ysav = y
   tsav = t
 
@@ -205,15 +215,18 @@ program test_zvode_public_api
   ! resume depends entirely on ZVSRCO having restored the module state.
   ! ================================================================
   sq = solver_settings()
-  yq = cmplx(1.0_dp, 0.5_dp, dp); tq = 0.0_dp
-  zworkq = 0.0_dp; rworkq = 0.0_dp; iworkq = 0
+  yq = cmplx(1.0_dp, 0.5_dp, dp)
+  tq = 0.0_dp
+  zworkq = 0.0_dp
+  rworkq = 0.0_dp
+  iworkq = 0
   call zvode(diag_fun(neq, lamq), neq, yq, tq, 1.0_dp, sq%itol, [sq%rtol], &
              [sq%atol], sq%itask, sq%istate, sq%iopt, zworkq, lzw, rworkq, &
              lrw, iworkq, liw, diag_jac(neq, lamq), mf)
   call check(sq%istate == 2, 40, 'ZVODE problem Q: istate /= 2')
 
   ! restore P's internal state and pick up exactly where leg 1 stopped
-  call zvsrco(rsav, isav, 2)
+  call zvsrco(rsav, isav, job=restore_state)
   y = ysav
   t = tsav
   s%istate = 2
@@ -238,13 +251,18 @@ contains
     v = exp(l * tt)
   end function
 
-  ! Mixed absolute/relative closeness predicate; elemental so it applies
-  ! componentwise and reduces with ALL/ANY at the call site.
-  elemental function is_close(got, want, rtol_) result(ok)
+  ! Mixed absolute/relative closeness predicate, elemental so it applies
+  ! componentwise and reduces with ALL/ANY at the call site.  ATOL is the
+  ! absolute floor and defaults to 1.0e-12 when omitted.
+  elemental function is_close(got, want, rtol, atol) result(ok)
     complex(dp), intent(in) :: got, want
-    real(dp), intent(in) :: rtol_
+    real(dp), intent(in) :: rtol
+    real(dp), intent(in), optional :: atol
     logical :: ok
-    ok = abs(got - want) <= rtol_ * abs(want) + 1.0e-12_dp
+    real(dp) :: a
+    a = 1.0e-12_dp
+    if (present(atol)) a = atol
+    ok = abs(got - want) <= rtol * abs(want) + a
   end function
 
   ! Single reporting sink: consumes an already-reduced logical (it cannot
