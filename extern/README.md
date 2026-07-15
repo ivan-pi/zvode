@@ -16,8 +16,15 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
   array `RPAR` and an integer array `IPAR`. In the functor design, context is carried by the
   class object itself, so these arguments are no longer present.
 - The helper functions ZACOPY, DZSCAL, DZAXPY have been moved to a separate module `ZVODE_LINALG_MOD`.
+- **`COMMON` blocks removed** — the internal state formerly held in the labeled `COMMON` blocks
+  `/ZVOD01/` and `/ZVOD02/` is now declared as module variables of `ZVODE_MOD`, shared between the
+  package routines by host association. Module variables carry the `SAVE` attribute implicitly, so
+  the values persist between calls exactly as the `COMMON` blocks did. The one routine that relied on
+  `COMMON` storage association, `ZVSRCO` (save/restore of the internal state), was rewritten to pack
+  and unpack the module variables explicitly, preserving the original `RSAV`/`ISAV` layout (51 reals,
+  41 integers). These module variables are intended to move into a derived type in a later step.
 
-The internal numerics — the `ZVOD01`/`ZVOD02` Fortran `COMMON` blocks, and the Adams and BDF stepping logic — are unchanged.
+The internal numerics — the Adams and BDF stepping logic — are unchanged.
 
 ## `linpack/` — changes from the Netlib release
 

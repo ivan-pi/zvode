@@ -71,6 +71,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Removed the internal Fortran `COMMON` blocks `/ZVOD01/` and `/ZVOD02/` from
+  the vendored `extern/zvode.F`.  Their members are now module variables of
+  `ZVODE_MOD`, shared between the package routines by host association; module
+  variables carry the `SAVE` attribute implicitly, so the state persists between
+  calls exactly as the `COMMON` blocks did.  `ZVSRCO`, which relied on `COMMON`
+  storage association, was rewritten to pack/unpack the module variables
+  explicitly while preserving the original `RSAV`/`ISAV` layout (51 reals, 41
+  integers).  This is a stepping stone toward moving the internal state into a
+  derived type.  No behavioural change
 - `drive_adaptive`'s internal `StepBuf` now uses a plain `malloc`/`realloc`
   backing store instead of NumPy arrays.  The adaptive stepping loop performs
   no Python/NumPy C API calls on its hot path (and defers any error reporting

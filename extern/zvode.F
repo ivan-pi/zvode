@@ -68,6 +68,29 @@ C
       INCLUDE 'linpack.fi'
 #endif
 C
+C-----------------------------------------------------------------------
+C Internal state formerly held in the labeled COMMON blocks /ZVOD01/ and
+C /ZVOD02/.  These are now module variables, shared between the package
+C routines by host association.  Module variables carry the SAVE
+C attribute implicitly, so their values persist between calls to ZVODE,
+C exactly as the COMMON blocks did.  The '01'/'02' split and the
+C real-before-integer ordering survive only in ZVSRCO, which packs and
+C unpacks these variables into the RSAV/ISAV save arrays.
+C
+C Former /ZVOD01/ members:
+      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13),
+     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
+     2     RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND
+      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
+     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
+     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
+     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
+     4        NSLP, NYH
+C Former /ZVOD02/ members:
+      DOUBLE PRECISION HU
+      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C-----------------------------------------------------------------------
+C
       CONTAINS
 C
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
@@ -1119,21 +1142,11 @@ C double precision real values.
 C
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
-C
-C Type declarations for labeled COMMON block ZVOD02 --------------------
-C
-      DOUBLE PRECISION HU
-      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C Former /ZVOD02/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -1248,15 +1261,6 @@ C NNI    = Number of nonlinear iterations so far.
 C NQU    = The method order last used.
 C NST    = The number of steps taken for the problem so far.
 C-----------------------------------------------------------------------
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
-      COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
       DATA  MXSTP0 /500/, MXHNL0 /10/
       DATA ZERO /0.0D0/, ONE /1.0D0/, TWO /2.0D0/, FOUR /4.0D0/,
@@ -1946,21 +1950,11 @@ C
 C Discussion above and comments in driver explain all variables.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
-C
-C Type declarations for labeled COMMON block ZVOD02 --------------------
-C
-      DOUBLE PRECISION HU
-      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C Former /ZVOD02/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -1973,15 +1967,6 @@ C listed (local) variables to be saved between calls to this integrator.
 C-----------------------------------------------------------------------
       SAVE HUN, ZERO
 C
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
-      COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
       DATA HUN /100.0D0/, ZERO /0.0D0/
 C
@@ -2102,21 +2087,11 @@ C          whose real name is dependent on the method used.
 C RPAR, IPAR = User's real/complex and integer work arrays.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
-C
-C Type declarations for labeled COMMON block ZVOD02 --------------------
-C
-      DOUBLE PRECISION HU
-      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C Former /ZVOD02/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -2133,15 +2108,6 @@ C-----------------------------------------------------------------------
      1     ETACF, ETAMIN, ETAMX1, ETAMX2, ETAMX3, ETAMXF, ETAQ, ETAQM1,
      2     KFC, KFH, MXNCF, ONEPSM, THRESH, ONE, ZERO
 C-----------------------------------------------------------------------
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
-      COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
       DATA KFC/-3/, KFH/-7/, MXNCF/10/
       DATA ADDON  /1.0D-6/,    BIAS1  /6.0D0/,     BIAS2  /6.0D0/,
@@ -2515,16 +2481,8 @@ C   NQWAIT = A counter controlling the frequency of order changes.
 C            An order change is about to be considered if NQWAIT = 1.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
-C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -2540,14 +2498,6 @@ C listed (local) variables to be saved between calls to this integrator.
 C-----------------------------------------------------------------------
       SAVE CORTES, ONE, SIX, TWO, ZERO
 C
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
 C
       DATA CORTES /0.1D0/
       DATA ONE  /1.0D0/, SIX /6.0D0/, TWO /2.0D0/, ZERO /0.0D0/
@@ -2691,16 +2641,8 @@ C         (If IORD = +1, ZVJUST assumes that HSCAL = TAU(1).)
 C See References 1 and 2 for details.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
-C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -2712,14 +2654,6 @@ C listed (local) variables to be saved between calls to this integrator.
 C-----------------------------------------------------------------------
       SAVE ONE, ZERO
 C
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
 C
       DATA ONE /1.0D0/, ZERO /0.0D0/
 C
@@ -2895,21 +2829,11 @@ C                            the scalar RC or step counter NST.
 C
 C For more details, see comments in driver subroutine.
 C-----------------------------------------------------------------------
-C Type declarations for labeled COMMON block ZVOD01 --------------------
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
-C
-C Type declarations for labeled COMMON block ZVOD02 --------------------
-C
-      DOUBLE PRECISION HU
-      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C Former /ZVOD02/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -2922,15 +2846,6 @@ C listed (local) variables to be saved between calls to this integrator.
 C-----------------------------------------------------------------------
       SAVE CCMAX, CRDOWN, MAXCOR, MSBP, RDIV, ONE, TWO, ZERO
 C
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
-      COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
       DATA CCMAX /0.3D0/, CRDOWN /0.3D0/, MAXCOR /3/, MSBP /20/,
      1     RDIV  /2.0D0/
@@ -3116,21 +3031,11 @@ C              JCUR = 0 means J is not current.
 C              JCUR = 1 means J is current.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
-C
-C Type declarations for labeled COMMON block ZVOD02 --------------------
-C
-      DOUBLE PRECISION HU
-      INTEGER NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C Former /ZVOD02/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -3144,15 +3049,6 @@ C listed (local) variables to be saved between calls to this subroutine.
 C-----------------------------------------------------------------------
       SAVE ONE, PT1, THOU, ZERO
 C-----------------------------------------------------------------------
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
-      COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
       DATA ONE /1.0D0/, THOU /1000.0D0/, ZERO /0.0D0/, PT1 /0.1D0/
 C
@@ -3362,16 +3258,8 @@ C IERSL = Output flag.  IERSL = 0 if no trouble occurred.
 C         IERSL = 1 if a singular matrix arose with MITER = 3.
 C-----------------------------------------------------------------------
 C
-C Type declarations for labeled COMMON block ZVOD01 --------------------
-C
-      DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL,
-     1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU, TQ, TN, UROUND
-      INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     3        N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     4        NSLP, NYH
+C Former /ZVOD01/ members are module variables of ZVODE_MOD
+C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
@@ -3384,14 +3272,6 @@ C listed (local) variables to be saved between calls to this integrator.
 C-----------------------------------------------------------------------
       SAVE ONE, ZERO
 C
-      COMMON /ZVOD01/ ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13), ETA,
-     1                ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2                RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND,
-     3                ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
-     4                L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
-     5                LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
-     6                N, NEWH, NEWQ, NHNIL, NQ, NQNYH, NQWAIT, NSLJ,
-     7                NSLP, NYH
 C
       DATA ONE /1.0D0/, ZERO /0.0D0/
 C
@@ -3439,57 +3319,158 @@ C----------------------- End of Subroutine ZVSOL -----------------------
 C-----------------------------------------------------------------------
 C Call sequence input -- RSAV, ISAV, JOB
 C Call sequence output -- RSAV, ISAV
-C COMMON block variables accessed -- All of /ZVOD01/ and /ZVOD02/
+C Module variables accessed -- all former members of /ZVOD01/, /ZVOD02/
 C
 C Subroutines/functions called by ZVSRCO: None
 C-----------------------------------------------------------------------
-C This routine saves or restores (depending on JOB) the contents of the
-C COMMON blocks ZVOD01 and ZVOD02, which are used internally by ZVODE.
+C This routine saves or restores (depending on JOB) the internal state
+C variables of ZVODE (formerly the COMMON blocks ZVOD01 and ZVOD02, now
+C module variables of ZVODE_MOD).
 C
 C RSAV = real array of length 51 or more.
 C ISAV = integer array of length 41 or more.
-C JOB  = flag indicating to save or restore the COMMON blocks:
-C        JOB  = 1 if COMMON is to be saved (written to RSAV/ISAV).
-C        JOB  = 2 if COMMON is to be restored (read from RSAV/ISAV).
+C JOB  = flag indicating to save or restore the state variables:
+C        JOB  = 1 if the state is to be saved (written to RSAV/ISAV).
+C        JOB  = 2 if the state is to be restored (read from RSAV/ISAV).
 C        A call with JOB = 2 presumes a prior call with JOB = 1.
 C-----------------------------------------------------------------------
-      DOUBLE PRECISION RVOD1, RVOD2
-      INTEGER IVOD1, IVOD2
-      INTEGER I, LENIV1, LENIV2, LENRV1, LENRV2
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE LENRV1, LENIV1, LENRV2, LENIV2
-C
-      COMMON /ZVOD01/ RVOD1(50), IVOD1(33)
-      COMMON /ZVOD02/ RVOD2(1), IVOD2(8)
-      DATA LENRV1/50/, LENIV1/33/, LENRV2/1/, LENIV2/8/
 C
       IF (JOB .EQ. 2) GO TO 100
-      DO 10 I = 1,LENRV1
- 10     RSAV(I) = RVOD1(I)
-      DO 15 I = 1,LENRV2
- 15     RSAV(LENRV1+I) = RVOD2(I)
+C Save: pack the module variables into RSAV/ISAV.
+      RSAV(1) = ACNRM
+      RSAV(2) = CCMXJ
+      RSAV(3) = CONP
+      RSAV(4) = CRATE
+      RSAV(5) = DRC
+      RSAV(6:18) = EL
+      RSAV(19) = ETA
+      RSAV(20) = ETAMAX
+      RSAV(21) = H
+      RSAV(22) = HMIN
+      RSAV(23) = HMXI
+      RSAV(24) = HNEW
+      RSAV(25) = HRL1
+      RSAV(26) = HSCAL
+      RSAV(27) = PRL1
+      RSAV(28) = RC
+      RSAV(29) = RL1
+      RSAV(30) = SRUR
+      RSAV(31:43) = TAU
+      RSAV(44:48) = TQ
+      RSAV(49) = TN
+      RSAV(50) = UROUND
+      RSAV(51) = HU
 C
-      DO 20 I = 1,LENIV1
- 20     ISAV(I) = IVOD1(I)
-      DO 25 I = 1,LENIV2
- 25     ISAV(LENIV1+I) = IVOD2(I)
-C
+      ISAV(1) = ICF
+      ISAV(2) = INIT
+      ISAV(3) = IPUP
+      ISAV(4) = JCUR
+      ISAV(5) = JSTART
+      ISAV(6) = JSV
+      ISAV(7) = KFLAG
+      ISAV(8) = KUTH
+      ISAV(9) = L
+      ISAV(10) = LMAX
+      ISAV(11) = LYH
+      ISAV(12) = LEWT
+      ISAV(13) = LACOR
+      ISAV(14) = LSAVF
+      ISAV(15) = LWM
+      ISAV(16) = LIWM
+      ISAV(17) = LOCJS
+      ISAV(18) = MAXORD
+      ISAV(19) = METH
+      ISAV(20) = MITER
+      ISAV(21) = MSBJ
+      ISAV(22) = MXHNIL
+      ISAV(23) = MXSTEP
+      ISAV(24) = N
+      ISAV(25) = NEWH
+      ISAV(26) = NEWQ
+      ISAV(27) = NHNIL
+      ISAV(28) = NQ
+      ISAV(29) = NQNYH
+      ISAV(30) = NQWAIT
+      ISAV(31) = NSLJ
+      ISAV(32) = NSLP
+      ISAV(33) = NYH
+      ISAV(34) = NCFN
+      ISAV(35) = NETF
+      ISAV(36) = NFE
+      ISAV(37) = NJE
+      ISAV(38) = NLU
+      ISAV(39) = NNI
+      ISAV(40) = NQU
+      ISAV(41) = NST
       RETURN
 C
  100  CONTINUE
-      DO 110 I = 1,LENRV1
- 110     RVOD1(I) = RSAV(I)
-      DO 115 I = 1,LENRV2
- 115     RVOD2(I) = RSAV(LENRV1+I)
+C Restore: unpack RSAV/ISAV back into the module variables.
+      ACNRM = RSAV(1)
+      CCMXJ = RSAV(2)
+      CONP = RSAV(3)
+      CRATE = RSAV(4)
+      DRC = RSAV(5)
+      EL = RSAV(6:18)
+      ETA = RSAV(19)
+      ETAMAX = RSAV(20)
+      H = RSAV(21)
+      HMIN = RSAV(22)
+      HMXI = RSAV(23)
+      HNEW = RSAV(24)
+      HRL1 = RSAV(25)
+      HSCAL = RSAV(26)
+      PRL1 = RSAV(27)
+      RC = RSAV(28)
+      RL1 = RSAV(29)
+      SRUR = RSAV(30)
+      TAU = RSAV(31:43)
+      TQ = RSAV(44:48)
+      TN = RSAV(49)
+      UROUND = RSAV(50)
+      HU = RSAV(51)
 C
-      DO 120 I = 1,LENIV1
- 120     IVOD1(I) = ISAV(I)
-      DO 125 I = 1,LENIV2
- 125     IVOD2(I) = ISAV(LENIV1+I)
-C
+      ICF = ISAV(1)
+      INIT = ISAV(2)
+      IPUP = ISAV(3)
+      JCUR = ISAV(4)
+      JSTART = ISAV(5)
+      JSV = ISAV(6)
+      KFLAG = ISAV(7)
+      KUTH = ISAV(8)
+      L = ISAV(9)
+      LMAX = ISAV(10)
+      LYH = ISAV(11)
+      LEWT = ISAV(12)
+      LACOR = ISAV(13)
+      LSAVF = ISAV(14)
+      LWM = ISAV(15)
+      LIWM = ISAV(16)
+      LOCJS = ISAV(17)
+      MAXORD = ISAV(18)
+      METH = ISAV(19)
+      MITER = ISAV(20)
+      MSBJ = ISAV(21)
+      MXHNIL = ISAV(22)
+      MXSTEP = ISAV(23)
+      N = ISAV(24)
+      NEWH = ISAV(25)
+      NEWQ = ISAV(26)
+      NHNIL = ISAV(27)
+      NQ = ISAV(28)
+      NQNYH = ISAV(29)
+      NQWAIT = ISAV(30)
+      NSLJ = ISAV(31)
+      NSLP = ISAV(32)
+      NYH = ISAV(33)
+      NCFN = ISAV(34)
+      NETF = ISAV(35)
+      NFE = ISAV(36)
+      NJE = ISAV(37)
+      NLU = ISAV(38)
+      NNI = ISAV(39)
+      NQU = ISAV(40)
+      NST = ISAV(41)
       RETURN
 C----------------------- End of Subroutine ZVSRCO ----------------------
       END SUBROUTINE
