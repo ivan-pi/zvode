@@ -6,9 +6,11 @@
 !
 !  Problem P (decoupled, so each component has a closed form):
 !      dy_i/dt = lam_i * y_i,   y_i(0) = 1     =>   y_i(t) = exp(lam_i t)
-!  with lam = (-2, 0) and (-0.5, 5), integrated with BDF + a dense
-!  analytic Jacobian (MF = 21), which populates the Newton/Jacobian/LU
-!  counters that ZVSRCO must round-trip.
+!  with NEQ = 8 distinct eigenvalues (a mix of decaying and oscillatory
+!  modes), integrated with BDF + a dense analytic Jacobian (MF = 21),
+!  which populates the Newton/Jacobian/LU counters that ZVSRCO must
+!  round-trip.  Decoupling only makes the reference solution analytic;
+!  ZVODE still forms and LU-factors the full NEQ x NEQ Jacobian.
 !
 !  Coverage (assertion codes passed to `error stop`):
 !    ZVODE   1-4   integration reaches TOUT and matches exp(lam t)
@@ -32,13 +34,13 @@ module test_public_api_mod
 
   ! dy_i/dt = lam_i y_i  (decoupled linear system, diagonal Jacobian)
   type, extends(zvode_fun) :: diag_fun
-    complex(dp) :: lam(8) = (0.0_dp, 0.0_dp)
+    complex(dp), allocatable :: lam(:)
   contains
     procedure :: eval => diag_f
   end type
 
   type, extends(zvode_jac) :: diag_jac
-    complex(dp) :: lam(8) = (0.0_dp, 0.0_dp)
+    complex(dp), allocatable :: lam(:)
   contains
     procedure :: eval => diag_j
   end type
@@ -50,10 +52,7 @@ contains
     real(dp), intent(in) :: t
     complex(dp), intent(in) :: y(fun%neq)
     complex(dp), intent(out) :: ydot(fun%neq)
-    integer :: i
-    do i = 1, fun%neq
-      ydot(i) = fun%lam(i) * y(i)
-    end do
+    ydot = fun%lam * y
   end subroutine
 
   subroutine diag_j(jac, t, y, ml, mu, pd, nrowpd)
@@ -76,88 +75,96 @@ program test_zvode_public_api
   use test_public_api_mod, only: diag_fun, diag_jac, dp
   implicit none
 
-  integer, parameter :: neq = 2, mf = 21
+  ! Solver settings with defaults, so a fresh `solver_settings()` resets
+  ! everything (in particular ISTATE = 1) via the default structure
+  ! constructor.  ISTATE is updated in place by ZVODE.
+  type :: solver_settings
+    integer  :: itol   = 1
+    real(dp) :: rtol    = 1.0e-9_dp
+    real(dp) :: atol    = 1.0e-11_dp
+    integer  :: itask  = 1
+    integer  :: istate = 1
+    integer  :: iopt   = 0
+  end type
+
+  integer, parameter :: neq = 8, mf = 21
   integer, parameter :: lzw = 8*neq + 2*neq*neq   ! MF = 21
   integer, parameter :: lrw = 20 + neq
   integer, parameter :: liw = 30 + neq
 
-  complex(dp), parameter :: lam(neq) = &
-       [cmplx(-2.0_dp, 0.0_dp, dp), cmplx(-0.5_dp, 5.0_dp, dp)]
-
-  complex(dp) :: y(neq), zwork(lzw), yref(neq), dky(neq)
-  real(dp) :: rwork(lrw), t, tout, rtol(1), atol(1)
-  integer :: iwork(liw), itol, itask, istate, iopt, iflag
-
-  ! saved copies for the interleaved save/restore/resume test
-  complex(dp) :: ysav(neq)
-  real(dp) :: rsav(51), tsav
-  integer :: isav(41)
-
-  ! second, unrelated problem used to clobber the shared module state
-  complex(dp) :: yq(neq), zworkq(lzw)
-  real(dp) :: rworkq(lrw), tq, toutq
-  integer :: iworkq(liw), istateq
-  complex(dp), parameter :: lamq(neq) = &
-       [cmplx(-5.0_dp, 1.0_dp, dp), cmplx(-1.0_dp, -3.0_dp, dp)]
+  ! Problem P and (unrelated) problem Q eigenvalues -- all with negative
+  ! real part; a spread of pure-decay and decaying-oscillatory modes.
+  complex(dp), parameter :: lam(neq) = [ &
+       cmplx(-2.0_dp, 0.0_dp, dp), cmplx(-5.0_dp,  0.0_dp, dp), &
+       cmplx(-0.5_dp, 5.0_dp, dp), cmplx(-1.0_dp,  3.0_dp, dp), &
+       cmplx(-0.3_dp, 8.0_dp, dp), cmplx(-0.1_dp,  1.0_dp, dp), &
+       cmplx(-3.0_dp,-2.0_dp, dp), cmplx(-1.5_dp,  4.0_dp, dp)]
+  complex(dp), parameter :: lamq(neq) = [ &
+       cmplx(-4.0_dp, 1.0_dp, dp), cmplx(-1.0_dp, -3.0_dp, dp), &
+       cmplx(-2.5_dp, 2.0_dp, dp), cmplx(-0.8_dp,  6.0_dp, dp), &
+       cmplx(-6.0_dp, 0.0_dp, dp), cmplx(-0.2_dp, -1.0_dp, dp), &
+       cmplx(-3.5_dp, 3.0_dp, dp), cmplx(-1.2_dp, -4.0_dp, dp)]
 
   real(dp), parameter :: tmid = 0.6_dp, tf = 1.5_dp
-  integer :: i
+
+  type(solver_settings) :: s, sq
+  complex(dp) :: y(neq), zwork(lzw), yref(neq), dky(neq), ysav(neq)
+  real(dp) :: rwork(lrw), t, rsav(51), tsav
+  integer :: iwork(liw), iflag, isav(41)
+
+  complex(dp) :: yq(neq), zworkq(lzw)
+  real(dp) :: rworkq(lrw), tq
+  integer :: iworkq(liw)
 
   ! ================================================================
   ! Reference: solve P from 0 to tf in a single call.
   ! ================================================================
-  call init_p(y, t)
-  tout = tf
-  call zvode(diag_fun(neq, lam), neq, y, t, tout, itol, rtol, atol, itask, &
-             istate, iopt, zwork, lzw, rwork, lrw, iwork, liw, &
+  s = solver_settings()
+  y = cmplx(1.0_dp, 0.0_dp, dp); t = 0.0_dp
+  zwork = 0.0_dp; rwork = 0.0_dp; iwork = 0
+  call zvode(diag_fun(neq, lam), neq, y, t, tf, s%itol, [s%rtol], [s%atol], &
+             s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
-  if (istate /= 2) call fail('ZVODE reference: istate /= 2', 1)
-  if (t /= tf)     call fail('ZVODE reference: T /= tf', 2)
-  do i = 1, neq
-    call assert_close(y(i), analytic(lam(i), tf), 1.0e-5_dp, &
-                      'ZVODE reference accuracy', 3)
-  end do
+  call check(s%istate == 2, 1, 'ZVODE reference: istate /= 2')
+  call check(t == tf,       2, 'ZVODE reference: T /= tf')
+  call check(all(is_close(y, analytic(lam, tf), 1.0e-5_dp)), 3, &
+             'ZVODE reference accuracy')
   yref = y
 
   ! ================================================================
   ! Interrupted solve: leg 1 from 0 to tmid.
   ! ================================================================
-  call init_p(y, t)
-  tout = tmid
-  call zvode(diag_fun(neq, lam), neq, y, t, tout, itol, rtol, atol, itask, &
-             istate, iopt, zwork, lzw, rwork, lrw, iwork, liw, &
+  s = solver_settings()
+  y = cmplx(1.0_dp, 0.0_dp, dp); t = 0.0_dp
+  zwork = 0.0_dp; rwork = 0.0_dp; iwork = 0
+  call zvode(diag_fun(neq, lam), neq, y, t, tmid, s%itol, [s%rtol], [s%atol], &
+             s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
-  if (istate /= 2) call fail('ZVODE leg1: istate /= 2', 4)
-  do i = 1, neq
-    call assert_close(y(i), analytic(lam(i), tmid), 1.0e-5_dp, &
-                      'ZVODE leg1 accuracy', 4)
-  end do
+  call check(s%istate == 2, 4, 'ZVODE leg1: istate /= 2')
+  call check(all(is_close(y, analytic(lam, tmid), 1.0e-5_dp)), 4, &
+             'ZVODE leg1 accuracy')
 
   ! ================================================================
   ! ZVINDY: interpolate at t = tmid using the Nordsieck array in ZWORK.
   ! For the standard setup the YH array starts at ZWORK(1) with column
   ! length NYH = NEQ.
   ! ================================================================
-  ! K = 0 must reproduce the returned solution vector exactly.
+  ! K = 0 must reproduce the returned solution vector.
   call zvindy(tmid, 0, zwork, neq, dky, iflag)
-  if (iflag /= 0) call fail('ZVINDY K=0: iflag /= 0', 10)
-  do i = 1, neq
-    call assert_close(dky(i), y(i), 1.0e-10_dp, 'ZVINDY K=0 vs y', 11)
-  end do
+  call check(iflag == 0, 10, 'ZVINDY K=0: iflag /= 0')
+  call check(all(is_close(dky, y, 1.0e-10_dp)), 11, 'ZVINDY K=0 vs y')
 
   ! K = 1 gives dy/dt; compare to the analytic derivative lam*y.
   call zvindy(tmid, 1, zwork, neq, dky, iflag)
-  if (iflag /= 0) call fail('ZVINDY K=1: iflag /= 0', 12)
-  do i = 1, neq
-    call assert_close(dky(i), lam(i)*analytic(lam(i), tmid), 1.0e-3_dp, &
-                      'ZVINDY K=1 vs lam*y', 12)
-  end do
+  call check(iflag == 0, 12, 'ZVINDY K=1: iflag /= 0')
+  call check(all(is_close(dky, lam*analytic(lam, tmid), 1.0e-3_dp)), 12, &
+             'ZVINDY K=1 vs lam*y')
 
   ! Out-of-range derivative order must be reported, not computed.
   call xsetf(0)                       ! silence the informational message
   call zvindy(tmid, 13, zwork, neq, dky, iflag)
   call xsetf(1)
-  if (iflag /= -1) call fail('ZVINDY K=13: expected iflag = -1', 13)
+  call check(iflag == -1, 13, 'ZVINDY K=13: expected iflag = -1')
 
   ! ================================================================
   ! ZVSRCO save: the saved slots must hold the SAME quantities that
@@ -168,25 +175,26 @@ program test_zvode_public_api
   ! ================================================================
   call zvsrco(rsav, isav, 1)
 
-  call assert_real(rsav(51), rwork(11), 'RSAV(51) = HU  = RWORK(11)', 20)
-  call assert_real(rsav(49), rwork(13), 'RSAV(49) = TN  = RWORK(13)', 21)
-  call assert_int(isav(41), iwork(11), 'ISAV(41) = NST  = IWORK(11)', 22)
-  call assert_int(isav(36), iwork(12), 'ISAV(36) = NFE  = IWORK(12)', 23)
-  call assert_int(isav(37), iwork(13), 'ISAV(37) = NJE  = IWORK(13)', 24)
-  call assert_int(isav(40), iwork(14), 'ISAV(40) = NQU  = IWORK(14)', 25)
-  call assert_int(isav(26), iwork(15), 'ISAV(26) = NEWQ = IWORK(15)', 26)
-  call assert_int(isav(38), iwork(20), 'ISAV(38) = NLU  = IWORK(20)', 27)
-  call assert_int(isav(39), iwork(21), 'ISAV(39) = NNI  = IWORK(21)', 28)
-  call assert_int(isav(34), iwork(22), 'ISAV(34) = NCFN = IWORK(22)', 29)
-  call assert_int(isav(35), iwork(23), 'ISAV(35) = NETF = IWORK(23)', 30)
-  call assert_int(isav(24), neq,       'ISAV(24) = N    = NEQ',       31)
+  call check(rsav(51) == rwork(11), 20, 'RSAV(51) = HU  = RWORK(11)')
+  call check(rsav(49) == rwork(13), 21, 'RSAV(49) = TN  = RWORK(13)')
+  call check(isav(41) == iwork(11), 22, 'ISAV(41) = NST  = IWORK(11)')
+  call check(isav(36) == iwork(12), 23, 'ISAV(36) = NFE  = IWORK(12)')
+  call check(isav(37) == iwork(13), 24, 'ISAV(37) = NJE  = IWORK(13)')
+  call check(isav(40) == iwork(14), 25, 'ISAV(40) = NQU  = IWORK(14)')
+  call check(isav(26) == iwork(15), 26, 'ISAV(26) = NEWQ = IWORK(15)')
+  call check(isav(38) == iwork(20), 27, 'ISAV(38) = NLU  = IWORK(20)')
+  call check(isav(39) == iwork(21), 28, 'ISAV(39) = NNI  = IWORK(21)')
+  call check(isav(34) == iwork(22), 29, 'ISAV(34) = NCFN = IWORK(22)')
+  call check(isav(35) == iwork(23), 30, 'ISAV(35) = NETF = IWORK(23)')
+  call check(isav(24) == neq,       31, 'ISAV(24) = N    = NEQ')
 
   ! sanity: the run must actually have exercised Jacobian/LU machinery,
   ! otherwise the counter checks above would be vacuously comparing zeros
-  if (iwork(11) <= 0 .or. iwork(13) <= 0 .or. iwork(20) <= 0) &
-       call fail('counters not populated (test would be vacuous)', 32)
+  call check(iwork(11) > 0 .and. iwork(13) > 0 .and. iwork(20) > 0, 32, &
+             'counters not populated (test would be vacuous)')
 
-  ! stash P's state (module state + solution + time) for the resume test
+  ! stash P's solution and time for the resume test (module state is in
+  ! RSAV/ISAV; P's ZWORK/RWORK/IWORK are left untouched below)
   ysav = y
   tsav = t
 
@@ -196,30 +204,25 @@ program test_zvode_public_api
   ! and resume.  P's ZWORK/RWORK/IWORK are untouched by Q, so a correct
   ! resume depends entirely on ZVSRCO having restored the module state.
   ! ================================================================
-  ! initialise Q's OWN arrays directly -- must not touch P's zwork/rwork/iwork
-  yq = [cmplx(2.0_dp,0.0_dp,dp), cmplx(0.0_dp,3.0_dp,dp)]
-  tq = 0.0_dp; toutq = 1.0_dp; istateq = 1
+  sq = solver_settings()
+  yq = cmplx(1.0_dp, 0.5_dp, dp); tq = 0.0_dp
   zworkq = 0.0_dp; rworkq = 0.0_dp; iworkq = 0
-  call zvode(diag_fun(neq, lamq), neq, yq, tq, toutq, itol, rtol, atol, &
-             itask, istateq, iopt, zworkq, lzw, rworkq, lrw, iworkq, liw, &
-             diag_jac(neq, lamq), mf)
-  if (istateq /= 2) call fail('ZVODE problem Q: istate /= 2', 40)
+  call zvode(diag_fun(neq, lamq), neq, yq, tq, 1.0_dp, sq%itol, [sq%rtol], &
+             [sq%atol], sq%itask, sq%istate, sq%iopt, zworkq, lzw, rworkq, &
+             lrw, iworkq, liw, diag_jac(neq, lamq), mf)
+  call check(sq%istate == 2, 40, 'ZVODE problem Q: istate /= 2')
 
   ! restore P's internal state and pick up exactly where leg 1 stopped
   call zvsrco(rsav, isav, 2)
   y = ysav
   t = tsav
-  istate = 2
-
-  tout = tf
-  call zvode(diag_fun(neq, lam), neq, y, t, tout, itol, rtol, atol, itask, &
-             istate, iopt, zwork, lzw, rwork, lrw, iwork, liw, &
+  s%istate = 2
+  call zvode(diag_fun(neq, lam), neq, y, t, tf, s%itol, [s%rtol], [s%atol], &
+             s%itask, s%istate, s%iopt, zwork, lzw, rwork, lrw, iwork, liw, &
              diag_jac(neq, lam), mf)
-  if (istate /= 2) call fail('ZVODE resume: istate /= 2', 41)
-  do i = 1, neq
-    call assert_close(y(i), yref(i), 1.0e-6_dp, &
-                      'resume matches uninterrupted reference', 42)
-  end do
+  call check(s%istate == 2, 41, 'ZVODE resume: istate /= 2')
+  call check(all(is_close(y, yref, 1.0e-6_dp)), 42, &
+             'resume matches uninterrupted reference')
 
   write(*,'(a)') 'PASS: test_zvode_public_api'
   write(*,'(a,i0,a,i0,a,i0)') '  reference NST=', iwork(11), &
@@ -227,64 +230,33 @@ program test_zvode_public_api
 
 contains
 
-  subroutine init_p(yy, tt)
-    complex(dp), intent(out) :: yy(neq)
-    real(dp), intent(out) :: tt
-    yy = cmplx(1.0_dp, 0.0_dp, dp)
-    tt = 0.0_dp
-    itol = 1; rtol = 1.0e-9_dp; atol = 1.0e-11_dp
-    itask = 1; istate = 1; iopt = 0
-    zwork = 0.0_dp; rwork = 0.0_dp; iwork = 0
-  end subroutine
-
-  pure function analytic(l, tt) result(v)
+  ! Closed-form solution of each decoupled mode, y_i(t) = exp(lam_i t).
+  elemental function analytic(l, tt) result(v)
     complex(dp), intent(in) :: l
     real(dp), intent(in) :: tt
     complex(dp) :: v
     v = exp(l * tt)
   end function
 
-  subroutine assert_close(got, want, rtol_, what, code)
+  ! Mixed absolute/relative closeness predicate; elemental so it applies
+  ! componentwise and reduces with ALL/ANY at the call site.
+  elemental function is_close(got, want, rtol_) result(ok)
     complex(dp), intent(in) :: got, want
     real(dp), intent(in) :: rtol_
-    character(*), intent(in) :: what
+    logical :: ok
+    ok = abs(got - want) <= rtol_ * abs(want) + 1.0e-12_dp
+  end function
+
+  ! Single reporting sink: consumes an already-reduced logical (it cannot
+  ! be elemental, since it does I/O and stops).
+  subroutine check(ok, code, what)
+    logical, intent(in) :: ok
     integer, intent(in) :: code
-    if (abs(got - want) > rtol_ * abs(want) + 1.0e-12_dp) then
+    character(*), intent(in) :: what
+    if (.not. ok) then
       write(*,'(a,a)') 'FAIL: ', what
-      write(*,'(a,2es24.15)') '  got  = ', got
-      write(*,'(a,2es24.15)') '  want = ', want
-      write(*,'(a,es12.3)')   '  |err|= ', abs(got - want)
       error stop code
     end if
-  end subroutine
-
-  subroutine assert_real(got, want, what, code)
-    real(dp), intent(in) :: got, want
-    character(*), intent(in) :: what
-    integer, intent(in) :: code
-    if (got /= want) then
-      write(*,'(a,a)') 'FAIL: ', what
-      write(*,'(a,es24.15,a,es24.15)') '  got=', got, '  want=', want
-      error stop code
-    end if
-  end subroutine
-
-  subroutine assert_int(got, want, what, code)
-    integer, intent(in) :: got, want
-    character(*), intent(in) :: what
-    integer, intent(in) :: code
-    if (got /= want) then
-      write(*,'(a,a)') 'FAIL: ', what
-      write(*,'(a,i0,a,i0)') '  got=', got, '  want=', want
-      error stop code
-    end if
-  end subroutine
-
-  subroutine fail(what, code)
-    character(*), intent(in) :: what
-    integer, intent(in) :: code
-    write(*,'(a,a)') 'FAIL: ', what
-    error stop code
   end subroutine
 
 end program test_zvode_public_api
