@@ -255,16 +255,11 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
 
 
 def _validate_max_order(max_order, meth):
-    """Validate `max_order` and cap it to the method's ceiling.
+    """Validate `max_order` and cap it to the method's ceiling (12 Adams / 5 BDF).
 
-    `meth` is the ZVODE method code (1 = Adams, 2 = BDF); the ceiling
-    (12 / 5) is resolved here from `_METH_MAXORD` so callers need not carry it.
-    Returns the order to use: ``None`` passes through unchanged, a positive
-    value above the method's maximum is capped to that maximum after warning.
-    Capping here mirrors ZVODE's own ``MAXORD = MIN(MAXORD, MORD(METH))``, so
-    what we write into IWORK(5) matches what the solver actually uses.  Called
-    directly by the public entry points, hence ``stacklevel=3`` to point the
-    warning at the user.
+    `meth` is the ZVODE method code (1 = Adams, 2 = BDF).  ``None`` passes
+    through; a positive value above the ceiling is capped to it after warning.
+    Returns the order to use.
     """
     if max_order is None:
         return None
@@ -331,10 +326,7 @@ def _make_workspace(
     else:
         # Unreachable: _resolve_miter guarantees miter is 0..5.  Assert only in
         # the fallthrough, so the normal path pays nothing for the check.
-        assert False, (
-            f"_make_workspace: miter={miter!r} is outside the valid range 0..5; "
-            "_resolve_miter should have rejected it — this is a bug in zvode"
-        )
+        assert False, f"unexpected miter={miter!r} — bug in zvode"
 
     meth = abs(mf) // 10
     maxord = _METH_MAXORD[meth]
