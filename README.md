@@ -55,12 +55,12 @@ brew install gfortran
 pip install -v ".[test]"
 ```
 
-To control which BLAS library is used, add the option,
+To control which BLAS library is used, pass the corresponding CMake option, for example:
+```bash
+pip install -v ".[test]" \
+  -C "cmake.args=-DBLA_VENDOR=OpenBLAS"
 ```
-pip install ... \
-  -C "cmake.args=-DBLA_VENDOR=<blas_vendor>"
-```
-The list of BLAS/LAPACK vendors can be found [here](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors)
+Replace `OpenBLAS` with another BLAS/LAPACK vendor from [CMake's vendor list](https://cmake.org/cmake/help/latest/module/FindBLAS.html#blas-lapack-vendors) as needed.
 
 ## Quick start
 
@@ -82,6 +82,8 @@ sol = solve_ivp(
 **Stiff problem** — with a user-supplied Jacobian:
 
 ```python
+import numpy as np
+from scipy.integrate import solve_ivp
 from zvode import ZVODE_BDF
 
 sol = solve_ivp(
