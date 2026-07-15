@@ -44,9 +44,12 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y gfortran libopenblas-dev
 
-      - name: Select Fortran compiler (macOS)
+      - name: Set up Fortran (macOS)
         if: runner.os == 'macOS'
-        run: echo "FC=gfortran-14" >> "$GITHUB_ENV"
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 14
 
       - name: Install package and test dependencies from source
         run: pip install -v ".[${{ matrix.extras || 'test' }}]"
