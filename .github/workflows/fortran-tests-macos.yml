@@ -5,10 +5,13 @@ name: Fortran tests (macOS)
 # Fortran, clang for C), using Accelerate for BLAS/LAPACK.  This complements
 # the gfortran/Linux coverage in fortran-tests.yml.
 #
-# macOS runners bill at 10x, so this workflow is manual-dispatch only
-# (Actions -> Run workflow); it does not run on push or pull_request.
+# macOS runners bill at 10x, so this workflow runs only on a manual dispatch
+# (Actions -> Run workflow) or a version-tag push (v*); it does not run on
+# branch pushes or pull_requests.
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:

@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
     branches: ["main", "master"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -17,9 +18,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS runners bill at 10x, so they run only on a manual dispatch
-        # (Actions -> Run workflow).  Every push and PR stays Linux-only.
-        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        # macOS runners bill at 10x, so they run only on a manual dispatch or
+        # a version-tag push (v*).  Branch pushes and PRs stay Linux-only.
+        os: ${{ (github.event_name == 'workflow_dispatch' || github.ref_type == 'tag') && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
         python-version: ["3.10", "3.12"]
         include:
           # Exercise the numba compiled-callback tests in a release build, on
