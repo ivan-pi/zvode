@@ -80,8 +80,8 @@ program test_zvode_public_api
   ! constructor.  ISTATE is updated in place by ZVODE.
   type :: solver_settings
     integer  :: itol   = 1
-    real(dp) :: rtol    = 1.0e-9_dp
-    real(dp) :: atol    = 1.0e-11_dp
+    real(dp) :: rtol   = 1.0e-9_dp
+    real(dp) :: atol   = 1.0e-11_dp
     integer  :: itask  = 1
     integer  :: istate = 1
     integer  :: iopt   = 0

@@ -122,6 +122,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ZVSRCO` claimed `ISAV` needs length "40 or more", while the actual
   requirement (and the routine's own header) is 41 (33 `/ZVOD01/` integers
   plus 8 `/ZVOD02/` integers)
+- Documentation drift inherited from upstream: the per-routine "variables
+  accessed" headers were checked mechanically against the identifiers each
+  routine actually references and corrected — `ZVSTEP` was missing `CONP`,
+  `ETA`, `ETAMAX`, `NEWH`, `NQNYH`, `PRL1`, `RL1`; `ZVJUST` was missing
+  `EL(13)` and `L`; `ZVNLSD` was missing `IPUP` and `JSTART` and listed all
+  nine `/ZVOD02/` counters when it only touches `NFE`, `NNI`, `NST`; `ZVJAC`
+  was missing `JSV`.  `ZVHIN`, `ZVINDY`, `ZVSET`, and `ZVSOL` were accurate
 
 ## [0.3.0] - 2026-06-09
 

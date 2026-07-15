@@ -1,5 +1,11 @@
-C NOTE: This version of ZVODE has been modified extensively
-C       to use functors instead of external procedures
+C NOTE: This is a modified version of the Netlib ZVODE (2006 LLNL
+C       release):
+C       - wrapped in a Fortran module (ZVODE_MOD)
+C       - F and JAC are functor objects instead of external
+C         procedures; the RPAR/IPAR pass-through arrays are removed
+C       - the internal COMMON blocks are replaced by module variables
+C       - linear algebra helpers moved to module ZVODE_LINALG_MOD
+C       See extern/README.md for details.
       MODULE ZVODE_MOD
 
         USE ZVODE_LINALG_MOD, only: zcopy, zacopy, dzscal, dzaxpy,
@@ -69,13 +75,13 @@ C
 #endif
 C
 C-----------------------------------------------------------------------
-C Internal state formerly held in the labeled COMMON blocks /ZVOD01/ and
-C /ZVOD02/.  These are now module variables, shared between the package
-C routines by host association.  Module variables carry the SAVE
-C attribute implicitly, so their values persist between calls to ZVODE,
-C exactly as the COMMON blocks did.  The '01'/'02' split and the
-C real-before-integer ordering survive only in ZVSRCO, which packs and
-C unpacks these variables into the RSAV/ISAV save arrays.
+C Integrator state variables, shared between the package routines by
+C host association.  As module variables they carry the SAVE attribute
+C implicitly, so their values persist between calls to ZVODE.  This
+C state was formerly held in the labeled COMMON blocks /ZVOD01/ and
+C /ZVOD02/; the '01'/'02' split and the real-before-integer ordering
+C survive only in ZVSRCO, which packs and unpacks these variables into
+C the RSAV/ISAV save arrays.
 C
 C Former /ZVOD01/ members:
       DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13),
@@ -1021,16 +1027,15 @@ C             -1 if K was illegal, and -2 if T was illegal.
 C             On an error return, a message is also written.
 C-----------------------------------------------------------------------
 C Part iii.  Internal State.
-C The internal state of ZVODE, formerly held in the labeled COMMON
-C blocks /ZVOD01/ (50 double precision words followed by 33 integer
-C words) and /ZVOD02/ (1 double precision word followed by 8 integer
-C words), is kept in module variables of ZVODE_MOD.  Module variables
-C are preserved between calls, so no special action (such as the
-C overlay declarations required by the original COMMON version) is
-C needed to keep the state intact between calls to ZVODE.
-C To save and restore this state explicitly, e.g. when alternating
-C between two or more problems, use subroutine ZVSRCO (see Part ii),
-C which preserves the original COMMON storage order in RSAV/ISAV.
+C The internal state of ZVODE is kept in module variables of ZVODE_MOD
+C and is preserved between calls, so no special action is needed to
+C keep it intact between calls to ZVODE.  To save and restore this
+C state explicitly, e.g. when alternating between two or more
+C problems, use subroutine ZVSRCO (see Part ii).
+C Historically this state lived in the labeled COMMON blocks /ZVOD01/
+C (50 double precision words followed by 33 integer words) and
+C /ZVOD02/ (1 double precision word followed by 8 integer words);
+C ZVSRCO preserves that original storage order in RSAV/ISAV.
 C
 C-----------------------------------------------------------------------
 C Part iv.  Optionally Replaceable Solver Routines.
@@ -2029,10 +2034,11 @@ C Call sequence input -- Y, YH, LDYH, YH1, EWT, SAVF, VSAV,
 C                        ACOR, WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR
 C Call sequence output -- YH, ACOR, WM, IWM
 C Module variables accessed:
-C     former /ZVOD01/  ACNRM, EL(13), H, HMIN, HMXI, HNEW, HSCAL, RC, TAU(13),
-C               TQ(5), TN, JCUR, JSTART, KFLAG, KUTH,
-C               L, LMAX, MAXORD, N, NEWQ, NQ, NQWAIT
-C     former /ZVOD02/  HU, NCFN, NETF, NFE, NQU, NST
+C     former /ZVOD01/ -- ACNRM, CONP, EL(13), ETA, ETAMAX, H, HMIN,
+C                 HMXI, HNEW, HSCAL, PRL1, RC, RL1, TAU(13), TQ(5),
+C                 TN, JCUR, JSTART, KFLAG, KUTH, L, LMAX, MAXORD, N,
+C                 NEWH, NEWQ, NQ, NQNYH, NQWAIT
+C     former /ZVOD02/ -- HU, NCFN, NETF, NFE, NQU, NST
 C
 C Subroutines called by ZVSTEP: F, DZAXPY, ZCOPY, DZSCAL,
 C                               ZVJUST, VNLS, ZVSET
@@ -2621,7 +2627,7 @@ C Call sequence input -- YH, LDYH, IORD
 C Call sequence output -- YH
 C Module variable input -- NQ, METH, LMAX, HSCAL, TAU(13), N
 C Module variables accessed:
-C     former /ZVOD01/ -- HSCAL, TAU(13), LMAX, METH, N, NQ,
+C     former /ZVOD01/ -- EL(13), HSCAL, TAU(13), L, LMAX, METH, N, NQ
 C
 C Subroutines called by ZVJUST: DZAXPY
 C Function routines called by ZVJUST: None
@@ -2771,9 +2777,9 @@ C Call sequence input -- Y, YH, LDYH, SAVF, EWT, ACOR, IWM, WM,
 C                        F, JAC, NFLAG, RPAR, IPAR
 C Call sequence output -- YH, ACOR, WM, IWM, NFLAG
 C Module variables accessed:
-C     former /ZVOD01/ ACNRM, CRATE, DRC, H, RC, RL1, TQ(5), TN, ICF,
-C                JCUR, METH, MITER, N, NSLP
-C     former /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C     former /ZVOD01/ -- ACNRM, CRATE, DRC, H, RC, RL1, TQ(5), TN,
+C                 ICF, IPUP, JCUR, JSTART, METH, MITER, N, NSLP
+C     former /ZVOD02/ -- NFE, NNI, NST
 C
 C Subroutines called by ZVNLSD: F, DZAXPY, ZCOPY, DZSCAL, ZVJAC, ZVSOL
 C Function routines called by ZVNLSD: ZVNORM
@@ -2978,9 +2984,9 @@ C Call sequence input -- Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM,
 C                        F, JAC, RPAR, IPAR
 C Call sequence output -- WM, IWM, IERPJ
 C Module variables accessed:
-C     former /ZVOD01/  CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND, ICF, JCUR,
-C               LOCJS, MITER, MSBJ, N, NSLJ
-C     former /ZVOD02/  NFE, NST, NJE, NLU
+C     former /ZVOD01/ -- CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND,
+C                 ICF, JCUR, JSV, LOCJS, MITER, MSBJ, N, NSLJ
+C     former /ZVOD02/ -- NFE, NST, NJE, NLU
 C
 C Subroutines called by ZVJAC: F, JAC, ZACOPY, ZCOPY, ZGBFA, ZGEFA,
 C                              DZSCAL
