@@ -107,6 +107,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lifecycle is now GIL-independent and unit-testable as pure C, and the
   (potentially large) final copy no longer needs the GIL held.  No behavioural
   change
+- The user-facing documentation comments in `extern/zvode.F` no longer
+  describe the internal state as living in the `/ZVOD01/`/`/ZVOD02/` COMMON
+  blocks: the Part i/ii/iii driver documentation, the internal-state glossary,
+  and the per-routine "COMMON block variables accessed" headers now refer to
+  the module variables, and Part iv's `ZEWSET` replacement recipe (which
+  showed a `COMMON` declaration that no longer compiles) was rewritten in
+  terms of `ZVSRCO`.  The bodies of the `SELECT CASE` branches in `ZVSRCO`
+  are now indented.  Comment/whitespace-only, no code change
+
+### Fixed
+
+- Documentation bug inherited from upstream: the Part ii description of
+  `ZVSRCO` claimed `ISAV` needs length "40 or more", while the actual
+  requirement (and the routine's own header) is 41 (33 `/ZVOD01/` integers
+  plus 8 `/ZVOD02/` integers)
 
 ## [0.3.0] - 2026-06-09
 

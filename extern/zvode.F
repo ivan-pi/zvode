@@ -403,10 +403,10 @@ C
 C ii.  Descriptions of other routines in the ZVODE package that may be
 C      (optionally) called by the user.  These provide the ability to
 C      alter error message handling, save and restore the internal
-C      COMMON, and obtain specified derivatives of the solution y(t).
+C      state, and obtain specified derivatives of the solution y(t).
 C
-C iii. Descriptions of COMMON blocks to be declared in overlay
-C      or similar environments.
+C iii. Description of the internal state of ZVODE, formerly kept in
+C      COMMON blocks and now kept in module variables.
 C
 C iv.  Description of two routines in the ZVODE package, either of
 C      which the user may replace with his own version, if desired.
@@ -942,9 +942,9 @@ C interrupted and then later continued, such as when restarting
 C an interrupted run or alternating between two or more ODE problems,
 C the user should save, following the return from the last ZVODE call
 C prior to the interruption, the contents of the call sequence
-C variables and internal COMMON blocks, and later restore these
-C values before the next ZVODE call for that problem.  To save
-C and restore the COMMON blocks, use subroutine ZVSRCO, as
+C variables and the internal state (module variables), and later
+C restore these values before the next ZVODE call for that problem.
+C To save and restore the internal state, use subroutine ZVSRCO, as
 C described below in part ii.
 C
 C In addition, if non-default values for either LUN or MFLAG are
@@ -974,14 +974,14 @@ C
 C                             Either of the above calls may be made at
 C                             any time and will take effect immediately.
 C
-C  CALL ZVSRCO(RSAV,ISAV,JOB) Saves and restores the contents of
-C                             the internal COMMON blocks used by
-C                             ZVODE. (See Part iii below.)
+C  CALL ZVSRCO(RSAV,ISAV,JOB) Saves and restores the internal state
+C                             of ZVODE (module variables, formerly
+C                             COMMON). (See Part iii below.)
 C                             RSAV must be a real array of length 51
 C                             or more, and ISAV must be an integer
-C                             array of length 40 or more.
-C                             JOB=1 means save COMMON into RSAV/ISAV.
-C                             JOB=2 means restore COMMON from RSAV/ISAV.
+C                             array of length 41 or more.
+C                             JOB=1 means save the state in RSAV/ISAV.
+C                             JOB=2 means restore it from RSAV/ISAV.
 C                                ZVSRCO is useful if one is
 C                             interrupting a run and restarting
 C                             later, or alternating between two or
@@ -1020,20 +1020,17 @@ C IFLAG     = Integer flag, returned as 0 if K and T were legal,
 C             -1 if K was illegal, and -2 if T was illegal.
 C             On an error return, a message is also written.
 C-----------------------------------------------------------------------
-C Part iii.  COMMON Blocks.
-C If ZVODE is to be used in an overlay situation, the user
-C must declare, in the primary overlay, the variables in:
-C   (1) the call sequence to ZVODE,
-C   (2) the two internal COMMON blocks
-C         /ZVOD01/  of length  83  (50 double precision words
-C                         followed by 33 integer words),
-C         /ZVOD02/  of length  9  (1 double precision word
-C                         followed by 8 integer words),
-C
-C If ZVODE is used on a system in which the contents of internal
-C COMMON blocks are not preserved between calls, the user should
-C declare the above two COMMON blocks in his calling program to insure
-C that their contents are preserved.
+C Part iii.  Internal State.
+C The internal state of ZVODE, formerly held in the labeled COMMON
+C blocks /ZVOD01/ (50 double precision words followed by 33 integer
+C words) and /ZVOD02/ (1 double precision word followed by 8 integer
+C words), is kept in module variables of ZVODE_MOD.  Module variables
+C are preserved between calls, so no special action (such as the
+C overlay declarations required by the original COMMON version) is
+C needed to keep the state intact between calls to ZVODE.
+C To save and restore this state explicitly, e.g. when alternating
+C between two or more problems, use subroutine ZVSRCO (see Part ii),
+C which preserves the original COMMON storage order in RSAV/ISAV.
 C
 C-----------------------------------------------------------------------
 C Part iv.  Optionally Replaceable Solver Routines.
@@ -1070,12 +1067,13 @@ C extended to NQ + 1 columns with a column length of NYH and scale
 C factors of h**j/factorial(j).  On the first call for the problem,
 C given by NST = 0, NQ is 1 and H is temporarily set to 1.0.
 C NYH is the initial value of NEQ.  The quantities NQ, H, and NST
-C can be obtained by including in ZEWSET the statements:
-C     DOUBLE PRECISION RVOD, H, HU
-C     COMMON /ZVOD01/ RVOD(50), IVOD(33)
-C     COMMON /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
-C     NQ = IVOD(28)
-C     H = RVOD(21)
+C can be obtained inside ZEWSET from the state saved by ZVSRCO:
+C     DOUBLE PRECISION RSAV(51), H
+C     INTEGER ISAV(41), NQ, NST
+C     CALL ZVSRCO (RSAV, ISAV, 1)
+C     NQ = ISAV(28)
+C     H = RSAV(21)
+C     NST = ISAV(41)
 C Thus, for example, the current value of dy/dt can be obtained as
 C YCUR(NYH+i)/H  (i=1,...,NEQ)  (and the division by H is
 C unnecessary when NST = 0).
@@ -1122,7 +1120,7 @@ C  ZEWSET    sets the error weight vector EWT before each step.
 C  ZVNORM    computes the weighted r.m.s. norm of a vector.
 C  ZABSSQ    computes the squared absolute value of a double complex z.
 C  ZVSRCO    is a user-callable routine to save and restore
-C            the contents of the internal COMMON blocks.
+C            the internal state (module variables).
 C  ZACOPY    is a routine to copy one two-dimensional array to another.
 C  ZGEFA and ZGESL   are routines from LINPACK for solving full
 C            systems of linear algebraic equations.
@@ -1166,16 +1164,13 @@ C-----------------------------------------------------------------------
       SAVE MXHNL0, MXSTP0
       SAVE ZERO, ONE, TWO, FOUR, PT2, HUN
 C-----------------------------------------------------------------------
-C The following internal COMMON blocks contain variables which are
-C communicated between subroutines in the ZVODE package, or which are
-C to be saved between calls to ZVODE.
-C In each block, real variables precede integers.
-C The block /ZVOD01/ appears in subroutines ZVODE, ZVINDY, ZVSTEP,
-C ZVSET, ZVNLSD, ZVJAC, ZVSOL, ZVJUST and ZVSRCO.
-C The block /ZVOD02/ appears in subroutines ZVODE, ZVINDY, ZVSTEP,
-C ZVNLSD, ZVJAC, and ZVSRCO.
+C The following module variables of ZVODE_MOD (formerly the labeled
+C COMMON blocks /ZVOD01/ and /ZVOD02/) are communicated between
+C subroutines in the ZVODE package, or are saved between calls to
+C ZVODE.  ZVSRCO packs them into RSAV/ISAV in the original COMMON
+C storage order (reals before integers within each former block).
 C
-C The variables stored in the internal COMMON blocks are as follows:
+C The internal state variables are as follows:
 C
 C ACNRM  = Weighted r.m.s. norm of accumulated correction vectors.
 C CCMXJ  = Threshold on DRC for updating the Jacobian. (See DRC.)
@@ -1791,7 +1786,7 @@ C-----------------------------------------------------------------------
 C Call sequence input -- N, T0, Y0, YDOT, F, TOUT, UROUND,
 C                        EWT, ITOL, ATOL, Y, TEMP
 C Call sequence output -- H0, NITER, IER
-C COMMON block variables accessed -- None
+C Module variables accessed -- None
 C
 C Subroutines called by ZVHIN:  F
 C Function routines called by ZVHIN: ZVNORM
@@ -1921,9 +1916,9 @@ C----------------------- End of Subroutine ZVHIN -----------------------
 C-----------------------------------------------------------------------
 C Call sequence input -- T, K, YH, LDYH
 C Call sequence output -- DKY, IFLAG
-C COMMON block variables accessed:
-C     /ZVOD01/ --  H, TN, UROUND, L, N, NQ
-C     /ZVOD02/ --  HU
+C Module variables accessed:
+C     former /ZVOD01/ --  H, TN, UROUND, L, N, NQ
+C     former /ZVOD02/ --  HU
 C
 C Subroutines called by ZVINDY: DZSCAL, XERRWD
 C Function routines called by ZVINDY: None
@@ -1943,8 +1938,8 @@ C              q
 C  DKY(i)  =  sum  c(j,K) * (T - TN)**(j-K) * H**(-j) * YH(i,j+1)
 C             j=K
 C where  c(j,K) = j*(j-1)*...*(j-K+1), q = NQCUR, TN = TCUR, H = HCUR.
-C The quantities  NQ = NQCUR, L = NQ+1, N, TN, and H are
-C communicated by COMMON.  The above sum is done in reverse order.
+C The quantities  NQ = NQCUR, L = NQ+1, N, TN, and H are module
+C variables of ZVODE_MOD.  The above sum is done in reverse order.
 C IFLAG is returned negative if either K or T is out of bounds.
 C
 C Discussion above and comments in driver explain all variables.
@@ -2033,11 +2028,11 @@ C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, YH1, EWT, SAVF, VSAV,
 C                        ACOR, WM, IWM, F, JAC, PSOL, VNLS, RPAR, IPAR
 C Call sequence output -- YH, ACOR, WM, IWM
-C COMMON block variables accessed:
-C     /ZVOD01/  ACNRM, EL(13), H, HMIN, HMXI, HNEW, HSCAL, RC, TAU(13),
+C Module variables accessed:
+C     former /ZVOD01/  ACNRM, EL(13), H, HMIN, HMXI, HNEW, HSCAL, RC, TAU(13),
 C               TQ(5), TN, JCUR, JSTART, KFLAG, KUTH,
 C               L, LMAX, MAXORD, N, NEWQ, NQ, NQWAIT
-C     /ZVOD02/  HU, NCFN, NETF, NFE, NQU, NST
+C     former /ZVOD02/  HU, NCFN, NETF, NFE, NQU, NST
 C
 C Subroutines called by ZVSTEP: F, DZAXPY, ZCOPY, DZSCAL,
 C                               ZVJUST, VNLS, ZVSET
@@ -2048,7 +2043,7 @@ C problem for a system of ordinary differential equations.
 C ZVSTEP calls subroutine VNLS for the solution of the nonlinear system
 C arising in the time step.  Thus it is independent of the problem
 C Jacobian structure and the type of nonlinear system solution method.
-C ZVSTEP returns a completion flag KFLAG (in COMMON).
+C ZVSTEP returns a completion flag KFLAG (a module variable).
 C A return with KFLAG = -1 or -2 means either ABS(H) = HMIN or 10
 C consecutive failures occurred.  On a return with KFLAG negative,
 C the values of TN and the YH array are as of the beginning of the last
@@ -2437,8 +2432,8 @@ C----------------------- End of Subroutine ZVSTEP ----------------------
       SUBROUTINE ZVSET
 C-----------------------------------------------------------------------
 C Call sequence communication: None
-C COMMON block variables accessed:
-C     /ZVOD01/ -- EL(13), H, TAU(13), TQ(5), L(= NQ + 1),
+C Module variables accessed:
+C     former /ZVOD01/ -- EL(13), H, TAU(13), TQ(5), L(= NQ + 1),
 C                 METH, NQ, NQWAIT
 C
 C Subroutines called by ZVSET: None
@@ -2624,9 +2619,9 @@ C----------------------- End of Subroutine ZVSET -----------------------
 C-----------------------------------------------------------------------
 C Call sequence input -- YH, LDYH, IORD
 C Call sequence output -- YH
-C COMMON block input -- NQ, METH, LMAX, HSCAL, TAU(13), N
-C COMMON block variables accessed:
-C     /ZVOD01/ -- HSCAL, TAU(13), LMAX, METH, N, NQ,
+C Module variable input -- NQ, METH, LMAX, HSCAL, TAU(13), N
+C Module variables accessed:
+C     former /ZVOD01/ -- HSCAL, TAU(13), LMAX, METH, N, NQ,
 C
 C Subroutines called by ZVJUST: DZAXPY
 C Function routines called by ZVJUST: None
@@ -2775,10 +2770,10 @@ C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, SAVF, EWT, ACOR, IWM, WM,
 C                        F, JAC, NFLAG, RPAR, IPAR
 C Call sequence output -- YH, ACOR, WM, IWM, NFLAG
-C COMMON block variables accessed:
-C     /ZVOD01/ ACNRM, CRATE, DRC, H, RC, RL1, TQ(5), TN, ICF,
+C Module variables accessed:
+C     former /ZVOD01/ ACNRM, CRATE, DRC, H, RC, RL1, TQ(5), TN, ICF,
 C                JCUR, METH, MITER, N, NSLP
-C     /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
+C     former /ZVOD02/ HU, NCFN, NETF, NFE, NJE, NLU, NNI, NQU, NST
 C
 C Subroutines called by ZVNLSD: F, DZAXPY, ZCOPY, DZSCAL, ZVJAC, ZVSOL
 C Function routines called by ZVNLSD: ZVNORM
@@ -2982,10 +2977,10 @@ C-----------------------------------------------------------------------
 C Call sequence input -- Y, YH, LDYH, EWT, FTEM, SAVF, WM, IWM,
 C                        F, JAC, RPAR, IPAR
 C Call sequence output -- WM, IWM, IERPJ
-C COMMON block variables accessed:
-C     /ZVOD01/  CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND, ICF, JCUR,
+C Module variables accessed:
+C     former /ZVOD01/  CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND, ICF, JCUR,
 C               LOCJS, MITER, MSBJ, N, NSLJ
-C     /ZVOD02/  NFE, NST, NJE, NLU
+C     former /ZVOD02/  NFE, NST, NJE, NLU
 C
 C Subroutines called by ZVJAC: F, JAC, ZACOPY, ZCOPY, ZGBFA, ZGEFA,
 C                              DZSCAL
@@ -3234,8 +3229,8 @@ C----------------------- End of Subroutine ZVJAC -----------------------
 C-----------------------------------------------------------------------
 C Call sequence input -- WM, IWM, X
 C Call sequence output -- X, IERSL
-C COMMON block variables accessed:
-C     /ZVOD01/ -- H, HRL1, RL1, MITER, N
+C Module variables accessed:
+C     former /ZVOD01/ -- H, HRL1, RL1, MITER, N
 C
 C Subroutines called by ZVSOL: ZGESL, ZGBSL
 C Function routines called by ZVSOL: None
@@ -3339,142 +3334,142 @@ C
 C
       CASE (1)
 C Save: pack the module variables into RSAV/ISAV.
-      RSAV(1) = ACNRM
-      RSAV(2) = CCMXJ
-      RSAV(3) = CONP
-      RSAV(4) = CRATE
-      RSAV(5) = DRC
-      RSAV(6:18) = EL
-      RSAV(19) = ETA
-      RSAV(20) = ETAMAX
-      RSAV(21) = H
-      RSAV(22) = HMIN
-      RSAV(23) = HMXI
-      RSAV(24) = HNEW
-      RSAV(25) = HRL1
-      RSAV(26) = HSCAL
-      RSAV(27) = PRL1
-      RSAV(28) = RC
-      RSAV(29) = RL1
-      RSAV(30) = SRUR
-      RSAV(31:43) = TAU
-      RSAV(44:48) = TQ
-      RSAV(49) = TN
-      RSAV(50) = UROUND
-      RSAV(51) = HU
+        RSAV(1) = ACNRM
+        RSAV(2) = CCMXJ
+        RSAV(3) = CONP
+        RSAV(4) = CRATE
+        RSAV(5) = DRC
+        RSAV(6:18) = EL
+        RSAV(19) = ETA
+        RSAV(20) = ETAMAX
+        RSAV(21) = H
+        RSAV(22) = HMIN
+        RSAV(23) = HMXI
+        RSAV(24) = HNEW
+        RSAV(25) = HRL1
+        RSAV(26) = HSCAL
+        RSAV(27) = PRL1
+        RSAV(28) = RC
+        RSAV(29) = RL1
+        RSAV(30) = SRUR
+        RSAV(31:43) = TAU
+        RSAV(44:48) = TQ
+        RSAV(49) = TN
+        RSAV(50) = UROUND
+        RSAV(51) = HU
 C
-      ISAV(1) = ICF
-      ISAV(2) = INIT
-      ISAV(3) = IPUP
-      ISAV(4) = JCUR
-      ISAV(5) = JSTART
-      ISAV(6) = JSV
-      ISAV(7) = KFLAG
-      ISAV(8) = KUTH
-      ISAV(9) = L
-      ISAV(10) = LMAX
-      ISAV(11) = LYH
-      ISAV(12) = LEWT
-      ISAV(13) = LACOR
-      ISAV(14) = LSAVF
-      ISAV(15) = LWM
-      ISAV(16) = LIWM
-      ISAV(17) = LOCJS
-      ISAV(18) = MAXORD
-      ISAV(19) = METH
-      ISAV(20) = MITER
-      ISAV(21) = MSBJ
-      ISAV(22) = MXHNIL
-      ISAV(23) = MXSTEP
-      ISAV(24) = N
-      ISAV(25) = NEWH
-      ISAV(26) = NEWQ
-      ISAV(27) = NHNIL
-      ISAV(28) = NQ
-      ISAV(29) = NQNYH
-      ISAV(30) = NQWAIT
-      ISAV(31) = NSLJ
-      ISAV(32) = NSLP
-      ISAV(33) = NYH
-      ISAV(34) = NCFN
-      ISAV(35) = NETF
-      ISAV(36) = NFE
-      ISAV(37) = NJE
-      ISAV(38) = NLU
-      ISAV(39) = NNI
-      ISAV(40) = NQU
-      ISAV(41) = NST
+        ISAV(1) = ICF
+        ISAV(2) = INIT
+        ISAV(3) = IPUP
+        ISAV(4) = JCUR
+        ISAV(5) = JSTART
+        ISAV(6) = JSV
+        ISAV(7) = KFLAG
+        ISAV(8) = KUTH
+        ISAV(9) = L
+        ISAV(10) = LMAX
+        ISAV(11) = LYH
+        ISAV(12) = LEWT
+        ISAV(13) = LACOR
+        ISAV(14) = LSAVF
+        ISAV(15) = LWM
+        ISAV(16) = LIWM
+        ISAV(17) = LOCJS
+        ISAV(18) = MAXORD
+        ISAV(19) = METH
+        ISAV(20) = MITER
+        ISAV(21) = MSBJ
+        ISAV(22) = MXHNIL
+        ISAV(23) = MXSTEP
+        ISAV(24) = N
+        ISAV(25) = NEWH
+        ISAV(26) = NEWQ
+        ISAV(27) = NHNIL
+        ISAV(28) = NQ
+        ISAV(29) = NQNYH
+        ISAV(30) = NQWAIT
+        ISAV(31) = NSLJ
+        ISAV(32) = NSLP
+        ISAV(33) = NYH
+        ISAV(34) = NCFN
+        ISAV(35) = NETF
+        ISAV(36) = NFE
+        ISAV(37) = NJE
+        ISAV(38) = NLU
+        ISAV(39) = NNI
+        ISAV(40) = NQU
+        ISAV(41) = NST
 C
       CASE (2)
 C Restore: unpack RSAV/ISAV back into the module variables.
-      ACNRM = RSAV(1)
-      CCMXJ = RSAV(2)
-      CONP = RSAV(3)
-      CRATE = RSAV(4)
-      DRC = RSAV(5)
-      EL = RSAV(6:18)
-      ETA = RSAV(19)
-      ETAMAX = RSAV(20)
-      H = RSAV(21)
-      HMIN = RSAV(22)
-      HMXI = RSAV(23)
-      HNEW = RSAV(24)
-      HRL1 = RSAV(25)
-      HSCAL = RSAV(26)
-      PRL1 = RSAV(27)
-      RC = RSAV(28)
-      RL1 = RSAV(29)
-      SRUR = RSAV(30)
-      TAU = RSAV(31:43)
-      TQ = RSAV(44:48)
-      TN = RSAV(49)
-      UROUND = RSAV(50)
-      HU = RSAV(51)
+        ACNRM = RSAV(1)
+        CCMXJ = RSAV(2)
+        CONP = RSAV(3)
+        CRATE = RSAV(4)
+        DRC = RSAV(5)
+        EL = RSAV(6:18)
+        ETA = RSAV(19)
+        ETAMAX = RSAV(20)
+        H = RSAV(21)
+        HMIN = RSAV(22)
+        HMXI = RSAV(23)
+        HNEW = RSAV(24)
+        HRL1 = RSAV(25)
+        HSCAL = RSAV(26)
+        PRL1 = RSAV(27)
+        RC = RSAV(28)
+        RL1 = RSAV(29)
+        SRUR = RSAV(30)
+        TAU = RSAV(31:43)
+        TQ = RSAV(44:48)
+        TN = RSAV(49)
+        UROUND = RSAV(50)
+        HU = RSAV(51)
 C
-      ICF = ISAV(1)
-      INIT = ISAV(2)
-      IPUP = ISAV(3)
-      JCUR = ISAV(4)
-      JSTART = ISAV(5)
-      JSV = ISAV(6)
-      KFLAG = ISAV(7)
-      KUTH = ISAV(8)
-      L = ISAV(9)
-      LMAX = ISAV(10)
-      LYH = ISAV(11)
-      LEWT = ISAV(12)
-      LACOR = ISAV(13)
-      LSAVF = ISAV(14)
-      LWM = ISAV(15)
-      LIWM = ISAV(16)
-      LOCJS = ISAV(17)
-      MAXORD = ISAV(18)
-      METH = ISAV(19)
-      MITER = ISAV(20)
-      MSBJ = ISAV(21)
-      MXHNIL = ISAV(22)
-      MXSTEP = ISAV(23)
-      N = ISAV(24)
-      NEWH = ISAV(25)
-      NEWQ = ISAV(26)
-      NHNIL = ISAV(27)
-      NQ = ISAV(28)
-      NQNYH = ISAV(29)
-      NQWAIT = ISAV(30)
-      NSLJ = ISAV(31)
-      NSLP = ISAV(32)
-      NYH = ISAV(33)
-      NCFN = ISAV(34)
-      NETF = ISAV(35)
-      NFE = ISAV(36)
-      NJE = ISAV(37)
-      NLU = ISAV(38)
-      NNI = ISAV(39)
-      NQU = ISAV(40)
-      NST = ISAV(41)
+        ICF = ISAV(1)
+        INIT = ISAV(2)
+        IPUP = ISAV(3)
+        JCUR = ISAV(4)
+        JSTART = ISAV(5)
+        JSV = ISAV(6)
+        KFLAG = ISAV(7)
+        KUTH = ISAV(8)
+        L = ISAV(9)
+        LMAX = ISAV(10)
+        LYH = ISAV(11)
+        LEWT = ISAV(12)
+        LACOR = ISAV(13)
+        LSAVF = ISAV(14)
+        LWM = ISAV(15)
+        LIWM = ISAV(16)
+        LOCJS = ISAV(17)
+        MAXORD = ISAV(18)
+        METH = ISAV(19)
+        MITER = ISAV(20)
+        MSBJ = ISAV(21)
+        MXHNIL = ISAV(22)
+        MXSTEP = ISAV(23)
+        N = ISAV(24)
+        NEWH = ISAV(25)
+        NEWQ = ISAV(26)
+        NHNIL = ISAV(27)
+        NQ = ISAV(28)
+        NQNYH = ISAV(29)
+        NQWAIT = ISAV(30)
+        NSLJ = ISAV(31)
+        NSLP = ISAV(32)
+        NYH = ISAV(33)
+        NCFN = ISAV(34)
+        NETF = ISAV(35)
+        NFE = ISAV(36)
+        NJE = ISAV(37)
+        NLU = ISAV(38)
+        NNI = ISAV(39)
+        NQU = ISAV(40)
+        NST = ISAV(41)
 C
       CASE DEFAULT
-      ERROR STOP 'ZVSRCO: JOB must be 1 (save) or 2 (restore)'
+        ERROR STOP 'ZVSRCO: JOB must be 1 (save) or 2 (restore)'
       END SELECT
 C----------------------- End of Subroutine ZVSRCO ----------------------
       END SUBROUTINE
