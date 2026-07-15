@@ -15,33 +15,33 @@ MESSAGES = {
 }
 
 
-def _validate_max_step(max_step):
-    """Validate that max_step is a positive number."""
-    if max_step <= 0:
-        raise ValueError("`max_step` must be positive.")
-    return max_step
+def _validate_step_bounds(min_step, max_step):
+    """Validate the step-size bounds: ``min_step >= 0`` and ``max_step > 0``.
 
-
-def _validate_min_step(min_step):
-    """Validate that min_step is a non-negative number."""
+    Both are positive magnitudes regardless of integration direction; ZVODE
+    carries the direction sign itself.  Results are not returned — the caller
+    forwards the original values straight into the work arrays.
+    """
     if min_step < 0:
         raise ValueError("`min_step` must be non-negative.")
-    return min_step
+    if max_step <= 0:
+        raise ValueError("`max_step` must be positive.")
 
 
 def _validate_first_step(first_step, t0, t_bound):
-    """Validate the user-supplied initial step size.
+    """Validate the user-supplied initial step size (``None`` passes through).
 
     Like ``max_step`` and ``min_step``, ``first_step`` is always a positive
-    magnitude regardless of integration direction.  ZVODE's H0 (RWORK(5))
-    must carry the sign of the direction, so the caller is responsible for
-    applying ``np.sign(t_bound - t0)`` when writing the value into rwork[4].
+    magnitude regardless of integration direction.  ZVODE's H0 (RWORK(5)) must
+    carry the sign of the direction, applied by ``_make_workspace`` when it
+    packs the value into rwork[4].
     """
+    if first_step is None:
+        return
     if first_step <= 0:
         raise ValueError("`first_step` must be positive.")
     if first_step > abs(t_bound - t0):
         raise ValueError("`first_step` exceeds `abs(t_bound - t0)`.")
-    return first_step
 
 
 def _check_tolerances(rtol, atol, n):
@@ -296,6 +296,11 @@ def _make_workspace(
 ):
     """Allocate and initialise ZVODE's three workspace arrays.
 
+    Internal helper: it sizes the arrays and packs the (already-validated) user
+    parameters into their ZVODE slots.  Callers validate the step-size and order
+    arguments at the public boundary; the only checks here are the int32 length
+    overflows, which are intrinsic to the sizing itself.
+
     Returns ``(zwork, rwork, iwork)`` as NumPy arrays.
     Note: zwork, rwork, and iwork are mutable; the integration drivers update
     them in place on every step and read diagnostic counters from them on return.
@@ -314,16 +319,17 @@ def _make_workspace(
                 f"Banded workspace ({_lenwm_max:,}) overflows int32 arithmetic."
             )
 
+    # miter is 0..5, guaranteed by _resolve_miter; the branches below are then
+    # exhaustive (0 / 1,2 / 3 / 4,5) so the final case needs no guard.
+    assert miter in range(6), f"unhandled miter={miter}"
     if miter == 0:
         lwm = 0
     elif miter in (1, 2):
         lwm = 2 * n**2 if mf > 0 else n**2
     elif miter == 3:
         lwm = n
-    elif miter in (4, 5):
+    else:  # miter in (4, 5)
         lwm = (3 * ml + 2 * mu + 2) * n if mf > 0 else (2 * ml + mu + 1) * n
-    else:
-        raise RuntimeError(f"Unhandled miter={miter}")
 
     meth = abs(mf) // 10
     maxord = _METH_MAXORD[meth]
@@ -342,7 +348,6 @@ def _make_workspace(
 
     rwork[0] = float(t_bound)  # TCRIT; required when ITASK=4 or 5
     if first_step is not None:
-        _validate_first_step(first_step, t0, t_bound)
         # ZVODE requires H0 to carry the sign of the integration direction.
         rwork[4] = float(first_step) * np.sign(t_bound - t0)
     rwork[5] = float(max_step)

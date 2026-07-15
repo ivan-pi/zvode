@@ -9,9 +9,9 @@ from ._helpers import (
     _LMM,
     _eval_nordsieck,
     _make_workspace,
+    _validate_first_step,
     _validate_max_order,
-    _validate_max_step,
-    _validate_min_step,
+    _validate_step_bounds,
     _check_tolerances,
     _validate_fun_shape,
     _validate_jac_shape,
@@ -312,11 +312,11 @@ class ZVODE(OdeSolver):
             f"miter={self.miter!r}); this is a bug in zvode"
         )
 
-        # max_step, min_step and max_order are consumed only by _make_workspace
-        # (written into the ZVODE work arrays), so validate and forward them
-        # without keeping redundant copies on self.
-        _validate_max_step(max_step)
-        _validate_min_step(min_step)
+        # Step-size and order arguments are consumed only by _make_workspace
+        # (written into the ZVODE work arrays), so validate them here at the
+        # public boundary and forward them without keeping copies on self.
+        _validate_step_bounds(min_step, max_step)
+        _validate_first_step(first_step, t0, t_bound)
         max_order = _validate_max_order(max_order, maxord_allowed)
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(

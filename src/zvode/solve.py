@@ -32,9 +32,9 @@ from ._helpers import (
     _check_tolerances,
     _make_workspace,
     _resolve_miter,
+    _validate_first_step,
     _validate_max_order,
-    _validate_max_step,
-    _validate_min_step,
+    _validate_step_bounds,
     _validate_fun_shape,
     _validate_jac_shape,
 )
@@ -799,8 +799,8 @@ def solve_complex_ivp(
     jsv = 1 if save_jac else -1
     mf = jsv * (10 * meth + _miter)
 
-    _validate_max_step(max_step)
-    _validate_min_step(min_step)
+    _validate_step_bounds(min_step, max_step)
+    _validate_first_step(first_step, float(tspan[0]), float(tspan[-1]))
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
     max_order = _validate_max_order(max_order, maxord_allowed)
