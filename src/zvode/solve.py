@@ -803,7 +803,7 @@ def solve_complex_ivp(
     _validate_min_step(min_step)
     if max_num_steps < 0:
         raise ValueError("`max_num_steps` must be non-negative.")
-    _validate_max_order(max_order, maxord_allowed)
+    max_order = _validate_max_order(max_order, maxord_allowed)
 
     # ------------------------------------------------------------------
     # 4.  Workspace

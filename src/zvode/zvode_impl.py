@@ -312,9 +312,12 @@ class ZVODE(OdeSolver):
             f"miter={self.miter!r}); this is a bug in zvode"
         )
 
-        self.max_step = _validate_max_step(max_step)
-        self.min_step = _validate_min_step(min_step)
-        _validate_max_order(max_order, maxord_allowed)
+        # max_step, min_step and max_order are consumed only by _make_workspace
+        # (written into the ZVODE work arrays), so validate and forward them
+        # without keeping redundant copies on self.
+        _validate_max_step(max_step)
+        _validate_min_step(min_step)
+        max_order = _validate_max_order(max_order, maxord_allowed)
         self.iopt = 1
         self.zwork, self.rwork, self.iwork = _make_workspace(
             self.n,
@@ -325,8 +328,8 @@ class ZVODE(OdeSolver):
             t0,
             t_bound,
             first_step=first_step,
-            min_step=self.min_step,
-            max_step=self.max_step,
+            min_step=min_step,
+            max_step=max_step,
             max_order=max_order,
         )
         # Last: probing jac(t0, y0) may allocate an (neq, neq) array; validate

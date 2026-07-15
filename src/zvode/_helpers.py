@@ -251,12 +251,14 @@ def _resolve_miter(jac, lband, uband, meth, n, explicit_miter=None):
 
 
 def _validate_max_order(max_order, maxord_allowed):
-    """Validate `max_order` and warn if it exceeds the method's ceiling.
+    """Validate `max_order` and cap it to the method's ceiling.
 
-    ``None`` passes through unchanged.  A value above the method's maximum
-    (12 for Adams, 5 for BDF) is not an error — ZVODE caps it internally — so
-    that case only warns.  Called directly by the public entry points, hence
-    ``stacklevel=3`` to point the warning at the user's call.
+    Returns the order to use: ``None`` passes through unchanged, a positive
+    value above the method's maximum (12 for Adams, 5 for BDF) is capped to
+    that maximum after warning.  Capping here mirrors ZVODE's own
+    ``MAXORD = MIN(MAXORD, MORD(METH))``, so what we write into IWORK(5)
+    matches what the solver actually uses.  Called directly by the public
+    entry points, hence ``stacklevel=3`` to point the warning at the user.
     """
     if max_order is None:
         return None
@@ -265,10 +267,10 @@ def _validate_max_order(max_order, maxord_allowed):
     if max_order > maxord_allowed:
         warnings.warn(
             f"`max_order` ({max_order}) exceeds the maximum allowed order "
-            f"({maxord_allowed}) for the selected method; it will be reduced "
-            "automatically.",
+            f"for the selected method; it will be reduced to {maxord_allowed}.",
             stacklevel=3,
         )
+        return maxord_allowed
     return max_order
 
 
