@@ -15,7 +15,7 @@ C       See extern/README.md for details.
         PRIVATE
 
         PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
-        PUBLIC :: ZVODE_EWT, ZVODE_EWT_DEFAULT
+        PUBLIC :: ZVODE_EWT
         PUBLIC :: XSETF, XSETUN, ZVSRCO
         PUBLIC :: XERRWD
         PUBLIC :: use_linpack
@@ -41,20 +41,17 @@ C       See extern/README.md for details.
 
 C Error-weight functor.  ZVODE calls EWTF % EVAL just before each
 C internal step to (re)set the error weight vector EWT from the current
-C solution.  Users may supply their own weighting policy by extending
-C this abstract type; any state is carried by the extended type itself
-C (no RPAR/IPAR), exactly as for ZVODE_FUN and ZVODE_JAC.  When the
-C optional EWTFUN argument of ZVODE is absent, ZVODE_EWT_DEFAULT is used,
-C reproducing the historical ZEWSET behaviour byte-for-byte.
-        TYPE, ABSTRACT :: ZVODE_EWT
+C solution.  Unlike ZVODE_FUN / ZVODE_JAC there is a sensible default
+C (the historical ZEWSET weighting), so this is a concrete type whose
+C EVAL binding defaults to ZEWSET_DEFAULT rather than an abstract type
+C with a deferred binding: ZVODE_EWT() is directly usable and reproduces
+C ZEWSET byte-for-byte.  Users override the weighting policy by extending
+C it and re-binding EVAL; any state is carried by the extended type
+C itself (no RPAR/IPAR), exactly as for ZVODE_FUN and ZVODE_JAC.
+        TYPE :: ZVODE_EWT
           INTEGER :: NEQ
         CONTAINS
-          PROCEDURE(ZVODE_EWT_EVAL), PASS(EWTF), DEFERRED :: EVAL
-        END TYPE
-
-        TYPE, EXTENDS(ZVODE_EWT) :: ZVODE_EWT_DEFAULT
-        CONTAINS
-          PROCEDURE :: EVAL => ZEWSET_DEFAULT
+          PROCEDURE, PASS(EWTF) :: EVAL => ZEWSET_DEFAULT
         END TYPE
 
         ABSTRACT INTERFACE
@@ -72,14 +69,6 @@ C reproducing the historical ZEWSET behaviour byte-for-byte.
              REAL(DP), INTENT(IN) :: T
              COMPLEX(DP), INTENT(IN) :: Y(JAC%NEQ)
              COMPLEX(DP), INTENT(INOUT) :: PD(NROWPD,*)
-          END SUBROUTINE
-          SUBROUTINE ZVODE_EWT_EVAL(EWTF,ITOL,RTOL,ATOL,YCUR,EWT)
-             IMPORT ZVODE_EWT, DP
-             CLASS(ZVODE_EWT) :: EWTF
-             INTEGER, INTENT(IN) :: ITOL
-             REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
-             COMPLEX(DP), INTENT(IN) :: YCUR(EWTF%NEQ)
-             REAL(DP), INTENT(OUT) :: EWT(EWTF%NEQ)
           END SUBROUTINE
         END INTERFACE
 
@@ -1079,9 +1068,9 @@ C
 C In this module version, the error-weight routine ZEWSET is replaceable
 C at run time rather than by the system-dependent link-time override of
 C the original.  Pass the optional EWTFUN argument of ZVODE: a functor
-C extending the abstract class ZVODE_EWT (deferred EVAL binding + NEQ
-C component), the ZVODE analogue of CVODE's CVodeWFtolerances/CVEwtFn.
-C When EWTFUN is absent, ZVODE_EWT_DEFAULT (which delegates to ZEWSET)
+C extending the class ZVODE_EWT (an NEQ component and an EVAL binding
+C that defaults to ZEWSET), the ZVODE analogue of CVODE's
+C CVodeWFtolerances/CVEwtFn.  When EWTFUN is absent a default ZVODE_EWT
 C is used, so the default behaviour is unchanged.  The weighted-RMS norm
 C ZVNORM is NOT run-time replaceable in this version.
 C
@@ -1191,7 +1180,7 @@ C
 C Type declarations for local variables --------------------------------
 C
       CLASS(ZVODE_EWT), POINTER :: EWTF
-      TYPE(ZVODE_EWT_DEFAULT), ALLOCATABLE, TARGET :: EWTF_DEF
+      TYPE(ZVODE_EWT), ALLOCATABLE, TARGET :: EWTF_DEF
       LOGICAL IHIT
       DOUBLE PRECISION ATOLI, BIG, EWTI, FOUR, H0, HMAX, HMX, HUN, ONE,
      1   PT2, RH, RTOLI, SIZE, TCRIT, TNEXT, TOLSF, TP, TWO, ZERO
@@ -3551,13 +3540,14 @@ C***SUBSIDIARY
 C***PURPOSE  Default ZVODE_EWT binding: set the error weight vector.
 C***DESCRIPTION
 C
-C  Passed-object EVAL binding of ZVODE_EWT_DEFAULT.  It reproduces the
-C  historical error-weight policy by delegating to ZEWSET, so ZVODE's
-C  behaviour is unchanged when the caller supplies no EWTFUN override.
-C  N is taken from the functor's NEQ component (set by ZVODE).
+C  Default EVAL binding of ZVODE_EWT.  It reproduces the historical
+C  error-weight policy by delegating to ZEWSET, so ZVODE's behaviour is
+C  unchanged when the caller supplies no EWTFUN override (or supplies a
+C  plain ZVODE_EWT).  N is taken from the functor's NEQ component (set
+C  by ZVODE).
 C***ROUTINES CALLED  ZEWSET
 C***END PROLOGUE  ZEWSET_DEFAULT
-      CLASS(ZVODE_EWT_DEFAULT) :: EWTF
+      CLASS(ZVODE_EWT) :: EWTF
       INTEGER, INTENT(IN) :: ITOL
       REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
       COMPLEX(DP), INTENT(IN) :: YCUR(EWTF%NEQ)

@@ -122,9 +122,10 @@ for 1.0.0; those items are recorded here, where they actually shipped.
   > pass); offset-pinning tests removed as redundant.
 - [x] Add option to expose `ZEWSET` and `ZVNORM` as callback functions
   > Only `ZEWSET` (the error-weight setter) is exposed, via a new optional
-  > `EWTFUN` argument to `ZVODE` and the `ZVODE_EWT` / `ZVODE_EWT_DEFAULT`
-  > abstract classes -- the ZVODE analogue of CVODE's `CVodeWFtolerances` /
-  > `CVEwtFn`.  Following CVODE, which exposes only `CVEwtFn`, the internal
+  > `EWTFUN` argument to `ZVODE` and a concrete `ZVODE_EWT` class whose
+  > `EVAL` binding defaults to `ZEWSET` -- the ZVODE analogue of CVODE's
+  > `CVodeWFtolerances` / `CVEwtFn`.  Following CVODE, which exposes only
+  > `CVEwtFn`, the internal
   > weighted-RMS norm `ZVNORM` is intentionally left fixed (this also keeps
   > it `PURE` and out of the functor-dispatch path in the step inner loops).
   > Statefulness is carried by the extended type itself (no `RPAR`/`IPAR`,

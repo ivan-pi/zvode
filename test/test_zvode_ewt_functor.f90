@@ -1,8 +1,8 @@
 ! test_zvode_ewt_functor.f90
 ! ============================================================
 !  Fortran-native test of the user-supplied error-weight functor
-!  (the optional EWTFUN argument of ZVODE and the ZVODE_EWT /
-!  ZVODE_EWT_DEFAULT abstract classes).
+!  (the optional EWTFUN argument of ZVODE and the concrete ZVODE_EWT
+!  class, whose EVAL binding defaults to ZEWSET).
 !
 !  This is the ZVODE analogue of CVODE's CVodeWFtolerances / CVEwtFn:
 !  a callback that (re)sets the error weight vector from the current
@@ -15,7 +15,7 @@
 !
 !  Coverage (assertion codes passed to `error stop`):
 !    1-2   baseline solve (no EWTFUN) reaches TOUT and matches exp(lam t)
-!    10-12 passing an explicit ZVODE_EWT_DEFAULT reproduces the baseline
+!    10-12 passing an explicit default ZVODE_EWT reproduces the baseline
 !          trajectory bit-for-bit (the default dispatch path is a no-op
 !          re-expression of the historical ZEWSET call)
 !    20-23 a stateful override that re-implements the default weight
@@ -113,7 +113,7 @@ end module test_ewt_functor_mod
 
 
 program test_zvode_ewt_functor
-  use zvode_mod, only: zvode, zvode_ewt_default
+  use zvode_mod, only: zvode, zvode_ewt
   use test_ewt_functor_mod, only: diag_fun, diag_jac, counting_ewt, &
                                    scaled_ewt, dp
   implicit none
@@ -147,11 +147,11 @@ program test_zvode_ewt_functor
   nst_ref = iwork(11)
 
   ! ================================================================
-  ! (10) Explicit ZVODE_EWT_DEFAULT must reproduce the baseline exactly:
+  ! (10) A plain (default) ZVODE_EWT must reproduce the baseline exactly:
   ! the default dispatch path is a faithful re-expression of ZEWSET.
   ! ================================================================
   call solve(y, t, istate, iwork, diag_fun(neq, lam), diag_jac(neq, lam), &
-             zvode_ewt_default(neq))
+             zvode_ewt(neq))
   call check(istate == 2, 10, 'default-functor: istate /= 2')
   ! exact equality: identical arithmetic, identical control path
   call check(all(y == yref), 11, 'default-functor: trajectory /= baseline')
