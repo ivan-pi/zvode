@@ -17,10 +17,12 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
   class object itself, so these arguments are no longer present.
 - **Error-weight callback (`ZVODE_EWT`)** — the error-weight setter `ZEWSET`, which the upstream
   documentation invites users to replace by a link-time override, is exposed as a functor: a
-  `ZVODE_EWT` class with an `NEQ` component and an `EVAL` binding that defaults to the historical
-  `ZEWSET` weighting. Unlike `ZVODE_FUN` / `ZVODE_JAC`, a sensible default exists, so this is a
-  concrete type (usable directly as `ZVODE_EWT()`) rather than an abstract type with a deferred
-  binding; users override the policy by extending it and re-binding `EVAL`. `ZVODE` takes it through a new *optional*
+  `ZVODE_EWT` class whose `EVAL` binding defaults to the historical `ZEWSET` weighting. Unlike
+  `ZVODE_FUN` / `ZVODE_JAC`, a sensible default exists, so this is a concrete type (usable directly
+  as `ZVODE_EWT()`) rather than an abstract type with a deferred binding; users override the policy
+  by extending it and re-binding `EVAL`. The problem size `N` is passed to `EVAL` (as in the original
+  `ZEWSET`) rather than stored on the type — the dimension is a property of the system, not of the
+  weighting policy — so the base type carries no data of its own. `ZVODE` takes it through a new *optional*
   trailing argument `EWTFUN`; when absent the default is used, so existing positional calls (and
   the `c_zvode.f90` bind(c) layer) are unchanged. This is the ZVODE analogue of CVODE's
   `CVodeWFtolerances` / `CVEwtFn`. Following CVODE, only the error-weight setter is user-replaceable;

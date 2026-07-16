@@ -10,15 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - User-supplied error-weight callback for the Fortran core, the ZVODE
   analogue of CVODE's `CVodeWFtolerances` / `CVEwtFn`.  `ZVODE_MOD` now
-  exports a `ZVODE_EWT` class: an `NEQ` component (mirroring `ZVODE_FUN` /
-  `ZVODE_JAC`) plus an `EVAL` binding that defaults to the historical
-  `ZEWSET` weighting.  Because a sensible default exists, this is a
-  concrete type usable directly as `ZVODE_EWT()`, not an abstract type
-  with a deferred binding.  `ZVODE` gains an optional trailing `EWTFUN`
-  argument; when omitted the default policy is used, so every existing
-  call is unaffected and the numerics are byte-identical.  Users override
-  the error-weight vector by extending `ZVODE_EWT`, re-binding `EVAL`, and
-  hanging any state off the child type (no
+  exports a `ZVODE_EWT` class whose `EVAL` binding defaults to the
+  historical `ZEWSET` weighting.  Because a sensible default exists, this
+  is a concrete type usable directly as `ZVODE_EWT()`, not an abstract
+  type with a deferred binding.  The problem size `N` is passed to `EVAL`
+  (as in the original `ZEWSET`) rather than stored on the type, so the
+  base type carries no data of its own -- the dimension is a property of
+  the system, not of the weighting policy.  `ZVODE` gains an optional
+  trailing `EWTFUN` argument; when omitted the default policy is used, so
+  every existing call is unaffected and the numerics are byte-identical.
+  Users override the error-weight vector by extending `ZVODE_EWT`,
+  re-binding `EVAL`, and hanging any state off the child type (no
   `RPAR`/`IPAR` and no separate `ctx` on the base type — Fortran type
   extension already gives a typed, stateful functor).  The callback aliases
   the caller's object (no copy) and is invoked just before every internal

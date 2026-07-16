@@ -48,8 +48,10 @@ C with a deferred binding: ZVODE_EWT() is directly usable and reproduces
 C ZEWSET byte-for-byte.  Users override the weighting policy by extending
 C it and re-binding EVAL; any state is carried by the extended type
 C itself (no RPAR/IPAR), exactly as for ZVODE_FUN and ZVODE_JAC.
+C The problem size N is not a property of the weighting policy, so it is
+C passed to EVAL (as in the original ZEWSET) rather than stored on the
+C type.  The base type therefore carries no data of its own.
         TYPE :: ZVODE_EWT
-          INTEGER :: NEQ
         CONTAINS
           PROCEDURE, PASS(EWTF) :: EVAL => ZEWSET_DEFAULT
         END TYPE
@@ -1068,11 +1070,12 @@ C
 C In this module version, the error-weight routine ZEWSET is replaceable
 C at run time rather than by the system-dependent link-time override of
 C the original.  Pass the optional EWTFUN argument of ZVODE: a functor
-C extending the class ZVODE_EWT (an NEQ component and an EVAL binding
-C that defaults to ZEWSET), the ZVODE analogue of CVODE's
-C CVodeWFtolerances/CVEwtFn.  When EWTFUN is absent a default ZVODE_EWT
-C is used, so the default behaviour is unchanged.  The weighted-RMS norm
-C ZVNORM is NOT run-time replaceable in this version.
+C extending the class ZVODE_EWT (an EVAL binding that defaults to ZEWSET;
+C the problem size N is passed to EVAL rather than stored on the type),
+C the ZVODE analogue of CVODE's CVodeWFtolerances/CVEwtFn.  When EWTFUN
+C is absent a default ZVODE_EWT is used, so the default behaviour is
+C unchanged.  The weighted-RMS norm ZVNORM is NOT run-time replaceable
+C in this version.
 C
 C (a) ZEWSET.
 C The following subroutine is called just before each internal
@@ -1307,13 +1310,12 @@ C policy.  EWTF aliases the chosen object (no copy), so any state the
 C caller carries in an EWTFUN override -- and any it accumulates during
 C the solve -- lives in the caller's own object, exactly as for F and
 C JAC.  Its EVAL is invoked just before each internal step (see Blocks
-C C and E), reusing that object every step.  As with F and JAC, an
-C EWTFUN override is responsible for its own NEQ component.
+C C and E), reusing that object every step.  The default carries no
+C state; the problem size N is passed to EVAL at each call.
       IF (PRESENT(EWTFUN)) THEN
         EWTF => EWTFUN
       ELSE
         ALLOCATE(EWTF_DEF)
-        EWTF_DEF%NEQ = NEQ
         EWTF => EWTF_DEF
       END IF
 C
@@ -1479,7 +1481,7 @@ C Load the initial value vector in YH. ---------------------------------
 C Load and invert the EWT array.  (H is temporarily set to 1.0.) -------
       NQ = 1
       H = ONE
-      CALL EWTF % EVAL (ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
+      CALL EWTF % EVAL (N, ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
       DO 120 I = 1,N
         IF (RWORK(I+LEWT-1) .LE. ZERO) GO TO 621
  120    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
@@ -1544,7 +1546,7 @@ C check for H below the roundoff level in T.
 C-----------------------------------------------------------------------
  250  CONTINUE
       IF ((NST-NSLAST) .GE. MXSTEP) GO TO 500
-      CALL EWTF % EVAL (ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
+      CALL EWTF % EVAL (N, ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
       DO 260 I = 1,N
         IF (RWORK(I+LEWT-1) .LE. ZERO) GO TO 510
  260    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
@@ -3534,7 +3536,7 @@ C
 C----------------------- End of Subroutine ZVSRCO ----------------------
       END SUBROUTINE
 *DECK ZEWSET_DEFAULT
-      SUBROUTINE ZEWSET_DEFAULT (EWTF, ITOL, RTOL, ATOL, YCUR, EWT)
+      SUBROUTINE ZEWSET_DEFAULT (EWTF, N, ITOL, RTOL, ATOL, YCUR, EWT)
 C***BEGIN PROLOGUE  ZEWSET_DEFAULT
 C***SUBSIDIARY
 C***PURPOSE  Default ZVODE_EWT binding: set the error weight vector.
@@ -3543,17 +3545,17 @@ C
 C  Default EVAL binding of ZVODE_EWT.  It reproduces the historical
 C  error-weight policy by delegating to ZEWSET, so ZVODE's behaviour is
 C  unchanged when the caller supplies no EWTFUN override (or supplies a
-C  plain ZVODE_EWT).  N is taken from the functor's NEQ component (set
-C  by ZVODE).
+C  plain ZVODE_EWT).  The functor object EWTF carries no state in the
+C  default policy; the problem size N is supplied by ZVODE at each call.
 C***ROUTINES CALLED  ZEWSET
 C***END PROLOGUE  ZEWSET_DEFAULT
       CLASS(ZVODE_EWT) :: EWTF
-      INTEGER, INTENT(IN) :: ITOL
+      INTEGER, INTENT(IN) :: N, ITOL
       REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
-      COMPLEX(DP), INTENT(IN) :: YCUR(EWTF%NEQ)
-      REAL(DP), INTENT(OUT) :: EWT(EWTF%NEQ)
+      COMPLEX(DP), INTENT(IN) :: YCUR(N)
+      REAL(DP), INTENT(OUT) :: EWT(N)
 C***FIRST EXECUTABLE STATEMENT  ZEWSET_DEFAULT
-      CALL ZEWSET (EWTF%NEQ, ITOL, RTOL, ATOL, YCUR, EWT)
+      CALL ZEWSET (N, ITOL, RTOL, ATOL, YCUR, EWT)
       RETURN
 C-------------------- END OF SUBROUTINE ZEWSET_DEFAULT -----------------
       END SUBROUTINE

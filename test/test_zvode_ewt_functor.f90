@@ -51,7 +51,9 @@ module test_ewt_functor_mod
   ! (ITOL = 1: EWT_i = RTOL*|YCUR_i| + ATOL) but carries mutable state:
   ! a counter of how many times it has been invoked.  Because ZVODE
   ! aliases (does not copy) the functor, this counter is visible in the
-  ! caller's object after the solve.
+  ! caller's object after the solve.  Note the functor holds only its own
+  ! state (the counter) -- the problem size arrives as the N argument of
+  ! EVAL, it is not a property of the weighting policy.
   type, extends(zvode_ewt) :: counting_ewt
     integer :: ncalls = 0
   contains
@@ -89,23 +91,23 @@ contains
     end do
   end subroutine
 
-  subroutine counting_e(ewtf, itol, rtol, atol, ycur, ewt)
+  subroutine counting_e(ewtf, n, itol, rtol, atol, ycur, ewt)
     class(counting_ewt) :: ewtf
-    integer, intent(in) :: itol
+    integer, intent(in) :: n, itol
     real(dp), intent(in) :: rtol(*), atol(*)
-    complex(dp), intent(in) :: ycur(ewtf%neq)
-    real(dp), intent(out) :: ewt(ewtf%neq)
+    complex(dp), intent(in) :: ycur(n)
+    real(dp), intent(out) :: ewt(n)
     ewtf%ncalls = ewtf%ncalls + 1
     ! ITOL = 1 branch of the historical ZEWSET formula
     ewt = rtol(1)*abs(ycur) + atol(1)
   end subroutine
 
-  subroutine scaled_e(ewtf, itol, rtol, atol, ycur, ewt)
+  subroutine scaled_e(ewtf, n, itol, rtol, atol, ycur, ewt)
     class(scaled_ewt) :: ewtf
-    integer, intent(in) :: itol
+    integer, intent(in) :: n, itol
     real(dp), intent(in) :: rtol(*), atol(*)
-    complex(dp), intent(in) :: ycur(ewtf%neq)
-    real(dp), intent(out) :: ewt(ewtf%neq)
+    complex(dp), intent(in) :: ycur(n)
+    real(dp), intent(out) :: ewt(n)
     ewt = ewtf%factor * (rtol(1)*abs(ycur) + atol(1))
   end subroutine
 
@@ -151,7 +153,7 @@ program test_zvode_ewt_functor
   ! the default dispatch path is a faithful re-expression of ZEWSET.
   ! ================================================================
   call solve(y, t, istate, iwork, diag_fun(neq, lam), diag_jac(neq, lam), &
-             zvode_ewt(neq))
+             zvode_ewt())
   call check(istate == 2, 10, 'default-functor: istate /= 2')
   ! exact equality: identical arithmetic, identical control path
   call check(all(y == yref), 11, 'default-functor: trajectory /= baseline')
@@ -162,8 +164,7 @@ program test_zvode_ewt_functor
   ! reproduces the baseline, is called once per step (NOT once), and
   ! its counter survives in the caller's object after ZVODE returns.
   ! ================================================================
-  cewt = counting_ewt(neq)
-  cewt%ncalls = 0
+  cewt = counting_ewt(ncalls=0)
   call solve(y, t, istate, iwork, diag_fun(neq, lam), diag_jac(neq, lam), &
              cewt)
   call check(istate == 2, 20, 'counting-functor: istate /= 2')
@@ -181,7 +182,7 @@ program test_zvode_ewt_functor
   ! weights => smaller error norm => bigger steps => NST cannot exceed
   ! the baseline (and in practice is strictly smaller).
   ! ================================================================
-  sewt = scaled_ewt(neq, factor=1.0e6_dp)
+  sewt = scaled_ewt(factor=1.0e6_dp)
   call solve(y, t, istate, iwork, diag_fun(neq, lam), diag_jac(neq, lam), &
              sewt)
   call check(istate == 2, 30, 'scaled-functor: istate /= 2')
