@@ -121,8 +121,8 @@ contains
     !  DKY(i)  =  sum  c(j,K) * (T - TN)**(j-K) * H**(-j) * YH(i,j+1)
     !             j=K
     ! where  c(j,K) = j*(j-1)*...*(j-K+1), q = NQCUR, TN = TCUR, H = HCUR.
-    ! The quantities  NQ = NQCUR, L = NQ+1, N, TN, and H are
-    ! communicated by COMMON.  The above sum is done in reverse order.
+    ! The quantities  NQ = NQCUR, TN = TCUR, H = HCUR, and HU are
+    ! passed in the STEP argument.  The above sum is done in reverse order.
     ! IFLAG is returned negative if either K or T is out of bounds.
     !
     ! Discussion above and comments in driver explain all variables.

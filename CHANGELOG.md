@@ -71,6 +71,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Removed the internal Fortran `COMMON` blocks `/ZVOD01/` and `/ZVOD02/` from
+  the vendored `extern/zvode.F`.  Their members are now module variables of
+  `ZVODE_MOD`, shared between the package routines by host association; module
+  variables carry the `SAVE` attribute implicitly, so the state persists between
+  calls exactly as the `COMMON` blocks did.  `ZVSRCO`, which relied on `COMMON`
+  storage association, was rewritten to pack/unpack the module variables
+  explicitly while preserving the original `RSAV`/`ISAV` layout (51 reals, 41
+  integers).  This is a stepping stone toward moving the internal state into a
+  derived type.  No behavioural change for the documented `JOB` values
+- `ZVSRCO`'s `IF (JOB .EQ. 2) GO TO 100` control flow was replaced with a
+  `SELECT CASE (JOB)` that dispatches `JOB = 1` (save) and `JOB = 2` (restore)
+  and issues an `ERROR STOP` in the `CASE DEFAULT`.  Previously any `JOB` other
+  than 2 (including out-of-contract values) silently fell through to the save
+  branch; invalid `JOB` values are now rejected
 - `drive_adaptive`'s internal `StepBuf` now uses a plain `malloc`/`realloc`
   backing store instead of NumPy arrays.  The adaptive stepping loop performs
   no Python/NumPy C API calls on its hot path (and defers any error reporting
@@ -93,6 +107,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lifecycle is now GIL-independent and unit-testable as pure C, and the
   (potentially large) final copy no longer needs the GIL held.  No behavioural
   change
+- The user-facing documentation comments in `extern/zvode.F` no longer
+  describe the internal state as living in the `/ZVOD01/`/`/ZVOD02/` COMMON
+  blocks: the Part i/ii/iii driver documentation, the internal-state glossary,
+  and the per-routine "COMMON block variables accessed" headers now refer to
+  the module variables, and Part iv's `ZEWSET` replacement recipe (which
+  showed a `COMMON` declaration that no longer compiles) was rewritten in
+  terms of `ZVSRCO`.  The bodies of the `SELECT CASE` branches in `ZVSRCO`
+  are now indented.  Comment/whitespace-only, no code change
+
+### Fixed
+
+- Documentation bug inherited from upstream: the Part ii description of
+  `ZVSRCO` claimed `ISAV` needs length "40 or more", while the actual
+  requirement (and the routine's own header) is 41 (33 `/ZVOD01/` integers
+  plus 8 `/ZVOD02/` integers)
+- Documentation drift inherited from upstream: the per-routine "variables
+  accessed" headers were checked mechanically against the identifiers each
+  routine actually references and corrected — `ZVSTEP` was missing `CONP`,
+  `ETA`, `ETAMAX`, `NEWH`, `NQNYH`, `PRL1`, `RL1`; `ZVJUST` was missing
+  `EL(13)` and `L`; `ZVNLSD` was missing `IPUP` and `JSTART` and listed all
+  nine `/ZVOD02/` counters when it only touches `NFE`, `NNI`, `NST`; `ZVJAC`
+  was missing `JSV`.  `ZVHIN`, `ZVINDY`, `ZVSET`, and `ZVSOL` were accurate
+- The per-routine "Call sequence input/output" intent documentation was
+  checked mechanically against each dummy argument's read/write behaviour
+  (including writes through internal callees) and corrected: the
+  `ZVSTEP`/`ZVNLSD`/`ZVJAC` input lists still named the removed `RPAR`/`IPAR`
+  arguments; `ZVNLSD` listed `YH` as output although it never writes it,
+  while its real outputs `Y` (the corrected y, loaded internally from `YH`)
+  and `SAVF` (last f evaluation) were missing and `Y` was misdocumented as
+  input; `ZVSTEP` was missing outputs `Y`, `SAVF`, and `YH1`; `ZVSOL` was
+  missing output `WM` (the MITER = 3 path refreshes the stored inverse
+  diagonal); `ZVHIN`'s `Y`/`TEMP` and `ZVJAC`'s `FTEM` are now labeled as
+  work arrays whose input values are not used
 
 ## [0.3.0] - 2026-06-09
 

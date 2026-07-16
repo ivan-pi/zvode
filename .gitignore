@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Fortran build artifacts
+*.mod
+*.smod
+
+# Compiled object files and static/shared libraries
+#   (*.so is already ignored above under "C extensions")
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.dylib
