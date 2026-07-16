@@ -193,7 +193,8 @@ if(ZVODE_BUILD_TESTS)
   foreach(_test IN ITEMS
       test_zvode_decay
       test_zvode_complex_oscillator
-      test_zvode_public_api)
+      test_zvode_public_api
+      test_zvode_ewt_functor)
     add_executable(${_test} test/${_test}.f90)
     target_link_libraries(${_test} PRIVATE zvode)
     add_test(NAME ${_test} COMMAND ${_test})

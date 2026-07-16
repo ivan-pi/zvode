@@ -15,6 +15,16 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
 - **`RPAR`/`IPAR` removed** — the original interface passes user context through a real/complex
   array `RPAR` and an integer array `IPAR`. In the functor design, context is carried by the
   class object itself, so these arguments are no longer present.
+- **Error-weight callback (`ZVODE_EWT`)** — the error-weight setter `ZEWSET`, which the upstream
+  documentation invites users to replace by a link-time override, is exposed as a functor: an
+  abstract `ZVODE_EWT` class (deferred `EVAL` + `NEQ` component) with a default `ZVODE_EWT_DEFAULT`
+  that reproduces the historical `ZEWSET` weighting. `ZVODE` takes it through a new *optional*
+  trailing argument `EWTFUN`; when absent the default is used, so existing positional calls (and
+  the `c_zvode.f90` bind(c) layer) are unchanged. This is the ZVODE analogue of CVODE's
+  `CVodeWFtolerances` / `CVEwtFn`. Following CVODE, only the error-weight setter is user-replaceable;
+  the internal weighted-RMS norm `ZVNORM` is left fixed (it stays `PURE` and off the functor-dispatch
+  path in the step inner loops). Like `CVEwtFn`, `EWTF % EVAL` is called just before every internal
+  step, not once.
 - The helper functions ZACOPY, DZSCAL, DZAXPY have been moved to a separate module `ZVODE_LINALG_MOD`.
 - **`COMMON` blocks removed** — the internal state formerly held in the labeled `COMMON` blocks
   `/ZVOD01/` and `/ZVOD02/` is now declared as module variables of `ZVODE_MOD`, shared between the

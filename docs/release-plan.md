@@ -120,8 +120,18 @@ for 1.0.0; those items are recorded here, where they actually shipped.
   > carries the probe offset through every step without re-reading the full
   > Fortran counter.  `test_counters.py`: `xfail` decorators removed (tests now
   > pass); offset-pinning tests removed as redundant.
-- [ ] Add option to expose `ZEWSET` and `ZWNORM` as callback functions
-  **Deferred to a future version (post-1.0.0).**
+- [x] Add option to expose `ZEWSET` and `ZVNORM` as callback functions
+  > Only `ZEWSET` (the error-weight setter) is exposed, via a new optional
+  > `EWTFUN` argument to `ZVODE` and the `ZVODE_EWT` / `ZVODE_EWT_DEFAULT`
+  > abstract classes -- the ZVODE analogue of CVODE's `CVodeWFtolerances` /
+  > `CVEwtFn`.  Following CVODE, which exposes only `CVEwtFn`, the internal
+  > weighted-RMS norm `ZVNORM` is intentionally left fixed (this also keeps
+  > it `PURE` and out of the functor-dispatch path in the step inner loops).
+  > Statefulness is carried by the extended type itself (no `RPAR`/`IPAR`,
+  > no separate `ctx` on the Fortran base type), exactly as for `ZVODE_FUN`
+  > / `ZVODE_JAC`; the callback is invoked before every internal step, not
+  > once.  Fortran-only for now (`test/test_zvode_ewt_functor.f90`); the
+  > C / Python (`ctx`, numba/ctypes) exposure is a follow-up.
 - [x] Provide CMake option to use external BLAS; fallback to vendored procedures
   (`ZVODE_LINALG_BACKEND` cache variable: `LAPACK` (default, uses external LAPACK)
   or `LINPACK` (uses vendored routines + external BLAS))

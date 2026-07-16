@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- User-supplied error-weight callback for the Fortran core, the ZVODE
+  analogue of CVODE's `CVodeWFtolerances` / `CVEwtFn`.  `ZVODE_MOD` now
+  exports an abstract `ZVODE_EWT` class (a deferred `EVAL` binding plus an
+  `NEQ` component, mirroring `ZVODE_FUN` / `ZVODE_JAC`) and a default
+  `ZVODE_EWT_DEFAULT` that reproduces the historical `ZEWSET` weighting.
+  `ZVODE` gains an optional trailing `EWTFUN` argument; when omitted the
+  default policy is used, so every existing call is unaffected and the
+  numerics are byte-identical.  Users override the error-weight vector by
+  extending `ZVODE_EWT` and hanging any state off the child type (no
+  `RPAR`/`IPAR` and no separate `ctx` on the base type — Fortran type
+  extension already gives a typed, stateful functor).  The callback aliases
+  the caller's object (no copy) and is invoked just before every internal
+  step, so accumulated state persists in the caller's own object after the
+  solve.  Following CVODE — which exposes only `CVEwtFn` — the internal
+  weighted-RMS norm `ZVNORM` is intentionally left fixed (keeping it `PURE`
+  and off the dispatch path in the step inner loops).  Covered by
+  `test/test_zvode_ewt_functor.f90`.  C / Python exposure is a follow-up.
+
 - Tutorial and demo for a driven scalar complex ODE
   (`y' = 10·exp(2πi·t)·y`, `y(0) = 1`), reproducing the
   [Wolfram Language complex-ODE visualization example](https://www.wolfram.com/language/12/complex-visualization/solutions-of-complex-odes.html).

@@ -15,6 +15,7 @@ C       See extern/README.md for details.
         PRIVATE
 
         PUBLIC :: ZVODE, ZVODE_FUN, ZVODE_JAC, ZVINDY
+        PUBLIC :: ZVODE_EWT, ZVODE_EWT_DEFAULT
         PUBLIC :: XSETF, XSETUN, ZVSRCO
         PUBLIC :: XERRWD
         PUBLIC :: use_linpack
@@ -38,6 +39,24 @@ C       See extern/README.md for details.
           PROCEDURE(ZVODE_JAC_EVAL), PASS(JAC), DEFERRED :: EVAL
         END TYPE
 
+C Error-weight functor.  ZVODE calls EWTF % EVAL just before each
+C internal step to (re)set the error weight vector EWT from the current
+C solution.  Users may supply their own weighting policy by extending
+C this abstract type; any state is carried by the extended type itself
+C (no RPAR/IPAR), exactly as for ZVODE_FUN and ZVODE_JAC.  When the
+C optional EWTFUN argument of ZVODE is absent, ZVODE_EWT_DEFAULT is used,
+C reproducing the historical ZEWSET behaviour byte-for-byte.
+        TYPE, ABSTRACT :: ZVODE_EWT
+          INTEGER :: NEQ
+        CONTAINS
+          PROCEDURE(ZVODE_EWT_EVAL), PASS(EWTF), DEFERRED :: EVAL
+        END TYPE
+
+        TYPE, EXTENDS(ZVODE_EWT) :: ZVODE_EWT_DEFAULT
+        CONTAINS
+          PROCEDURE :: EVAL => ZEWSET_DEFAULT
+        END TYPE
+
         ABSTRACT INTERFACE
           SUBROUTINE ZVODE_FUN_EVAL(FUN,T,Y,YDOT)
              IMPORT ZVODE_FUN, DP
@@ -53,6 +72,14 @@ C       See extern/README.md for details.
              REAL(DP), INTENT(IN) :: T
              COMPLEX(DP), INTENT(IN) :: Y(JAC%NEQ)
              COMPLEX(DP), INTENT(INOUT) :: PD(NROWPD,*)
+          END SUBROUTINE
+          SUBROUTINE ZVODE_EWT_EVAL(EWTF,ITOL,RTOL,ATOL,YCUR,EWT)
+             IMPORT ZVODE_EWT, DP
+             CLASS(ZVODE_EWT) :: EWTF
+             INTEGER, INTENT(IN) :: ITOL
+             REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
+             COMPLEX(DP), INTENT(IN) :: YCUR(EWTF%NEQ)
+             REAL(DP), INTENT(OUT) :: EWT(EWTF%NEQ)
           END SUBROUTINE
         END INTERFACE
 
@@ -101,10 +128,11 @@ C
 C
       SUBROUTINE ZVODE (F, NEQ, Y, T, TOUT, ITOL, RTOL, ATOL, ITASK,
      1            ISTATE, IOPT, ZWORK, LZW, RWORK, LRW, IWORK, LIW,
-     2            JAC, MF)
+     2            JAC, MF, EWTFUN)
 C Argument list
       CLASS(ZVODE_FUN) :: F
       CLASS(ZVODE_JAC) :: JAC
+      CLASS(ZVODE_EWT), OPTIONAL, TARGET :: EWTFUN
       INTEGER, INTENT(IN) :: NEQ, ITOL, ITASK, IOPT, LZW, LRW, LIW, MF
       REAL(DP), INTENT(IN) :: TOUT
       REAL(DP), INTENT(INOUT) :: T
@@ -1048,6 +1076,15 @@ C done only when absolutely necessary, and only with great caution.
 C (Note: The means by which the package version of a routine is
 C superseded by the user's version may be system-dependent.)
 C
+C In this module version, the error-weight routine ZEWSET is replaceable
+C at run time rather than by the system-dependent link-time override of
+C the original.  Pass the optional EWTFUN argument of ZVODE: a functor
+C extending the abstract class ZVODE_EWT (deferred EVAL binding + NEQ
+C component), the ZVODE analogue of CVODE's CVodeWFtolerances/CVEwtFn.
+C When EWTFUN is absent, ZVODE_EWT_DEFAULT (which delegates to ZEWSET)
+C is used, so the default behaviour is unchanged.  The weighted-RMS norm
+C ZVNORM is NOT run-time replaceable in this version.
+C
 C (a) ZEWSET.
 C The following subroutine is called just before each internal
 C integration step, and sets the array of error weights, EWT, as
@@ -1153,6 +1190,8 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
+      CLASS(ZVODE_EWT), POINTER :: EWTF
+      TYPE(ZVODE_EWT_DEFAULT), ALLOCATABLE, TARGET :: EWTF_DEF
       LOGICAL IHIT
       DOUBLE PRECISION ATOLI, BIG, EWTI, FOUR, H0, HMAX, HMX, HUN, ONE,
      1   PT2, RH, RTOLI, SIZE, TCRIT, TNEXT, TOLSF, TP, TWO, ZERO
@@ -1273,6 +1312,22 @@ C If ISTATE .gt. 1 but the flag INIT shows that initialization has
 C not yet been done, an error return occurs.
 C If ISTATE = 1 and TOUT = T, return immediately.
 C-----------------------------------------------------------------------
+C Select the error-weight functor for this call: the caller's override
+C if the optional EWTFUN was supplied, otherwise the default (ZEWSET)
+C policy.  EWTF aliases the chosen object (no copy), so any state the
+C caller carries in an EWTFUN override -- and any it accumulates during
+C the solve -- lives in the caller's own object, exactly as for F and
+C JAC.  Its EVAL is invoked just before each internal step (see Blocks
+C C and E), reusing that object every step.  As with F and JAC, an
+C EWTFUN override is responsible for its own NEQ component.
+      IF (PRESENT(EWTFUN)) THEN
+        EWTF => EWTFUN
+      ELSE
+        ALLOCATE(EWTF_DEF)
+        EWTF_DEF%NEQ = NEQ
+        EWTF => EWTF_DEF
+      END IF
+C
       IF (ISTATE .LT. 1 .OR. ISTATE .GT. 3) GO TO 601
       IF (ITASK .LT. 1 .OR. ITASK .GT. 5) GO TO 602
       IF (ISTATE .EQ. 1) GO TO 10
@@ -1435,7 +1490,7 @@ C Load the initial value vector in YH. ---------------------------------
 C Load and invert the EWT array.  (H is temporarily set to 1.0.) -------
       NQ = 1
       H = ONE
-      CALL ZEWSET (N, ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
+      CALL EWTF % EVAL (ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
       DO 120 I = 1,N
         IF (RWORK(I+LEWT-1) .LE. ZERO) GO TO 621
  120    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
@@ -1500,7 +1555,7 @@ C check for H below the roundoff level in T.
 C-----------------------------------------------------------------------
  250  CONTINUE
       IF ((NST-NSLAST) .GE. MXSTEP) GO TO 500
-      CALL ZEWSET (N, ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
+      CALL EWTF % EVAL (ITOL, RTOL, ATOL, ZWORK(LYH), RWORK(LEWT))
       DO 260 I = 1,N
         IF (RWORK(I+LEWT-1) .LE. ZERO) GO TO 510
  260    RWORK(I+LEWT-1) = ONE/RWORK(I+LEWT-1)
@@ -3488,6 +3543,29 @@ C
         ERROR STOP 'ZVSRCO: JOB must be 1 (save) or 2 (restore)'
       END SELECT
 C----------------------- End of Subroutine ZVSRCO ----------------------
+      END SUBROUTINE
+*DECK ZEWSET_DEFAULT
+      SUBROUTINE ZEWSET_DEFAULT (EWTF, ITOL, RTOL, ATOL, YCUR, EWT)
+C***BEGIN PROLOGUE  ZEWSET_DEFAULT
+C***SUBSIDIARY
+C***PURPOSE  Default ZVODE_EWT binding: set the error weight vector.
+C***DESCRIPTION
+C
+C  Passed-object EVAL binding of ZVODE_EWT_DEFAULT.  It reproduces the
+C  historical error-weight policy by delegating to ZEWSET, so ZVODE's
+C  behaviour is unchanged when the caller supplies no EWTFUN override.
+C  N is taken from the functor's NEQ component (set by ZVODE).
+C***ROUTINES CALLED  ZEWSET
+C***END PROLOGUE  ZEWSET_DEFAULT
+      CLASS(ZVODE_EWT_DEFAULT) :: EWTF
+      INTEGER, INTENT(IN) :: ITOL
+      REAL(DP), INTENT(IN) :: RTOL(*), ATOL(*)
+      COMPLEX(DP), INTENT(IN) :: YCUR(EWTF%NEQ)
+      REAL(DP), INTENT(OUT) :: EWT(EWTF%NEQ)
+C***FIRST EXECUTABLE STATEMENT  ZEWSET_DEFAULT
+      CALL ZEWSET (EWTF%NEQ, ITOL, RTOL, ATOL, YCUR, EWT)
+      RETURN
+C-------------------- END OF SUBROUTINE ZEWSET_DEFAULT -----------------
       END SUBROUTINE
 *DECK ZEWSET
       SUBROUTINE ZEWSET (N, ITOL, RTOL, ATOL, YCUR, EWT)
