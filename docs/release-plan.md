@@ -379,6 +379,31 @@ are internal concerns that should not require any user-visible API changes.
   class documents user-side locking.
   - [ ] Remove the interim `ZVODE_LOCK` once the COMMON-block refactor is complete
     and concurrent calls are genuinely safe
+  - [~] Preparatory `SAVE`/`PARAMETER` cleanup in `extern/zvode.F` (a stepping
+    stone to the derived-type refactor above — the less mutable module state
+    survives, the less has to move into the state type). Done: the `SAVE`d,
+    `DATA`-initialised numeric constants in the internal helper procedures were
+    promoted to `PARAMETER`s, and the machine constants `UROUND` (`= EPSILON`)
+    and `SRUR` (`= SQRT(UROUND)`; `SQRT` of a constant is a valid constant
+    expression in Fortran 2003+) were promoted to module `PARAMETER`s and dropped
+    from the `ZVSRCO` save arrays (`RSAV` is now 49 reals, was 51). Remaining
+    candidates — fixed internal constants, not reachable through the public API's
+    optional input (`IWORK`/`RWORK` only expose `MAXORD`, `MXSTEP`, `MXHNIL`,
+    `H0`, `HMAX`, `HMIN`):
+    - `CCMXJ` (`= 0.2`) and `MSBJ` (`= 50`) — fixed thresholds used only in `ZVJAC`.
+    - Storage-layout consideration (why these two are deferred): `ZVSRCO` and the
+      Part iv `ZEWSET` recipe in `zvode.F` document explicit save-array indices
+      (`RSAV(21) = H`, `ISAV(28) = NQ`, `ISAV(41) = NST`). `SRUR` sat at
+      `RSAV(30)`, *after* the only documented real index (`H`), so dropping its
+      slot left every documented index valid. `CCMXJ` (`RSAV(2)`) and `MSBJ`
+      (`ISAV(21)`) sit *before* those indices, so compacting them would shift
+      `H`/`NQ`/`NST` and force a matching update to the documented `ZEWSET`
+      recipe. Cross-version `RSAV`/`ISAV` restore is already a declared non-goal
+      (see the `UROUND` change), so the recipe only needs to stay self-consistent
+      within a release.
+    - Planned approach: fold `CCMXJ`/`MSBJ` into the derived-type refactor, where
+      the whole `ZVSRCO`/state contract is redesigned, rather than churning the
+      documented layout piecemeal now.
 - [ ] Python Array-API / cupy support: support execution in the memory spaces of
   other array libraries.
 - [ ] 64-bit integer build variant (ILP64) for very large systems.

@@ -83,15 +83,17 @@ C /ZVOD02/; the '01'/'02' split and the real-before-integer ordering
 C survive only in ZVSRCO, which packs and unpacks these variables into
 C the RSAV/ISAV save arrays.
 C
-C UROUND, the machine unit roundoff, was formerly a /ZVOD01/ member set
-C at run time from the intrinsic EPSILON.  It is a compile-time constant,
-C so it is now a PARAMETER rather than mutable state, and no longer
-C occupies a slot in the ZVSRCO save arrays.
+C UROUND, the machine unit roundoff, and SRUR = SQRT(UROUND) were
+C formerly /ZVOD01/ members set at run time.  Both are compile-time
+C constants (SQRT of a constant is a valid constant expression in
+C Fortran 2003+), so they are now PARAMETERs rather than mutable state
+C and no longer occupy a slot in the ZVSRCO save arrays.
       DOUBLE PRECISION, PARAMETER :: UROUND = EPSILON(1.0D0)
+      DOUBLE PRECISION, PARAMETER :: SRUR = SQRT(UROUND)
 C Former /ZVOD01/ members:
       DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13),
      1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU(13), TQ(5), TN
+     2     RC, RL1, TAU(13), TQ(5), TN
       INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
      1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
      2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
@@ -988,7 +990,7 @@ C
 C  CALL ZVSRCO(RSAV,ISAV,JOB) Saves and restores the internal state
 C                             of ZVODE (module variables, formerly
 C                             COMMON). (See Part iii below.)
-C                             RSAV must be a real array of length 50
+C                             RSAV must be a real array of length 49
 C                             or more, and ISAV must be an integer
 C                             array of length 41 or more.
 C                             JOB=1 means save the state in RSAV/ISAV.
@@ -1039,8 +1041,10 @@ C state explicitly, e.g. when alternating between two or more
 C problems, use subroutine ZVSRCO (see Part ii).
 C Historically this state lived in the labeled COMMON blocks /ZVOD01/
 C (50 double precision words followed by 33 integer words) and
-C /ZVOD02/ (1 double precision word followed by 8 integer words);
-C ZVSRCO preserves that original storage order in RSAV/ISAV.
+C /ZVOD02/ (1 double precision word followed by 8 integer words).
+C UROUND and SRUR, formerly /ZVOD01/ words, are now PARAMETERs and are
+C not saved; ZVSRCO packs the remaining state into RSAV/ISAV in the
+C original storage order (48 + 1 = 49 reals, 33 + 8 = 41 integers).
 C
 C-----------------------------------------------------------------------
 C Part iv.  Optionally Replaceable Solver Routines.
@@ -1078,7 +1082,7 @@ C factors of h**j/factorial(j).  On the first call for the problem,
 C given by NST = 0, NQ is 1 and H is temporarily set to 1.0.
 C NYH is the initial value of NEQ.  The quantities NQ, H, and NST
 C can be obtained inside ZEWSET from the state saved by ZVSRCO:
-C     DOUBLE PRECISION RSAV(50), H
+C     DOUBLE PRECISION RSAV(49), H
 C     INTEGER ISAV(41), NQ, NST
 C     CALL ZVSRCO (RSAV, ISAV, 1)
 C     NQ = ISAV(28)
@@ -1415,7 +1419,6 @@ C-----------------------------------------------------------------------
       IF (H0 .NE. ZERO .AND. (T + H0 - TCRIT)*H0 .GT. ZERO)
      1   H0 = TCRIT - T
  110  JSTART = 0
-      IF (MITER .GT. 0) SRUR = SQRT(UROUND)
       CCMXJ = PT2
       MSBJ = 50
       NHNIL = 0
@@ -1922,8 +1925,9 @@ C-----------------------------------------------------------------------
 C Call sequence input -- T, K, YH, LDYH
 C Call sequence output -- DKY, IFLAG
 C Module variables accessed:
-C     former /ZVOD01/ --  H, TN, UROUND, L, N, NQ
+C     former /ZVOD01/ --  H, TN, L, N, NQ
 C     former /ZVOD02/ --  HU
+C (UROUND, used below, is now a module PARAMETER, not saved state.)
 C
 C Subroutines called by ZVINDY: DZSCAL, XERRWD
 C Function routines called by ZVINDY: None
@@ -2957,9 +2961,10 @@ C Call sequence input -- Y, YH, LDYH, EWT, SAVF, WM, IWM, F, JAC
 C Call sequence work arrays -- FTEM (contents overwritten)
 C Call sequence output -- WM, IWM, IERPJ
 C Module variables accessed:
-C     former /ZVOD01/ -- CCMXJ, DRC, H, HRL1, RL1, SRUR, TN, UROUND,
+C     former /ZVOD01/ -- CCMXJ, DRC, H, HRL1, RL1, TN,
 C                 ICF, JCUR, JSV, LOCJS, MITER, MSBJ, N, NSLJ
 C     former /ZVOD02/ -- NFE, NST, NJE, NLU
+C (UROUND and SRUR, used below, are now module PARAMETERs, not state.)
 C
 C Subroutines called by ZVJAC: F, JAC, ZACOPY, ZCOPY, ZGBFA, ZGEFA,
 C                              DZSCAL
@@ -3293,7 +3298,7 @@ C This routine saves or restores (depending on JOB) the internal state
 C variables of ZVODE (formerly the COMMON blocks ZVOD01 and ZVOD02, now
 C module variables of ZVODE_MOD).
 C
-C RSAV = real array of length 50 or more.
+C RSAV = real array of length 49 or more.
 C ISAV = integer array of length 41 or more.
 C JOB  = flag indicating to save or restore the state variables:
 C        JOB  = 1 if the state is to be saved (written to RSAV/ISAV).
@@ -3322,11 +3327,10 @@ C Save: pack the module variables into RSAV/ISAV.
         RSAV(27) = PRL1
         RSAV(28) = RC
         RSAV(29) = RL1
-        RSAV(30) = SRUR
-        RSAV(31:43) = TAU
-        RSAV(44:48) = TQ
-        RSAV(49) = TN
-        RSAV(50) = HU
+        RSAV(30:42) = TAU
+        RSAV(43:47) = TQ
+        RSAV(48) = TN
+        RSAV(49) = HU
 C
         ISAV(1) = ICF
         ISAV(2) = INIT
@@ -3389,11 +3393,10 @@ C Restore: unpack RSAV/ISAV back into the module variables.
         PRL1 = RSAV(27)
         RC = RSAV(28)
         RL1 = RSAV(29)
-        SRUR = RSAV(30)
-        TAU = RSAV(31:43)
-        TQ = RSAV(44:48)
-        TN = RSAV(49)
-        HU = RSAV(50)
+        TAU = RSAV(30:42)
+        TQ = RSAV(43:47)
+        TN = RSAV(48)
+        HU = RSAV(49)
 C
         ICF = ISAV(1)
         INIT = ISAV(2)
