@@ -17,9 +17,10 @@
 !    ZVINDY  10-14 interpolation reproduces y and dy/dt, and out-of-range
 !                  K returns IFLAG = -1
 !    ZVSRCO  20-32 save slots map to the SAME variables as ZVODE's
-!                  documented IWORK/RWORK outputs -- i.e. the save/restore
-!                  ORDER matches the historical COMMON-block layout, so
-!                  this is not a breaking change
+!                  documented IWORK/RWORK outputs.  UROUND is now a
+!                  PARAMETER, so it no longer occupies a save slot: RSAV
+!                  is one shorter than the historical COMMON layout and
+!                  HU moved from RSAV(51) to RSAV(50)
 !    ZVSRCO  40-43 save -> (solve an unrelated problem, clobbering the
 !                  module state) -> restore -> resume reproduces the
 !                  uninterrupted reference solution
@@ -113,7 +114,7 @@ program test_zvode_public_api
 
   type(solver_settings) :: s, sq
   complex(dp) :: y(neq), zwork(lzw), yref(neq), dky(neq), ysav(neq)
-  real(dp) :: rwork(lrw), t, rsav(51), rsavq(51), tsav
+  real(dp) :: rwork(lrw), t, rsav(50), rsavq(50), tsav
   integer :: iwork(liw), iflag, isav(41), isavq(41)
 
   complex(dp) :: yq(neq), zworkq(lzw)
@@ -182,14 +183,14 @@ program test_zvode_public_api
   ! ZVSRCO save: the saved slots must hold the SAME quantities that
   ! ZVODE reported through its documented public IWORK/RWORK outputs.
   ! This pins the save/restore ORDER to the historical COMMON layout:
-  !   RSAV(1:50) = /ZVOD01/ reals, RSAV(51) = HU (/ZVOD02/)
+  !   RSAV(1:49) = /ZVOD01/ reals, RSAV(50) = HU (/ZVOD02/)
   !   ISAV(1:33) = /ZVOD01/ ints,  ISAV(34:41) = /ZVOD02/ ints
   ! ================================================================
   call zvsrco(rsav, isav, job=save_state)
 
   ! exact equality is intended throughout this block: both sides are
   ! verbatim copies of the same internal variable
-  call check(rsav(51) == rwork(11), 20, 'RSAV(51) = HU  = RWORK(11)')
+  call check(rsav(50) == rwork(11), 20, 'RSAV(50) = HU  = RWORK(11)')
   call check(rsav(49) == rwork(13), 21, 'RSAV(49) = TN  = RWORK(13)')
   call check(isav(41) == iwork(11), 22, 'ISAV(41) = NST  = IWORK(11)')
   call check(isav(36) == iwork(12), 23, 'ISAV(36) = NFE  = IWORK(12)')

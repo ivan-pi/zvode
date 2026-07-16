@@ -81,10 +81,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   inline `SAVE` attribute.  This removes incidental mutable state and is a
   step toward making the solver thread-safe.  No behavioural change
 - `UROUND` (the machine unit roundoff) is now a module `PARAMETER` equal to
-  `EPSILON(1.0D0)` instead of a mutable module variable set at run time.  It
-  keeps its `RSAV(50)` slot in `ZVSRCO` for save-array layout stability but is
-  no longer restored on `JOB = 2` (there is nothing to restore for a
-  compile-time constant).  No behavioural change
+  `EPSILON(1.0D0)` instead of a mutable module variable set at run time, and
+  no longer occupies a slot in the `ZVSRCO` save arrays.  `RSAV` is therefore
+  one element shorter: it now holds 50 reals (was 51), with `HU` moved from
+  `RSAV(51)` to `RSAV(50)`.  This changes the `RSAV` layout, so state saved by
+  an older version cannot be restored into this one; that path was not in use.
+  The solver's numerical behaviour is unchanged
 - Removed the now-unused `DUMACH` and `IUMACH` helper functions from
   `extern/zvode.F`.  `DUMACH` (unit roundoff) is obsolete now that `UROUND` is
   a `PARAMETER`; `IUMACH`'s only caller (`IXSAV`) now reads `ERROR_UNIT` from

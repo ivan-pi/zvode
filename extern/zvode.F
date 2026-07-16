@@ -85,9 +85,8 @@ C the RSAV/ISAV save arrays.
 C
 C UROUND, the machine unit roundoff, was formerly a /ZVOD01/ member set
 C at run time from the intrinsic EPSILON.  It is a compile-time constant,
-C so it is now a PARAMETER rather than mutable state.  (It keeps its slot
-C RSAV(50) in ZVSRCO for save-array layout stability, but is no longer
-C restored.)
+C so it is now a PARAMETER rather than mutable state, and no longer
+C occupies a slot in the ZVSRCO save arrays.
       DOUBLE PRECISION, PARAMETER :: UROUND = EPSILON(1.0D0)
 C Former /ZVOD01/ members:
       DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13),
@@ -989,7 +988,7 @@ C
 C  CALL ZVSRCO(RSAV,ISAV,JOB) Saves and restores the internal state
 C                             of ZVODE (module variables, formerly
 C                             COMMON). (See Part iii below.)
-C                             RSAV must be a real array of length 51
+C                             RSAV must be a real array of length 50
 C                             or more, and ISAV must be an integer
 C                             array of length 41 or more.
 C                             JOB=1 means save the state in RSAV/ISAV.
@@ -1079,7 +1078,7 @@ C factors of h**j/factorial(j).  On the first call for the problem,
 C given by NST = 0, NQ is 1 and H is temporarily set to 1.0.
 C NYH is the initial value of NEQ.  The quantities NQ, H, and NST
 C can be obtained inside ZEWSET from the state saved by ZVSRCO:
-C     DOUBLE PRECISION RSAV(51), H
+C     DOUBLE PRECISION RSAV(50), H
 C     INTEGER ISAV(41), NQ, NST
 C     CALL ZVSRCO (RSAV, ISAV, 1)
 C     NQ = ISAV(28)
@@ -1409,7 +1408,6 @@ C It contains all remaining initializations, the initial call to F,
 C and the calculation of the initial step size.
 C The error weights in EWT are inverted after being loaded.
 C-----------------------------------------------------------------------
-C UROUND is now a module PARAMETER (= EPSILON), no longer set here.
  100  TN = T
       IF (ITASK .NE. 4 .AND. ITASK .NE. 5) GO TO 110
       TCRIT = RWORK(1)
@@ -2096,11 +2094,12 @@ C
       DOUBLE PRECISION CNQUOT, DDN, DSM, DUP, ETAQP1, FLOTL,
      1     R, TOLD
       INTEGER I, I1, I2, IBACK, J, JB, NCF, NFLAG
-      DOUBLE PRECISION, PARAMETER :: ADDON = 1.0D-6, BIAS1 = 6.0D0,
-     1     BIAS2 = 6.0D0, BIAS3 = 10.0D0, ETACF = 0.25D0,
-     2     ETAMIN = 0.1D0, ETAMXF = 0.2D0, ETAMX1 = 1.0D4,
-     3     ETAMX2 = 10.0D0, ETAMX3 = 10.0D0, ONEPSM = 1.00001D0,
-     4     THRESH = 1.5D0, ONE = 1.0D0, ZERO = 0.0D0
+      DOUBLE PRECISION, PARAMETER ::
+     1     ADDON  = 1.0D-6,    BIAS1  = 6.0D0,     BIAS2  = 6.0D0,
+     2     BIAS3  = 10.0D0,    ETACF  = 0.25D0,    ETAMIN = 0.1D0,
+     3     ETAMXF = 0.2D0,     ETAMX1 = 1.0D4,     ETAMX2 = 10.0D0,
+     4     ETAMX3 = 10.0D0,    ONEPSM = 1.00001D0, THRESH = 1.5D0,
+     5     ONE    = 1.0D0,     ZERO   = 0.0D0
       INTEGER, PARAMETER :: KFC = -3, KFH = -7, MXNCF = 10
 C-----------------------------------------------------------------------
 C ETAQ and ETAQM1 genuinely require SAVE: when MAXORD is reduced below
@@ -2485,8 +2484,9 @@ C
       INTEGER I, IBACK, J, JP1, NQM1, NQM2
 C
       DIMENSION EM(13)
-      DOUBLE PRECISION, PARAMETER :: CORTES = 0.1D0, ONE = 1.0D0,
-     1     SIX = 6.0D0, TWO = 2.0D0, ZERO = 0.0D0
+      DOUBLE PRECISION, PARAMETER :: CORTES = 0.1D0
+      DOUBLE PRECISION, PARAMETER :: ONE = 1.0D0, SIX = 6.0D0,
+     1     TWO = 2.0D0, ZERO = 0.0D0
 C
       FLOTL = REAL(L)
       NQM1 = NQ - 1
@@ -2821,7 +2821,8 @@ C
       DOUBLE PRECISION CSCALE, DCON, DEL, DELP
       INTEGER I, IERPJ, IERSL, M
       DOUBLE PRECISION, PARAMETER :: CCMAX = 0.3D0, CRDOWN = 0.3D0,
-     1     RDIV = 2.0D0, ONE = 1.0D0, TWO = 2.0D0, ZERO = 0.0D0
+     1     RDIV = 2.0D0,
+     2     ONE = 1.0D0, TWO = 2.0D0, ZERO = 0.0D0
       INTEGER, PARAMETER :: MAXCOR = 3, MSBP = 20
 C-----------------------------------------------------------------------
 C On the first step, on a change of method order, or after a
@@ -3292,7 +3293,7 @@ C This routine saves or restores (depending on JOB) the internal state
 C variables of ZVODE (formerly the COMMON blocks ZVOD01 and ZVOD02, now
 C module variables of ZVODE_MOD).
 C
-C RSAV = real array of length 51 or more.
+C RSAV = real array of length 50 or more.
 C ISAV = integer array of length 41 or more.
 C JOB  = flag indicating to save or restore the state variables:
 C        JOB  = 1 if the state is to be saved (written to RSAV/ISAV).
@@ -3325,8 +3326,7 @@ C Save: pack the module variables into RSAV/ISAV.
         RSAV(31:43) = TAU
         RSAV(44:48) = TQ
         RSAV(49) = TN
-        RSAV(50) = UROUND
-        RSAV(51) = HU
+        RSAV(50) = HU
 C
         ISAV(1) = ICF
         ISAV(2) = INIT
@@ -3393,8 +3393,7 @@ C Restore: unpack RSAV/ISAV back into the module variables.
         TAU = RSAV(31:43)
         TQ = RSAV(44:48)
         TN = RSAV(49)
-C RSAV(50) holds UROUND, now a PARAMETER; nothing to restore.
-        HU = RSAV(51)
+        HU = RSAV(50)
 C
         ICF = ISAV(1)
         INIT = ISAV(2)

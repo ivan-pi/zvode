@@ -21,8 +21,13 @@ The [upstream ZVODE source](https://netlib.org/ode/zvode.f) (2006 LLNL release) 
   package routines by host association. Module variables carry the `SAVE` attribute implicitly, so
   the values persist between calls exactly as the `COMMON` blocks did. The one routine that relied on
   `COMMON` storage association, `ZVSRCO` (save/restore of the internal state), was rewritten to pack
-  and unpack the module variables explicitly, preserving the original `RSAV`/`ISAV` layout (51 reals,
-  41 integers). These module variables are intended to move into a derived type in a later step.
+  and unpack the module variables explicitly. These module variables are intended to move into a
+  derived type in a later step.
+- **`UROUND` promoted to a `PARAMETER`** — the machine unit roundoff, formerly a `/ZVOD01/` member
+  set at run time, is now a compile-time constant `PARAMETER` equal to `EPSILON(1.0D0)`. It no longer
+  occupies a slot in the `ZVSRCO` save arrays, so `RSAV` now holds 50 reals (was 51; `HU` moved from
+  `RSAV(51)` to `RSAV(50)`) alongside 41 integers in `ISAV`. The now-unused `DUMACH` (unit roundoff)
+  and `IUMACH` (error unit) helpers were removed; `IXSAV` reads `ERROR_UNIT` from `ISO_FORTRAN_ENV`.
 
 The internal numerics — the Adams and BDF stepping logic — are unchanged.
 
