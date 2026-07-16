@@ -71,6 +71,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Reworked the `SAVE`-attributed local variables in the internal helper
+  procedures of `extern/zvode.F` (`ZVHIN`, `ZVINDY`, `ZVSTEP`, `ZVSET`,
+  `ZVJUST`, `ZVNLSD`, `ZVJAC`, `ZVSOL`, `IXSAV`; the main `ZVODE` driver is
+  untouched).  The numeric constants that were `SAVE`d and `DATA`-initialised
+  (`ONE`, `ZERO`, `TWO`, biases, thresholds, iteration limits, etc.) are now
+  `PARAMETER`s, and the genuinely persistent variables (`ETAQ`/`ETAQM1` in
+  `ZVSTEP`; `LUNIT`/`MESFLG` in `IXSAV`) are declared individually with an
+  inline `SAVE` attribute.  This removes incidental mutable state and is a
+  step toward making the solver thread-safe.  No behavioural change
+- `UROUND` (the machine unit roundoff) and `SRUR` (`= SQRT(UROUND)`, the
+  difference-quotient increment scale) are now module `PARAMETER`s instead of
+  mutable module variables set at run time — both are compile-time constants
+  (`EPSILON(1.0D0)` and `SQRT(EPSILON(1.0D0))`; `SQRT` of a constant is a valid
+  constant expression in Fortran 2003+).  Neither occupies a slot in the
+  `ZVSRCO` save arrays any more, so `RSAV` now holds 49 reals (was 51), with
+  `TN` at `RSAV(48)` and `HU` at `RSAV(49)`.  This changes the `RSAV` layout, so
+  state saved by an older version cannot be restored into this one; that path
+  was not in use.  The solver's numerical behaviour is unchanged.  (`CCMXJ` and
+  `MSBJ` are likewise fixed internal constants but sit before the save-array
+  indices documented in the `ZEWSET` recipe, so their promotion is deferred to
+  the planned derived-type state refactor — see `docs/release-plan.md`.)
+- Removed the now-unused `DUMACH` and `IUMACH` helper functions from
+  `extern/zvode.F`.  `DUMACH` (unit roundoff) is obsolete now that `UROUND` is
+  a `PARAMETER`; `IUMACH`'s only caller (`IXSAV`) now reads `ERROR_UNIT` from
+  the intrinsic `ISO_FORTRAN_ENV` module directly.  No behavioural change
 - Removed the internal Fortran `COMMON` blocks `/ZVOD01/` and `/ZVOD02/` from
   the vendored `extern/zvode.F`.  Their members are now module variables of
   `ZVODE_MOD`, shared between the package routines by host association; module
