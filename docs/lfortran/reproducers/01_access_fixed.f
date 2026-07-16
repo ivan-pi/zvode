@@ -1,0 +1,8 @@
+      MODULE M
+        IMPLICIT NONE
+        PRIVATE
+        PUBLIC :: FOO
+      CONTAINS
+        SUBROUTINE FOO()
+        END SUBROUTINE
+      END MODULE M
