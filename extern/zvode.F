@@ -83,10 +83,16 @@ C /ZVOD02/; the '01'/'02' split and the real-before-integer ordering
 C survive only in ZVSRCO, which packs and unpacks these variables into
 C the RSAV/ISAV save arrays.
 C
+C UROUND, the machine unit roundoff, was formerly a /ZVOD01/ member set
+C at run time from the intrinsic EPSILON.  It is a compile-time constant,
+C so it is now a PARAMETER rather than mutable state.  (It keeps its slot
+C RSAV(50) in ZVSRCO for save-array layout stability, but is no longer
+C restored.)
+      DOUBLE PRECISION, PARAMETER :: UROUND = EPSILON(1.0D0)
 C Former /ZVOD01/ members:
       DOUBLE PRECISION ACNRM, CCMXJ, CONP, CRATE, DRC, EL(13),
      1     ETA, ETAMAX, H, HMIN, HMXI, HNEW, HRL1, HSCAL, PRL1,
-     2     RC, RL1, SRUR, TAU(13), TQ(5), TN, UROUND
+     2     RC, RL1, SRUR, TAU(13), TQ(5), TN
       INTEGER ICF, INIT, IPUP, JCUR, JSTART, JSV, KFLAG, KUTH,
      1        L, LMAX, LYH, LEWT, LACOR, LSAVF, LWM, LIWM,
      2        LOCJS, MAXORD, METH, MITER, MSBJ, MXHNIL, MXSTEP,
@@ -1134,10 +1140,9 @@ C            linear systems.
 C  DZSCAL    scales a double complex array by a double prec. scalar.
 C  DZAXPY    adds a D.P. scalar times one complex vector to another.
 C  ZCOPY     is a basic linear algebra module from the BLAS.
-C  DUMACH    sets the unit roundoff of the machine.
-C  XERRWD, XSETUN, XSETF, IXSAV, and IUMACH handle the printing of all
+C  XERRWD, XSETUN, XSETF, and IXSAV handle the printing of all
 C            error messages and warnings.  XERRWD is machine-dependent.
-C Note: ZVNORM, ZABSSQ, DUMACH, IXSAV, and IUMACH are function routines.
+C Note: ZVNORM, ZABSSQ, and IXSAV are function routines.
 C All the others are subroutines.
 C The intrinsic functions called with double precision complex arguments
 C are: ABS, DREAL, and DIMAG.  All of these are expected to return
@@ -1404,8 +1409,8 @@ C It contains all remaining initializations, the initial call to F,
 C and the calculation of the initial step size.
 C The error weights in EWT are inverted after being loaded.
 C-----------------------------------------------------------------------
- 100  UROUND = DUMACH()
-      TN = T
+C UROUND is now a module PARAMETER (= EPSILON), no longer set here.
+ 100  TN = T
       IF (ITASK .NE. 4 .AND. ITASK .NE. 5) GO TO 110
       TCRIT = RWORK(1)
       IF ((TCRIT - TOUT)*(TOUT - T) .LT. ZERO) GO TO 625
@@ -1829,15 +1834,11 @@ C-----------------------------------------------------------------------
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION AFI, ATOLI, DELYI, H, HALF, HG, HLB, HNEW, HRAT,
-     1     HUB, HUN, PT1, T1, TDIST, TROUND, TWO, YDDNRM
+      DOUBLE PRECISION AFI, ATOLI, DELYI, H, HG, HLB, HNEW, HRAT,
+     1     HUB, T1, TDIST, TROUND, YDDNRM
       INTEGER I, ITER
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE HALF, HUN, PT1, TWO
-      DATA HALF /0.5D0/, HUN /100.0D0/, PT1 /0.1D0/, TWO /2.0D0/
+      DOUBLE PRECISION, PARAMETER :: HALF = 0.5D0, HUN = 100.0D0,
+     1     PT1 = 0.1D0, TWO = 2.0D0
 C
       NITER = 0
       TDIST = ABS(TOUT - T0)
@@ -1959,17 +1960,10 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION C, HUN, R, S, TFUZZ, TN1, TP, ZERO
+      DOUBLE PRECISION C, R, S, TFUZZ, TN1, TP
       INTEGER I, IC, J, JB, JB2, JJ, JJ1, JP1
       CHARACTER(LEN=80) MSG
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE HUN, ZERO
-C
-C
-      DATA HUN /100.0D0/, ZERO /0.0D0/
+      DOUBLE PRECISION, PARAMETER :: HUN = 100.0D0, ZERO = 0.0D0
 C
       IFLAG = 0
       IF (K .LT. 0 .OR. K .GT. NQ) GO TO 80
@@ -2099,26 +2093,21 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION ADDON, BIAS1,BIAS2,BIAS3, CNQUOT, DDN, DSM, DUP,
-     1     ETACF, ETAMIN, ETAMX1, ETAMX2, ETAMX3, ETAMXF,
-     2     ETAQ, ETAQM1, ETAQP1, FLOTL, ONE, ONEPSM,
-     3     R, THRESH, TOLD, ZERO
-      INTEGER I, I1, I2, IBACK, J, JB, KFC, KFH, MXNCF, NCF, NFLAG
+      DOUBLE PRECISION CNQUOT, DDN, DSM, DUP, ETAQP1, FLOTL,
+     1     R, TOLD
+      INTEGER I, I1, I2, IBACK, J, JB, NCF, NFLAG
+      DOUBLE PRECISION, PARAMETER :: ADDON = 1.0D-6, BIAS1 = 6.0D0,
+     1     BIAS2 = 6.0D0, BIAS3 = 10.0D0, ETACF = 0.25D0,
+     2     ETAMIN = 0.1D0, ETAMXF = 0.2D0, ETAMX1 = 1.0D4,
+     3     ETAMX2 = 10.0D0, ETAMX3 = 10.0D0, ONEPSM = 1.00001D0,
+     4     THRESH = 1.5D0, ONE = 1.0D0, ZERO = 0.0D0
+      INTEGER, PARAMETER :: KFC = -3, KFH = -7, MXNCF = 10
 C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
+C ETAQ and ETAQM1 genuinely require SAVE: when MAXORD is reduced below
+C the tentative order (the JSTART = -1 block), their values from the
+C previous step's order selection are reused.
 C-----------------------------------------------------------------------
-      SAVE ADDON, BIAS1, BIAS2, BIAS3,
-     1     ETACF, ETAMIN, ETAMX1, ETAMX2, ETAMX3, ETAMXF, ETAQ, ETAQM1,
-     2     KFC, KFH, MXNCF, ONEPSM, THRESH, ONE, ZERO
-C-----------------------------------------------------------------------
-C
-      DATA KFC/-3/, KFH/-7/, MXNCF/10/
-      DATA ADDON  /1.0D-6/,    BIAS1  /6.0D0/,     BIAS2  /6.0D0/,
-     1     BIAS3  /10.0D0/,    ETACF  /0.25D0/,    ETAMIN /0.1D0/,
-     2     ETAMXF /0.2D0/,     ETAMX1 /1.0D4/,     ETAMX2 /10.0D0/,
-     3     ETAMX3 /10.0D0/,    ONEPSM /1.00001D0/, THRESH /1.5D0/
-      DATA ONE/1.0D0/, ZERO/0.0D0/
+      REAL(DP), SAVE :: ETAQ, ETAQM1
 C
       KFLAG = 0
       TOLD = TN
@@ -2490,21 +2479,14 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION AHATN0, ALPH0, CNQM1, CORTES, CSUM, ELP, EM,
-     1     EM0, FLOTI, FLOTL, FLOTNQ, HSUM, ONE, RXI, RXIS, S, SIX,
-     2     T1, T2, T3, T4, T5, T6, TWO, XI, ZERO
+      DOUBLE PRECISION AHATN0, ALPH0, CNQM1, CSUM, ELP, EM,
+     1     EM0, FLOTI, FLOTL, FLOTNQ, HSUM, RXI, RXIS, S,
+     2     T1, T2, T3, T4, T5, T6, XI
       INTEGER I, IBACK, J, JP1, NQM1, NQM2
 C
       DIMENSION EM(13)
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE CORTES, ONE, SIX, TWO, ZERO
-C
-C
-      DATA CORTES /0.1D0/
-      DATA ONE  /1.0D0/, SIX /6.0D0/, TWO /2.0D0/, ZERO /0.0D0/
+      DOUBLE PRECISION, PARAMETER :: CORTES = 0.1D0, ONE = 1.0D0,
+     1     SIX = 6.0D0, TWO = 2.0D0, ZERO = 0.0D0
 C
       FLOTL = REAL(L)
       NQM1 = NQ - 1
@@ -2650,16 +2632,9 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION ALPH0, ALPH1, HSUM, ONE, PROD, T1, XI,XIOLD, ZERO
+      DOUBLE PRECISION ALPH0, ALPH1, HSUM, PROD, T1, XI, XIOLD
       INTEGER I, IBACK, J, JP1, LP1, NQM1, NQM2, NQP1
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE ONE, ZERO
-C
-C
-      DATA ONE /1.0D0/, ZERO /0.0D0/
+      DOUBLE PRECISION, PARAMETER :: ONE = 1.0D0, ZERO = 0.0D0
 C
       IF ((NQ .EQ. 2) .AND. (IORD .NE. 1)) RETURN
       NQM1 = NQ - 1
@@ -2843,19 +2818,11 @@ C (host-associated; see the module specification section).
 C
 C Type declarations for local variables --------------------------------
 C
-      DOUBLE PRECISION CCMAX, CRDOWN, CSCALE, DCON, DEL, DELP, ONE,
-     1     RDIV, TWO, ZERO
-      INTEGER I, IERPJ, IERSL, M, MAXCOR, MSBP
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE CCMAX, CRDOWN, MAXCOR, MSBP, RDIV, ONE, TWO, ZERO
-C
-C
-      DATA CCMAX /0.3D0/, CRDOWN /0.3D0/, MAXCOR /3/, MSBP /20/,
-     1     RDIV  /2.0D0/
-      DATA ONE /1.0D0/, TWO /2.0D0/, ZERO /0.0D0/
+      DOUBLE PRECISION CSCALE, DCON, DEL, DELP
+      INTEGER I, IERPJ, IERSL, M
+      DOUBLE PRECISION, PARAMETER :: CCMAX = 0.3D0, CRDOWN = 0.3D0,
+     1     RDIV = 2.0D0, ONE = 1.0D0, TWO = 2.0D0, ZERO = 0.0D0
+      INTEGER, PARAMETER :: MAXCOR = 3, MSBP = 20
 C-----------------------------------------------------------------------
 C On the first step, on a change of method order, or after a
 C nonlinear convergence failure with NFLAG = -2, set IPUP = MITER
@@ -3051,17 +3018,11 @@ C
 C Type declarations for local variables --------------------------------
 C
       complex(dp) DI, R1, YI, YJ, YJJ
-      DOUBLE PRECISION CON, FAC, ONE, PT1, R, R0, THOU, ZERO
+      DOUBLE PRECISION CON, FAC, R, R0
       INTEGER I, I1, I2, IER, II, J, J1, JJ, JOK, LENP, MBA, MBAND,
      1        MEB1, MEBAND, ML, ML1, MU, NP1
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this subroutine.
-C-----------------------------------------------------------------------
-      SAVE ONE, PT1, THOU, ZERO
-C-----------------------------------------------------------------------
-C
-      DATA ONE /1.0D0/, THOU /1000.0D0/, ZERO /0.0D0/, PT1 /0.1D0/
+      DOUBLE PRECISION, PARAMETER :: ONE = 1.0D0, THOU = 1000.0D0,
+     1     ZERO = 0.0D0, PT1 = 0.1D0
 C
       IERPJ = 0
       HRL1 = H*RL1
@@ -3275,16 +3236,9 @@ C
 C Type declarations for local variables --------------------------------
 C
       complex(dp) DI
-      DOUBLE PRECISION ONE, PHRL1, R, ZERO
+      DOUBLE PRECISION PHRL1, R
       INTEGER I, MEBAND, ML, MU, INFO
-C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this integrator.
-C-----------------------------------------------------------------------
-      SAVE ONE, ZERO
-C
-C
-      DATA ONE /1.0D0/, ZERO /0.0D0/
+      DOUBLE PRECISION, PARAMETER :: ONE = 1.0D0, ZERO = 0.0D0
 C
       IERSL = 0
       GO TO (100, 100, 300, 400, 400), MITER
@@ -3439,7 +3393,7 @@ C Restore: unpack RSAV/ISAV back into the module variables.
         TAU = RSAV(31:43)
         TQ = RSAV(44:48)
         TN = RSAV(49)
-        UROUND = RSAV(50)
+C RSAV(50) holds UROUND, now a PARAMETER; nothing to restore.
         HU = RSAV(51)
 C
         ICF = ISAV(1)
@@ -3590,40 +3544,6 @@ C***END PROLOGUE  ZABSSQ
 C----------------------- END OF FUNCTION ZABSSQ ------------------------
         END FUNCTION ZABSSQ
       END FUNCTION ZVNORM
-*DECK DUMACH
-      PURE DOUBLE PRECISION FUNCTION DUMACH ()
-C***BEGIN PROLOGUE  DUMACH
-C***PURPOSE  Compute the unit roundoff of the machine.
-C***CATEGORY  R1
-C***TYPE      DOUBLE PRECISION (RUMACH-S, DUMACH-D)
-C***KEYWORDS  MACHINE CONSTANTS
-C***AUTHOR  Hindmarsh, Alan C., (LLNL)
-C***DESCRIPTION
-C *Usage:
-C        DOUBLE PRECISION  A, DUMACH
-C        A = DUMACH()
-C
-C *Function Return Values:
-C     A : the unit roundoff of the machine.
-C
-C *Description:
-C     The unit roundoff is defined as the smallest positive machine
-C     number u such that  1.0 + u .ne. 1.0.  This is computed by DUMACH
-C     in a machine-independent manner.
-C
-C***REFERENCES  (NONE)
-C***ROUTINES CALLED  DUMSUM
-C***REVISION HISTORY  (YYYYMMDD)
-C   19930216  DATE WRITTEN
-C   19930818  Added SLATEC-format prologue.  (FNF)
-C   20030707  Added DUMSUM to force normal storage of COMP.  (ACH)
-C***END PROLOGUE  DUMACH
-C
-C***FIRST EXECUTABLE STATEMENT  DUMACH
-      DUMACH = EPSILON(1.0D0)
-      RETURN
-C----------------------- End of Function DUMACH ------------------------
-      END FUNCTION
 *DECK XERRWD
       SUBROUTINE XERRWD (MSG, NMES, NERR, LEVEL, NI, I1, I2, NR, R1, R2)
 C***BEGIN PROLOGUE  XERRWD
@@ -3789,6 +3709,7 @@ C----------------------- End of Subroutine XSETUN ----------------------
       END SUBROUTINE
 *DECK IXSAV
       INTEGER FUNCTION IXSAV (IPAR, IVALUE, ISET)
+      USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: ERROR_UNIT
 C***BEGIN PROLOGUE  IXSAV
 C***SUBSIDIARY
 C***PURPOSE  Save and recall error message control parameters.
@@ -3803,8 +3724,8 @@ C    MESFLG, the message print flag.
 C  This is a modification of the SLATEC library routine J4SAVE.
 C
 C  Saved local variables..
-C   LUNIT  = Logical unit number for messages.  The default is obtained
-C            by a call to IUMACH (may be machine-dependent).
+C   LUNIT  = Logical unit number for messages.  The default is the
+C            standard error unit (ERROR_UNIT from ISO_FORTRAN_ENV).
 C   MESFLG = Print control flag..
 C            1 means print all messages (the default).
 C            0 means no printing.
@@ -3821,7 +3742,7 @@ C  On return..
 C    IXSAV = The (old) value of the parameter.
 C
 C***SEE ALSO  XERRWD, XERRWV
-C***ROUTINES CALLED  IUMACH
+C***ROUTINES CALLED  (NONE)
 C***REVISION HISTORY  (YYMMDD)
 C   921118  DATE WRITTEN
 C   930329  Modified prologue to SLATEC format. (FNF)
@@ -3831,23 +3752,19 @@ C   010425  Type declaration for IUMACH added. (ACH)
 C***END PROLOGUE  IXSAV
 C
 C Subroutines called by IXSAV.. None
-C Function routine called by IXSAV.. IUMACH
 C-----------------------------------------------------------------------
 C**End
       LOGICAL ISET
       INTEGER IPAR, IVALUE
 C-----------------------------------------------------------------------
-      INTEGER LUNIT, MESFLG
+C LUNIT and MESFLG genuinely require SAVE: they hold the error message
+C control parameters between calls to this routine.
 C-----------------------------------------------------------------------
-C The following Fortran-77 declaration is to cause the values of the
-C listed (local) variables to be saved between calls to this routine.
-C-----------------------------------------------------------------------
-      SAVE LUNIT, MESFLG
-      DATA LUNIT/-1/, MESFLG/0/
+      INTEGER, SAVE :: LUNIT = -1, MESFLG = 0
 C
 C***FIRST EXECUTABLE STATEMENT  IXSAV
       IF (IPAR .EQ. 1) THEN
-        IF (LUNIT .EQ. -1) LUNIT = IUMACH()
+        IF (LUNIT .EQ. -1) LUNIT = ERROR_UNIT
         IXSAV = LUNIT
         IF (ISET) LUNIT = IVALUE
         ENDIF
@@ -3859,40 +3776,6 @@ C
 C
       RETURN
 C----------------------- End of Function IXSAV -------------------------
-      END FUNCTION
-*DECK IUMACH
-      INTEGER FUNCTION IUMACH()
-      USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: ERROR_UNIT
-C***BEGIN PROLOGUE  IUMACH
-C***PURPOSE  Provide standard error unit number for diagnostic messages.
-C***CATEGORY  R1
-C***TYPE      INTEGER (IUMACH-I)
-C***KEYWORDS  MACHINE CONSTANTS
-C***AUTHOR  Hindmarsh, Alan C., (LLNL)
-C***DESCRIPTION
-C *Usage:
-C        INTEGER  LOUT, IUMACH
-C        LOUT = IUMACH()
-C
-C *Function Return Values:
-C     LOUT : the standard logical unit for Fortran output.
-C
-C***REFERENCES  (NONE)
-C***ROUTINES CALLED  (NONE)
-C***REVISION HISTORY  (YYMMDD)
-C   930915  DATE WRITTEN
-C   930922  Made user-callable, and other cosmetic changes. (FNF)
-C***END PROLOGUE  IUMACH
-C
-C*Internal Notes:
-C  The built-in value of 6 is standard on a wide range of Fortran
-C  systems.  This may be machine-dependent.
-C**End
-C***FIRST EXECUTABLE STATEMENT  IUMACH
-      IUMACH = ERROR_UNIT
-C
-      RETURN
-C----------------------- End of Function IUMACH ------------------------
       END FUNCTION
 
       end module zvode_mod
