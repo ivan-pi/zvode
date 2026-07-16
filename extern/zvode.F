@@ -3012,7 +3012,12 @@ C by ZGEFA if MITER = 1 or 2, and by ZGBFA if MITER = 4 or 5.
 C
 C Communication with ZVJAC is done with the following variables.  (For
 C more details, please see the comments in the driver subroutine.)
-C Y          = Vector containing predicted values on entry.
+C Y          = Vector containing predicted values on entry.  Listed
+C              as input because it is unchanged in net effect:  the
+C              difference quotient Jacobians (MITER = 2 or 5) perturb
+C              its elements one at a time and restore each exactly,
+C              so a strict INTENT attribute would nevertheless have
+C              to be INTENT(INOUT) because of the transient writes.
 C YH         = The Nordsieck array, an LDYH by LMAX array, input.
 C LDYH       = A constant .ge. N, the first dimension of YH, input.
 C EWT        = An error weight vector of length N.
