@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-15
+
 ### Added
 
 - Tutorial and demo for a driven scalar complex ODE
@@ -68,6 +70,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.[test,numba]` and exercise them — `Tests (Debug)` (debug build) and the
   ubuntu-latest / Python 3.12 cell of the `Tests` matrix (release build); every
   other job stays lean and avoids the heavier numba + llvmlite download
+- Work-precision benchmark documentation page (`docs/benchmarks.rst` +
+  `docs/bench_work_precision.py`).  A small stiff, holomorphic, 3-component
+  complex kinetics system is solved by four paths — `solve_complex_ivp`,
+  `ZVODE_BDF` via `solve_ivp`, SciPy's pure-Python `BDF`, and the classic
+  `scipy.integrate.ode("zvode")` (with `with_jacobian=True` for a fair stiff
+  baseline) — and plotted as accuracy versus cost.  The script stamps the
+  figure with the zvode commit and the SciPy/NumPy/Python versions used
+- macOS multi-compiler conformance CI (`.github/workflows/fortran-tests.yml`
+  macOS job): builds and runs the native CTest programs with the LLVM
+  toolchain (flang for Fortran, clang for C, Accelerate for BLAS/LAPACK) for
+  both linalg backends, exercising the vendored Fortran and the C binding
+  layer under a second compiler family alongside the existing
+  ubuntu/gfortran job
 
 ### Changed
 
@@ -132,6 +147,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lifecycle is now GIL-independent and unit-testable as pure C, and the
   (potentially large) final copy no longer needs the GIL held.  No behavioural
   change
+- SciPy-style adaptation of Python `fun`/`jac` callbacks moved from Python
+  into the C layer, and the per-call dispatch now uses `PyObject_Vectorcall`
+  over a small C stack (boxing `t` once with `PyFloat_FromDouble`) instead of
+  `PyObject_CallFunction("dO", ...)`.  This skips the format-string parsing and
+  the intermediate argument-tuple allocation on every callback; any Python
+  callable is still handled, since `PyObject_Vectorcall` falls back to
+  `tp_call`.  No behavioural change
+- CMake build restructured around a single shared `zvode` core library
+  (`libzvode`), built once from `extern/**` with the linalg-backend selection
+  and link dependencies, and linked by both the `_zvode` Python extension and
+  the native test executables (removing the duplicated source lists and backend
+  branches).  The `cmake_minimum_required` floor was raised from 3.17 to 3.18 —
+  the genuine minimum, since the wheel build's FindPython `Development.Module`
+  component was introduced in 3.18 — and the C sources are pinned to C11
+- Source distribution is now self-contained: `pyproject.toml`
+  `sdist.include`/`sdist.exclude` ship every build input plus the `docs/` and
+  `test/` trees, excluding only the private `docs/release-plan.md` and the
+  CI/dev files
 - The user-facing documentation comments in `extern/zvode.F` no longer
   describe the internal state as living in the `/ZVOD01/`/`/ZVOD02/` COMMON
   blocks: the Part i/ii/iii driver documentation, the internal-state glossary,
@@ -248,6 +281,7 @@ complex-valued ordinary differential equations.
 - Replaced LINPACK factorization routines with LAPACK equivalents for both
   dense and banded systems
 
+[0.4.0]: https://github.com/ivan-pi/zvode/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ivan-pi/zvode/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ivan-pi/zvode/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ivan-pi/zvode/releases/tag/v0.1.0
